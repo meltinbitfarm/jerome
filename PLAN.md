@@ -41,6 +41,7 @@ Cosa verificare:
 ## Fase 1 — Comando "nuovo progetto" e controllo del setup
 
 Il pacchetto si installa da GitHub con `npm i -g` (D19). `jerome new <nome>` crea la cartella dal template, inizializza git, crea il marcatore `.jerome` e verifica Node ≥ 24, Claude Code installato e login con la subscription (V3).
+Il marcatore `.jerome` va creato esplicitamente da `jerome new`: non è in `template/` né nel MANIFEST, quindi la copia del template non lo porta con sé.
 **Risultato provabile:** dopo l'installazione, `jerome new prova` produce una cartella pronta. Senza login, o senza Claude Code, il comando si ferma con un messaggio chiaro.
 **Fatto quando:** installazione e comando funzionano sia su una macchina pulita sia con il login mancante, e rilanciare il comando su una cartella esistente non sovrascrive nulla.
 **Domande da risolvere prima:** nessuna. La parte CLI di Q5 è risolta da D19.
