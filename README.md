@@ -13,6 +13,12 @@ The name is a nod to Saint Jerome, patron saint of translators: the lead agent t
 - git
 - Claude Code, logged in with a Claude subscription (`claude auth login`), not an API key
 
+### Node version managers and scheduled runs
+
+If Node.js comes from a version manager such as nvm, `node` and `jerome` live in a folder like `~/.nvm/versions/node/<version>/bin/`, which only your interactive shell knows about. Jobs started by launchd or cron do not load your shell profile, so they would not find `node`, `jerome` or `claude`.
+
+Scheduled runs (planned) will deal with this: when a run is scheduled, Jérôme records the absolute paths of `node`, `jerome` and `claude` found at that moment, and `jerome doctor` will warn you if one of them no longer exists. If you switch Node version with nvm, or reinstall jerome under a different version, run `jerome doctor` and reschedule the runs it reports.
+
 ## Install
 
 ```sh
@@ -38,7 +44,7 @@ claude
 
 ## The lean profile
 
-Out of the box, every Claude Code session loads the descriptions of all your installed plugins, synced skills and claude.ai connectors. On the test machine that was about 29k tokens before the first word. Jérôme projects turn all of that off in their own `.claude/settings.json` and keep only the project's skills, which brings startup down to about 12k tokens. Your user settings are not touched.
+Out of the box, every Claude Code session loads the descriptions of all your installed plugins, synced skills and claude.ai connectors. On the test machine that was about 29k tokens before the first word. Jérôme projects turn all of that off in their own `.claude/settings.local.json`, which git ignores, and keep only the project's skills, which brings startup down to about 12k tokens. Your user settings are not touched.
 
 Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes from: [docs/usage-data.md](docs/usage-data.md).
 

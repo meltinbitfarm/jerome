@@ -2,13 +2,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 
-// The fake claude reads its state from environment variables and, for /context, from the folder's settings.json.
+// The fake claude reads its state from environment variables and, for /context, from the folder's settings files,
+// shared and local, like the real one.
 const FAKE_CLAUDE = `#!/bin/sh
 case "$1" in
   --version) echo "9.9.9 (Claude Code)";;
@@ -20,15 +21,15 @@ case "$1" in
     fi;;
   plugin) echo '[{"id": "shop@official"}, {"id": "sito@synced"}]';;
   -p)
-    S=.claude/settings.json
+    S="$(cat .claude/settings.json .claude/settings.local.json 2>/dev/null)"
     echo "## Context Usage"; echo; echo "**Tokens:** 12.1k / 1m (1%)"; echo
     echo "### Estimated usage by category"; echo; echo "| Category | Tokens | Percentage |"; echo "|---|---|---|"
     echo "| System prompt | 2.4k | 0.2% |"
-    grep -q '"disableClaudeAiConnectors": true' $S 2>/dev/null || echo "| MCP tools | 615 | 0.1% |"
+    echo "$S" | grep -q '"disableClaudeAiConnectors": true' || echo "| MCP tools | 615 | 0.1% |"
     echo; echo "### Skills"; echo; echo "| Skill | Source | Tokens |"; echo "|---|---|---|"
     for s in .claude/skills/*/; do [ -d "$s" ] && echo "| $(basename $s) | Project | ~200 |"; done
-    grep -q '"anthropic-skills:docx": "off"' $S 2>/dev/null || echo "| docx | claude.ai sync | ~320 |"
-    grep -q '"plugin-authoring": "off"' $S 2>/dev/null || echo "| plugin-authoring | Built-in | ~90 |"
+    echo "$S" | grep -q '"anthropic-skills:docx": "off"' || echo "| docx | claude.ai sync | ~320 |"
+    echo "$S" | grep -q '"plugin-authoring": "off"' || echo "| plugin-authoring | Built-in | ~90 |"
     [ "$FAKE_STUCK_PLUGIN" = "1" ] && echo "| shop:x | Plugin (shop) | ~40 |"
     exit 0;;
 esac
@@ -72,12 +73,16 @@ test('new creates the project with template, marker, git and lean profile', () =
   for (const devFile of ['PROJECT.md', 'decisions.md', 'open.md', 'PLAN.md', 'package.json']) {
     assert.ok(!existsSync(join(dir, devFile)), `${devFile} must not end up in the project`);
   }
-  const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
+  // The profile depends on the machine: it goes in the local settings, which git ignores (D21).
+  assert.ok(!existsSync(join(dir, '.claude', 'settings.json')));
+  const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.local.json'), 'utf8'));
   assert.deepEqual(settings.enabledPlugins, { 'shop@official': false, 'sito@synced': false });
   assert.equal(settings.skillOverrides['anthropic-skills:docx'], 'off');
   // plugin-authoring is not among the known sources: the /context check finds it and turns it off.
   assert.equal(settings.skillOverrides['plugin-authoring'], 'off');
   assert.match(r.stdout, /project skills: project-brief/);
+  const ignored = spawnSync('git', ['check-ignore', '.claude/settings.local.json'], { cwd: dir });
+  assert.equal(ignored.status, 0, 'git must ignore the local settings');
 });
 
 test('new on an existing folder changes nothing', () => {
@@ -109,7 +114,7 @@ test('new without Claude Code stops and creates no folder', () => {
 test('doctor restores the profile after a new plugin and keeps the other keys', () => {
   const { root, run } = sandbox();
   assert.equal(run('new', 'demo').status, 0);
-  const path = join(root, 'demo', '.claude', 'settings.json');
+  const path = join(root, 'demo', '.claude', 'settings.local.json');
   const settings = JSON.parse(readFileSync(path, 'utf8'));
   delete settings.enabledPlugins['shop@official'];
   settings.permissions = { allow: ['Bash(ls)'] };
@@ -121,6 +126,23 @@ test('doctor restores the profile after a new plugin and keeps the other keys', 
   const after = JSON.parse(readFileSync(path, 'utf8'));
   assert.equal(after.enabledPlugins['shop@official'], false);
   assert.deepEqual(after.permissions, { allow: ['Bash(ls)'] });
+  assert.match(run('doctor', 'demo').stdout, /Lean profile already in place/);
+});
+
+test('doctor moves a profile left in settings.json to the local settings', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const claudeDir = join(root, 'demo', '.claude');
+  // A project created before D21 was corrected: the profile sits in the shared settings, next to a team setting.
+  const profile = JSON.parse(readFileSync(join(claudeDir, 'settings.local.json'), 'utf8'));
+  writeFileSync(join(claudeDir, 'settings.json'), JSON.stringify({ ...profile, permissions: { allow: ['Bash(ls)'] } }));
+  rmSync(join(claudeDir, 'settings.local.json'));
+
+  const r = run('doctor', 'demo');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /moved \d+ profile entries from settings\.json to settings\.local\.json/);
+  assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')), { permissions: { allow: ['Bash(ls)'] } });
+  assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.local.json'), 'utf8')), profile);
   assert.match(run('doctor', 'demo').stdout, /Lean profile already in place/);
 });
 

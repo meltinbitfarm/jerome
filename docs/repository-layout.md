@@ -24,7 +24,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 - `jerome new` copies only the paths listed in `template/MANIFEST`. Future updates to existing projects will touch only those paths, so a project's own state is never overwritten: `PROJECT.md`, `decisions.md`, `open.md`, `brief.md` and the database.
 - Two files are not in the template because the CLI creates them in each project:
   - `.jerome`;
-  - `.claude/settings.json`, whose lean profile depends on the machine (see [lean-profile.md](lean-profile.md)).
+  - `.claude/settings.local.json`, with the lean profile, which depends on the machine and is kept out of git (see [lean-profile.md](lean-profile.md)).
 - The root `.claude/skills/project-brief` is a symlink to the template copy. Developing Jérôme and using Jérôme share one version of the skill.
 
 ## The package

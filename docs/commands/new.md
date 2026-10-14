@@ -12,7 +12,7 @@ jerome new my-project
 2. **Copies the template.** Only the paths listed in `template/MANIFEST` are copied. Jérôme's own development files never end up in a project.
 3. **Creates the `.jerome` marker** at the project root. Jérôme commands and the briefing skill use it to recognize a project.
 4. **Initializes git** (`git init`, branch `main`). No commit is made.
-5. **Writes the lean profile** into `.claude/settings.json` and verifies it, exactly as [`jerome doctor`](doctor.md) does.
+5. **Writes the lean profile** into `.claude/settings.local.json`, adds that file to `.gitignore`, and verifies the profile, exactly as [`jerome doctor`](doctor.md) does.
 
 ## Safety
 

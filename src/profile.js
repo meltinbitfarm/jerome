@@ -57,12 +57,43 @@ export function applyProfile(settings, profile) {
   return { settings: next, changes };
 }
 
-export function settingsPath(dir) {
-  return join(dir, '.claude', 'settings.json');
+// Moves the entries that turn something off (the shape of Jérôme's keys) out of shared settings.
+// Used to migrate projects created when the profile still lived in settings.json.
+export function splitProfileKeys(settings) {
+  const shared = structuredClone(settings);
+  const profile = {};
+  const moved = [];
+  for (const key of ['disableClaudeAiConnectors', 'disableBundledSkills']) {
+    if (shared[key] === true) {
+      profile[key] = true;
+      delete shared[key];
+      moved.push(key);
+    }
+  }
+  for (const [key, off] of [['enabledPlugins', false], ['skillOverrides', 'off']]) {
+    for (const [name, value] of Object.entries(shared[key] ?? {})) {
+      if (value !== off) continue;
+      profile[key] ??= {};
+      profile[key][name] = value;
+      delete shared[key][name];
+      moved.push(`${key}.${name}`);
+    }
+    if (shared[key] && Object.keys(shared[key]).length === 0) delete shared[key];
+  }
+  return { shared, profile, moved };
 }
 
-export function readSettings(dir) {
-  const path = settingsPath(dir);
+// The lean profile names the plugins and skills installed on this machine, so it lives in the
+// git-ignored local settings (D21). Machine-independent settings stay in settings.json.
+export const LOCAL_SETTINGS = 'settings.local.json';
+export const SHARED_SETTINGS = 'settings.json';
+
+export function settingsPath(dir, file = LOCAL_SETTINGS) {
+  return join(dir, '.claude', file);
+}
+
+export function readSettings(dir, file = LOCAL_SETTINGS) {
+  const path = settingsPath(dir, file);
   if (!existsSync(path)) return {};
   try {
     return JSON.parse(readFileSync(path, 'utf8'));
@@ -71,9 +102,20 @@ export function readSettings(dir) {
   }
 }
 
-export function writeSettings(dir, settings) {
+export function writeSettings(dir, settings, file = LOCAL_SETTINGS) {
   mkdirSync(join(dir, '.claude'), { recursive: true });
-  writeFileSync(settingsPath(dir), JSON.stringify(settings, null, 2) + '\n');
+  writeFileSync(settingsPath(dir, file), JSON.stringify(settings, null, 2) + '\n');
+}
+
+// Makes sure the local settings never end up in git. Returns true if .gitignore was changed.
+export function ensureGitignored(dir) {
+  const entry = `.claude/${LOCAL_SETTINGS}`;
+  const path = join(dir, '.gitignore');
+  const current = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  if (current.split('\n').some((line) => line.trim() === entry)) return false;
+  const prefix = current && !current.endsWith('\n') ? '\n' : '';
+  writeFileSync(path, `${current}${prefix}${entry}\n`);
+  return true;
 }
 
 // What Claude Code actually loads in that folder, according to `/context`.

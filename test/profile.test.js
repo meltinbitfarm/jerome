@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyProfile, desiredProfile, parseContext, findLeaks, overrideFor } from '../src/profile.js';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  applyProfile, desiredProfile, parseContext, findLeaks, overrideFor, splitProfileKeys, ensureGitignored,
+} from '../src/profile.js';
 
 const CONTEXT = `## Context Usage
 
@@ -81,4 +86,24 @@ test('overrideFor qualifies synced skills and skips plugins', () => {
   assert.equal(overrideFor({ name: 'anthropic-skills:docx', source: 'claude.ai sync' }), 'anthropic-skills:docx');
   assert.equal(overrideFor({ name: 'plugin-authoring', source: 'Built-in' }), 'plugin-authoring');
   assert.equal(overrideFor({ name: 'x:y', source: 'Plugin (x)' }), null);
+});
+
+test('splitProfileKeys moves only the entries that turn something off', () => {
+  const { shared, profile, moved } = splitProfileKeys({
+    disableBundledSkills: true,
+    enabledPlugins: { 'a@m': false, 'b@m': true },
+    skillOverrides: { docx: 'off' },
+    permissions: { allow: ['Bash(ls)'] },
+  });
+  assert.deepEqual(shared, { enabledPlugins: { 'b@m': true }, permissions: { allow: ['Bash(ls)'] } });
+  assert.deepEqual(profile, { disableBundledSkills: true, enabledPlugins: { 'a@m': false }, skillOverrides: { docx: 'off' } });
+  assert.equal(moved.length, 3);
+});
+
+test('ensureGitignored adds the local settings once', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jerome-gitignore-'));
+  writeFileSync(join(dir, '.gitignore'), 'node_modules');
+  assert.equal(ensureGitignored(dir), true);
+  assert.equal(ensureGitignored(dir), false);
+  assert.equal(readFileSync(join(dir, '.gitignore'), 'utf8'), 'node_modules\n.claude/settings.local.json\n');
 });

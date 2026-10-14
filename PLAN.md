@@ -49,10 +49,10 @@ The package is installed with `npm i -g github:meltinbitfarm/jerome` (D19). `jer
 - initializes git;
 - creates the `.jerome` marker;
 - checks Node ≥ 24, Claude Code installed and subscription login (V3);
-- writes the lean profile into `.claude/settings.json` (D21).
+- writes the lean profile into `.claude/settings.local.json` and adds that file to `.gitignore` (D21).
 
 The `.jerome` marker must be created explicitly by `jerome new`: it is not in `template/` nor in the MANIFEST, so copying the template does not bring it along.
-The same goes for `.claude/settings.json`: the CLI writes it, because the list of plugins to turn off depends on what is installed on the machine. The CLI manages only its own keys and leaves the others alone.
+The same goes for `.claude/settings.local.json`: the CLI writes it, because the list of plugins to turn off depends on what is installed on the machine, and git ignores it. The CLI manages only its own keys and leaves the others alone. The versioned `.claude/settings.json` is left for machine-independent settings, such as the hooks and the status line of phase 6.
 `jerome doctor` repeats the checks and rechecks the profile against what is installed at that moment.
 **Testable result:**
 - after installing, `jerome new prova` produces a ready folder;
@@ -67,8 +67,8 @@ The same goes for `.claude/settings.json`: the CLI writes it, because the list o
 - CLI messages are in English, and README and docs/ explain installation, `new` and `doctor` (D24).
 
 **Questions to settle first:** none. The CLI part of Q5 is resolved by D19.
-**Status (2026-10-14): implemented; installing from GitHub after the push is still missing.**
-- Code in `bin/` and `src/`, 14 tests with `npm test`, which use a fake `claude` and never call the real Claude Code.
+**Status: done (2026-10-14).** Fabio installed from GitHub on his Mac and ran `jerome new prova-jerome`: all checks passed, 22 profile changes, 10.4k startup context.
+- Code in `bin/` and `src/`, 17 tests with `npm test`, which use a fake `claude` and never call the real Claude Code.
 - Tried with the real package (`npm pack`, installed into a temporary prefix):
   - project creation;
   - stopping without a login and without Claude Code, without creating the folder;
@@ -76,7 +76,8 @@ The same goes for `.claude/settings.json`: the CLI writes it, because the list o
   - `doctor` restoring the profile while leaving the other keys, with no changes on the second run.
 - Measured startup: 12,384 real tokens, `/context` shows only the project's project-brief.
 - The `/context` check found and turned off `plugin-authoring`, which shows up neither among the plugins nor among the synced skills.
-- Missing: installing from GitHub on Fabio's Mac after the push. The test on a clean machine has moved to the checks before the public release.
+- After the release, D21 was corrected: the profile moved to `.claude/settings.local.json`, which git ignores. `/context` shows the same result (10.4k, only project-brief), and a real call starts at 12,318 tokens. `jerome doctor` moves profile entries left in `settings.json` by earlier versions, which covers `prova-jerome`.
+- The test on a clean machine has moved to the checks before the public release.
 
 ## Phase 2 — The lead agent in CLAUDE.md
 
@@ -128,7 +129,7 @@ Numbered SQL migrations in the package, applied by the CLI with `node:sqlite` (D
 ## Phase 6 — Tracking with hooks
 
 The template configures Claude Code's hooks to call `jerome hook <event>` (D19), which writes events, runs and token usage per agent to the DB. The model queries them through bash (D8); this phase decides whether through scripts or a CLI command. The experimental warning of `node:sqlite` must be suppressed so it does not end up in the hooks' output. The model spends no tokens writing logs.
-The project profile also configures the status line, which calls `jerome statusline` (D23). The command stores the % of the subscription windows in the global DB, but only if it changed since the last reading. It does not replace the personal status line: if one is configured, it calls it with the same input and appends its own part. With heartbeats storing the % from the `rate_limit_event` (D20), interactive sessions become the second source.
+The project's versioned `.claude/settings.json`, owned by the template, also configures the status line, which calls `jerome statusline` (D23). The command stores the % of the subscription windows in the global DB, but only if it changed since the last reading. It does not replace the personal status line: if one is configured, it calls it with the same input and appends its own part. With heartbeats storing the % from the `rate_limit_event` (D20), interactive sessions become the second source.
 **Testable result:**
 - after a session with a subagent, a script shows the events and tokens per agent and per run, and the figures roughly match what Claude Code reports;
 - after an interactive session, the global DB has a new % reading only if the value changed;
@@ -148,15 +149,23 @@ Local viewer separate from execution (D11): agent structure, messages, logs, rep
 ## Phase 8 — Heartbeat
 
 A scheduler launches headless `claude -p` with preconfigured permissions, an overlap lock and a budget per run (D6). Before every run it goes through `jerome doctor` (D21): if the profile has grown, it brings it back to lean and logs it. If it cannot, the run does not start, the block is logged and a "decision request" is opened (D13). The lead agent produces a periodic digest (D13, second level).
+
+**Executable paths.** Jobs started by launchd or cron do not load the user's shell profile, so they do not see version managers like nvm. On Fabio's Mac, Node and jerome are installed through nvm (`~/.nvm/versions/node/v24.13.0/bin/`) and would not be found by a scheduled job. The same holds for `claude`, installed in `~/.local/bin`.
+- When a heartbeat is scheduled, the CLI writes into the job the absolute paths of `node`, `jerome` and `claude` detected at that moment, or an explicit `PATH` built from them. It never relies on the PATH of the environment the job runs in.
+- `jerome doctor` checks that the paths recorded in the project's jobs still exist and are executable, for example after switching Node version with nvm. If one is missing, it reports it with the command to reschedule the job.
+- A heartbeat that cannot start because a path is missing leaves its log line, like any other block.
+
 **Testable result:**
 - a scheduled heartbeat runs a task and leaves its log line;
 - a second heartbeat launched at the same time stops because of the lock;
 - a run that exceeds its budget is stopped;
 - the digest appears where expected;
 - with a plugin installed after `jerome new`, the next run still starts with the lean profile;
-- with a profile `doctor` cannot fix, the run does not start, and the log line and the "decision request" appear.
+- with a profile `doctor` cannot fix, the run does not start, and the log line and the "decision request" appear;
+- a job scheduled from a shell with Node from nvm runs under launchd, with no shell profile loaded;
+- after switching Node version with nvm (or removing the recorded path), `jerome doctor` reports the job's broken path and how to reschedule it.
 
-**Done when:** all six tests pass, and a heartbeat never performs actions forbidden by L1.
+**Done when:** all eight tests pass, and a heartbeat never performs actions forbidden by L1.
 **Questions to settle first:** Q3 (default frequency and budget per run).
 
 ## Phase 9 — Limits, pause and subscription %

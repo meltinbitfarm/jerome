@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { setupChecks, printChecks } from './checks.js';
 import {
-  discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings,
-  inspectContext, findLeaks, overrideFor,
+  discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
+  splitProfileKeys, ensureGitignored, inspectContext, findLeaks, overrideFor, SHARED_SETTINGS, LOCAL_SETTINGS,
 } from './profile.js';
 
 export async function doctor(dirArg) {
@@ -16,13 +16,26 @@ export async function doctor(dirArg) {
   return reportProfile(ensureLeanProfile(dir)) ? 0 : 1;
 }
 
-// Brings the project to the lean profile and checks with `/context` that it holds.
-// A skill missed by the known sources (e.g. a personal skill) is turned off and the check runs once more.
+// Brings the project to the lean profile, in the git-ignored local settings, and checks with `/context`
+// that it holds. A skill missed by the known sources (e.g. a personal skill) is turned off and the check runs once more.
 export function ensureLeanProfile(dir) {
+  const changes = [];
+  if (ensureGitignored(dir)) changes.push(`.gitignore: added .claude/${LOCAL_SETTINGS}`);
+
   let settings = readSettings(dir);
-  const { settings: next, changes } = applyProfile(settings, desiredProfile(discoverInstalled()));
-  if (changes.length) writeSettings(dir, next);
-  settings = next;
+  const split = splitProfileKeys(readSettings(dir, SHARED_SETTINGS));
+  if (split.moved.length) {
+    settings = applyProfile(settings, split.profile).settings;
+    writeSettings(dir, settings);
+    if (Object.keys(split.shared).length) writeSettings(dir, split.shared, SHARED_SETTINGS);
+    else rmSync(settingsPath(dir, SHARED_SETTINGS));
+    changes.push(`moved ${split.moved.length} profile entries from ${SHARED_SETTINGS} to ${LOCAL_SETTINGS}`);
+  }
+
+  const applied = applyProfile(settings, desiredProfile(discoverInstalled()));
+  if (applied.changes.length) writeSettings(dir, applied.settings);
+  settings = applied.settings;
+  changes.push(...applied.changes);
 
   const hasProjectMcp = existsSync(join(dir, '.mcp.json'));
   let context = inspectContext(dir);

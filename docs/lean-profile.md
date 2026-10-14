@@ -4,7 +4,7 @@ Every Claude Code session starts with a fixed amount of context: the system prom
 
 ## What it turns off
 
-All of this goes in the project's own `.claude/settings.json`. User-level settings are never modified.
+All of this goes in the project's own `.claude/settings.local.json`, which `jerome new` adds to `.gitignore`. User-level settings are never modified, and neither is the versioned `.claude/settings.json`.
 
 | Setting | Effect |
 |---|---|
@@ -36,3 +36,7 @@ Your numbers depend on what you have installed. Run `claude -p "/context"` insid
 ## Why it is generated, not copied
 
 The list of plugins and synced skills depends on the machine and changes over time. That is why `jerome new` generates the profile and `jerome doctor` keeps it current. A static file in the template could not do this.
+
+For the same reason the profile lives in the local settings file and stays out of git. A teammate, or your other computer, has different plugins and generates its own profile with `jerome doctor`. Claude Code applies `settings.local.json` on top of `settings.json`, so the profile wins over any shared setting.
+
+Projects created by earlier versions of Jérôme had the profile in `settings.json`. `jerome doctor` moves those entries to the local file, and deletes `settings.json` if nothing else is left in it.
