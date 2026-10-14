@@ -7,6 +7,7 @@ Every Jérôme project has one lead agent: the main Claude Code session you talk
 - **Speaks your language**, briefly, with at most one question per reply.
 - **Keeps the project state.** It is the only one that edits `PROJECT.md`, `decisions.md` and `open.md`. Subagents report to it, and it records what matters.
 - **Respects decisions.** It cites entries by ID ("see D4") and does not reopen a recorded decision unless a concrete problem appears.
+- **Records only what you confirmed.** A decision it proposed is not recorded until you explicitly confirm it: silence is not confirmation. Before recording, it lists its unconfirmed proposals so you can confirm them in one block.
 - **Asks when it must.** When you need to decide, it ends with a decision request: the question, the options and its recommendation.
 - **Delegates cheaply.** It uses subagents, never agent teams. It passes file paths instead of contents, asks for a short summary with the details written to a file, and picks the cheapest model that fits the task.
 - **Stays within limits.** It follows the agent limits in `PROJECT.md`. By default it only prepares drafts and proposals: it never sends, publishes, deploys, merges to main, buys or emails.
@@ -29,7 +30,7 @@ To keep the files that are read on demand light, the lead agent moves closed ent
 
 | File | Budget | Current |
 |---|---:|---:|
-| `CLAUDE.md` | 600 tokens | 496 |
+| `CLAUDE.md` | 600 tokens | 536 |
 | `PROJECT.md` | about 800 tokens | depends on the brief |
 
 `jerome doctor` warns when a file goes over its budget. It does not block anything.
@@ -49,3 +50,14 @@ Claude Code also loads `CLAUDE.md`, and the files it imports, into subagents. In
 
 - the agents that Jérôme's catalog will provide set `omitClaudeMd: true` and skip the file entirely;
 - built-in subagents still load it, and its second line tells them to ignore it.
+
+## Service calls
+
+Some runs are not the lead agent's work, for example the documentation agent behind `jerome docs`. When the CLI launches `claude -p` for them, it:
+
+- starts from a service folder outside the project, so the lead agent's `CLAUDE.md` is not loaded;
+- passes `--settings` with the project's `.claude/settings.local.json`, so the lean profile still applies. Without it, a folder outside the project gets every plugin, skill and connector you have installed: 14.1k tokens instead of 10.4k on the test machine;
+- passes `--no-session-persistence`, so the run leaves no transcript that would be counted as project usage;
+- adds the project with `--add-dir` only when the task needs its files. `CLAUDE.md` still stays out, while the project's skills come in.
+
+The service folder is one fixed path per project, emptied before each call, because Claude Code keeps a small folder in `~/.claude/projects/` for every folder it is started from.

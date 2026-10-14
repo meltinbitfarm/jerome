@@ -8,7 +8,7 @@ A single markdown document, written to be read by the model with few tokens.
 - One line per entry. No paragraphs, except Goal (at most 3 lines).
 - Short, stable IDs by prefix: V constraints, D decisions, Q open questions, P parked, L limits. Agents and logs cite "see D4" instead of repeating the text. Never renumber: superseded entries stay and are marked as superseded.
 - Every decision has its reason: `D3: decision — reason`. Without the reason, the choice gets questioned again later.
-- Only what the user said or confirmed. Whatever is missing goes under Open questions.
+- Only what the user said or explicitly confirmed; silence is not confirmation. Whatever is missing goes under Open questions.
 - Sections marked (optional) are left out when empty. The others always stay, even with "none".
 
 ## Template

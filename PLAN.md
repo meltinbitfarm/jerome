@@ -94,8 +94,9 @@ The template's CLAUDE.md defines the lead agent. It is loaded into every session
 **Testable result:** in a test project with the three files already filled in, Fabio opens Claude Code and asks "where are we". The lead agent answers citing the IDs. Asked to deploy, it proposes a draft and does not run it.
 **Done when:** both tests pass in a new session, CLAUDE.md stays within 600 tokens, and the startup cost before and after is measured and documented.
 **Questions to settle first:** none.
-**Status (2026-10-14): implemented, waiting for Fabio's test.**
-- `template/CLAUDE.md`, listed in the MANIFEST: 496 tokens according to `/context`. The budget was first set at 500 and then raised to 600: 4 tokens of headroom were too few for the delegation rule of phase 4, and 100 tokens are about 0.7% of a call.
+**Status: done (2026-10-14).** Fabio tested it with a real briefing (the claude-watch project): one question at a time, reasoned recommendations, recorded decisions not reopened, file paths instead of contents, and important token details found on its own.
+- One fix after the test: the lead agent recorded four decisions it had proposed itself and the user had not confirmed ("you let them through without objections"). The rule is now stronger in CLAUDE.md and in the project-brief skill: proposals the user has not explicitly confirmed are listed for confirmation in one block before recording or saving, and silence is not confirmation. CLAUDE.md went from 496 to 536 tokens.
+- `template/CLAUDE.md`, listed in the MANIFEST: 496 tokens according to `/context` before that fix. The budget was first set at 500 and then raised to 600: 4 tokens of headroom were too few for the delegation rule of phase 4, and 100 tokens are about 0.7% of a call.
 - Measured on a project from `jerome new`, with Jérôme's own state files as a realistic example (PROJECT.md: 614 tokens):
   - estimated startup context: 10.4k without CLAUDE.md, 11.5k with it;
   - real cost of one call: 12,348 input tokens without, 13,735 with: **+1,387 tokens per call**;
@@ -124,6 +125,8 @@ After the brief, the lead agent proposes the team and creates it only after Fabi
 - `omitClaudeMd: true`, so it does not load the lead agent's CLAUDE.md and PROJECT.md (D27).
 
 Once the catalog exists, CLAUDE.md's delegation rule should point to the project's agents in `.claude/agents/`, within its 600-token budget.
+**Service calls.** When the CLI launches `claude -p` for a task that is not the lead agent's, such as `jerome docs`, it starts from a service folder outside the project, with `--no-session-persistence`, `--settings` pointing to the project's `.claude/settings.local.json`, and `--add-dir` for the project when the task needs its files. This way the call does not load the lead agent's CLAUDE.md, leaves no transcript that would skew the usage figures, and runs with the lean profile. Checked on a test project: from a folder outside the project, without `--settings`, the call loads the user's plugins, skills and connectors (14.1k); with `--settings` it is 10.4k, with no CLAUDE.md, skills or MCP; with `--add-dir` CLAUDE.md stays out and only the project's skills come in. Claude Code creates an empty `memory` folder in `~/.claude/projects/` for every folder it starts from, so the service folder is one fixed path per project (for example under `~/.cache/jerome/`), emptied before each call, not a new temporary folder each time.
+
 The catalog includes the documentation agent on Haiku (D25). It is launched with `/docs` in a session or `jerome docs` headless, and integrates the queue into the project's documentation. `jerome doctor` warns when the queue exceeds 20 lines.
 **Testable result:** on a test project the lead agent proposes a team, Fabio approves it, and a subagent runs a task. The lead agent receives a few lines of summary, the details are in files and the queue has one more line. After `jerome docs`, the documentation contains the change and the queue is empty.
 **Done when:** the agents created have their model declared, none uses the large model without reason, the returned summary stays within a limit set in the rules, the documentation agent runs on Haiku, and `doctor` warns above 20 lines without blocking.
@@ -162,6 +165,8 @@ Local viewer separate from execution (D11): agent structure, messages, logs, rep
 ## Phase 8 — Heartbeat
 
 A scheduler launches headless `claude -p` with preconfigured permissions, an overlap lock and a budget per run (D6). Before every run it goes through `jerome doctor` (D21): if the profile has grown, it brings it back to lean and logs it. If it cannot, the run does not start, the block is logged and a "decision request" is opened (D13). The lead agent produces a periodic digest (D13, second level).
+
+**Service calls.** Runs that are not the lead agent's own work (for example the documentation agent, or a check run by the scheduler) follow the service-call rule of phase 4: service folder outside the project, `--no-session-persistence`, `--settings` with the project's local settings, `--add-dir` only if needed. Heartbeats themselves are the lead agent's work: they run in the project folder and keep their transcript, which is where their usage is read from (D20).
 
 **Decision requests without a reader.** In a heartbeat nobody reads the reply, so a decision request in the final message would be lost. The heartbeat prompt (not CLAUDE.md, which has no room for it) tells the lead agent to write decision requests to a file or to the DB, where the viewer and the notifications pick them up, and to stop that line of work until the user answers.
 

@@ -18,7 +18,7 @@ Read only when needed:
 ## Project state
 - Only you edit the state files; subagents report, you record.
 - One line per entry, `D7: decision — reason`. Never renumber; mark superseded entries.
-- Record only decisions the user made or confirmed.
+- Record only decisions the user made or explicitly confirmed; silence is not confirmation. Before recording, list your unconfirmed proposals so the user confirms them in one block.
 - Move closed open.md entries and long-superseded decisions to `archive.md`, keeping their IDs.
 
 ## Delegating

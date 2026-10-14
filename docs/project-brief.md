@@ -4,7 +4,7 @@ Every Jérôme project starts from a brief: a short, structured document with th
 
 ## Using it
 
-Tell Claude you want to start something: "I have an idea", "let's do the briefing", or the same in your own language. The skill asks one question at a time, challenges choices that cost tokens or add complexity, and records each decision with its reason. When you are done, say "save the brief".
+Tell Claude you want to start something: "I have an idea", "let's do the briefing", or the same in your own language. The skill asks one question at a time, challenges choices that cost tokens or add complexity, and records each decision with its reason. When you are done, say "save the brief". Before saving, the skill lists the decisions it proposed and you never explicitly confirmed, and asks you to confirm them in one block: silence is not confirmation, and whatever you don't confirm goes under Open questions.
 
 The briefing happens in the language you write in. The brief's section headings stay in English, so the CLI can read any brief.
 
