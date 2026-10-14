@@ -1,32 +1,32 @@
 # Jérôme
 
-Fonte: brief.md (brief/v1, importato da MementoVault agent-orchestrator il 2026-10-14). Da qui la fonte viva sono PROJECT.md, decisions.md, open.md.
+Source: brief.md (brief/v1, imported from MementoVault agent-orchestrator on 2026-10-14). From here on, the living source is PROJECT.md, decisions.md and open.md.
 
-## Obiettivo
-Repo template da clonare in una cartella per ogni nuovo progetto, basata su Claude Code con subscription: un agente referente fa il briefing, crea i subagent necessari, li orchestra e riporta a Fabio. Un'alternativa snella e parca di token agli strumenti di orchestrazione già provati.
+## Goal
+A template repo to clone into a folder for each new project, built on Claude Code with a subscription: a lead agent runs the briefing, creates the subagents needed, coordinates them and reports back to Fabio. A lean, token-frugal alternative to the orchestration tools tried before.
 
-## Contesto
-- Altri strumenti di orchestrazione provati erano troppo pesanti per il flusso di lavoro di Fabio: serve qualcosa di più snello.
-- Fabio parte di solito con un briefing in chat, spesso dettato dal telefono, poi passa al PC: il tool deve facilitare proprio questo avvio.
-- Esiste un design precedente (grafo drag, gerarchia Company → progetto → agenti), vedi Q4.
+## Context
+- Other orchestration tools tried so far were too heavy for Fabio's workflow: the goal is something leaner.
+- Fabio usually starts with a briefing in chat, often dictated from the phone, then moves to the PC: the tool must make exactly this start easy.
+- There is an earlier design (drag-and-drop graph, Company → project → agents hierarchy), see Q4.
 
-## Vincoli
-- V1: Consumo di token minimo, anche nell'interazione tra agenti: priorità assoluta.
-- V2: Snello e veloce, poco codice, setup senza problemi.
-- V3: Gira su Claude Code con login subscription; il setup verifica installazione e login.
-- V4: Pausa automatica oltre soglie di consumo giornaliere e settimanali.
+## Constraints
+- V1: Minimal token usage, including in the interaction between agents: top priority.
+- V2: Lean and fast, little code, trouble-free setup.
+- V3: Runs on Claude Code with a subscription login; setup checks installation and login.
+- V4: Automatic pause above daily and weekly usage limits.
 
-## Limiti agenti
-- L1: Niente invii, pubblicazioni, deploy, merge su main, acquisti o mail: solo bozze e proposte (default).
+## Agent limits
+- L1: No sending, publishing, deploying, merging to main, purchases or emails: drafts and proposals only (default).
 
-## Strumenti
+## Tools
 - Claude Code (subscription), SQLite, MementoVault via MCP.
 
-## Fuori scope
-- Un'interfaccia propria per dialogare con gli agenti.
+## Out of scope
+- A dedicated interface for talking to the agents.
 - Agent Teams.
 
-## Successo
-- Da un brief salvato dal telefono, al PC un solo comando porta a un progetto con il referente pronto.
-- Il briefing rifatto sull'idea iniziale di questa chat arriva alle stesse decisioni.
-- Consumi per progetto visibili e sotto controllo grazie alle soglie.
+## Success
+- From a brief saved on the phone, a single command on the PC leads to a project with the lead agent ready.
+- Redoing the briefing on the original idea of this chat leads to the same decisions.
+- Per-project usage visible and kept under control thanks to the limits.

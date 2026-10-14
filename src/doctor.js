@@ -16,8 +16,8 @@ export async function doctor(dirArg) {
   return reportProfile(ensureLeanProfile(dir)) ? 0 : 1;
 }
 
-// Porta il progetto al profilo snello e verifica con `/context` che regga.
-// Una skill sfuggita alle fonti note (es. una skill personale) viene spenta e si riverifica una volta.
+// Brings the project to the lean profile and checks with `/context` that it holds.
+// A skill missed by the known sources (e.g. a personal skill) is turned off and the check runs once more.
 export function ensureLeanProfile(dir) {
   let settings = readSettings(dir);
   const { settings: next, changes } = applyProfile(settings, desiredProfile(discoverInstalled()));

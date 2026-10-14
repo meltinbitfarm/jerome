@@ -1,190 +1,190 @@
-# Piano di sviluppo Jérôme
+# Jérôme development plan
 
-Basato su PROJECT.md e decisions.md (D1–D25). Ogni fase ha un risultato che Fabio può provare a mano e un criterio di "fatto". Si passa alla fase dopo solo quando la precedente è fatta.
-Per D24, il "fatto" di ogni fase comprende anche la documentazione in inglese aggiornata (README.md e docs/), anche quando non è scritto nella fase.
+Based on PROJECT.md and decisions.md (D1–D25). Each phase has a result Fabio can try by hand and a definition of "done". The next phase starts only when the previous one is done.
+Per D24, every phase's "done" also includes up-to-date English documentation (README.md and docs/), even where the phase does not say so.
 
-## Fase 0 — Separare lo sviluppo di Jérôme dal template
+## Phase 0 — Separate Jérôme's development from the template
 
-**Il problema.** Oggi la repo contiene due cose diverse:
-- lo stato di sviluppo di Jérôme: PROJECT.md, decisions.md, open.md, brief.md, PLAN.md e il marcatore `.jerome` (Jérôme usa se stesso per gestire il proprio sviluppo);
-- il contenuto che finirà in ogni progetto: la skill project-brief e, più avanti, CLAUDE.md del referente, templates/agents/ e la configurazione degli hook.
+**The problem.** Today the repo holds two different things:
+- Jérôme's development state: PROJECT.md, decisions.md, open.md, brief.md, PLAN.md and the `.jerome` marker (Jérôme uses itself to manage its own development);
+- the content that will end up in every project: the project-brief skill and, later, the lead agent's CLAUDE.md, templates/agents/ and the hook configuration.
 
-Se il template è l'intera repo, D1 ("un progetto = una cartella con la repo template clonata") porterebbe in ogni progetto anche le decisioni e il piano di Jérôme.
+If the template is the whole repo, D1 ("one project = one folder with the template repo cloned into it") would also bring Jérôme's decisions and plan into every project.
 
-**Decisione (D17, approvata):** il contenuto del template sta in una sottocartella `template/`, e `jerome new` la copia in una cartella nuova (il template viaggia dentro il pacchetto, D19). Non si clona più l'intera repo.
-- Nella radice resta solo ciò che serve per sviluppare Jérôme; in `template/` c'è solo ciò che deve finire nei progetti.
-- La skill project-brief ha una sola copia canonica, in `template/.claude/skills/`. La copia usata per sviluppare Jérôme ne è un collegamento, così D14 (un solo metodo di briefing) resta vero.
-- Il template non contiene PROJECT.md, decisions.md e open.md: nascono in ogni progetto dal briefing o dall'import.
-- Gli aggiornamenti arrivano ai progetti sincronizzando solo i file di proprietà del template, elencati in un manifest. Le migrations li accompagnano (D9). I file di stato del progetto restano fuori.
-- Scartate: due repo separate (doppia manutenzione per uno sviluppatore solo) e branch dedicato al template (fragile da tenere allineato).
+**Decision (D17, approved):** the template content lives in a `template/` subfolder, and `jerome new` copies it into a new folder (the template ships inside the package, D19). The whole repo is no longer cloned.
+- The root holds only what is needed to develop Jérôme; `template/` holds only what must end up in projects.
+- The project-brief skill has a single canonical copy, in `template/.claude/skills/`. The copy used to develop Jérôme is a link to it, so D14 (one briefing method) stays true.
+- The template does not contain PROJECT.md, decisions.md and open.md: they are created in each project by the briefing or the import.
+- Updates reach projects by syncing only the files owned by the template, listed in a manifest. Migrations come with them (D9). Project state files stay out.
+- Rejected: two separate repos (double maintenance for a solo developer) and a dedicated template branch (fragile to keep aligned).
 
-**D1 è precisato da D17:** "clonata" diventa "creata dal template". Il senso resta lo stesso: un progetto per cartella, autonomo.
+**D1 is refined by D17:** "cloned" becomes "created from the template". The meaning stays the same: one self-contained project per folder.
 
-**Risultato provabile:** l'albero della repo mostra la radice di sviluppo separata da `template/`, e una cartella creata copiando `template/` non contiene nessun file di sviluppo di Jérôme.
-**Fatto quando:** D17 è registrata in decisions.md, la skill è spostata in `template/` con il collegamento per lo sviluppo, il manifest dei file del template esiste, e docs/ spiega la struttura del repository (radice di sviluppo e `template/`, D24).
-**Domande da risolvere prima:** nessuna.
+**Testable result:** the repo tree shows the development root separate from `template/`, and a folder created by copying `template/` contains none of Jérôme's development files.
+**Done when:** D17 is recorded in decisions.md, the skill is moved into `template/` with the link for development, the manifest of template files exists, and docs/ explains the repository layout (development root and `template/`, D24).
+**Questions to settle first:** none.
 
-## Fase 0.5 — Verifica rapida dei dati sui consumi
+## Phase 0.5 — Quick check of the usage data
 
-Prova usa e getta, fuori da `template/`: un hook minimo registra su file, senza interpretarlo, tutto ciò che riceve a ogni evento. Poi si fa una sessione di prova in cui il referente delega un compito a un subagent.
+A throwaway test, outside `template/`: a minimal hook writes to a file, without interpreting it, everything it receives at each event. Then a test session where the lead agent delegates a task to a subagent.
 
-Cosa verificare:
-- quali eventi arrivano (fine risposta, fine subagent, uso dei tool, fine sessione) e con quali campi;
-- se i token (input, output, cache) e il modello sono nel payload dell'hook o solo nel transcript a cui il payload rimanda;
-- se i consumi del subagent sono distinguibili da quelli del referente;
-- se c'è un costo o un dato utile alla % della subscription;
-- per gli heartbeat: cosa restituisce `claude -p` con l'output JSON.
+What to check:
+- which events arrive (end of response, end of subagent, tool use, end of session) and with which fields;
+- whether tokens (input, output, cache) and the model are in the hook payload or only in the transcript the payload points to;
+- whether the subagent's usage can be told apart from the lead agent's;
+- whether there is a cost or any data useful for the subscription %;
+- for heartbeats: what `claude -p` returns with JSON output.
 
-**Risultato provabile:** una nota breve con i campi disponibili, dove si trovano e un esempio reale per ciascuno. Fabio la legge e vede da dove verranno i numeri del viewer.
-**Fatto quando:** la nota esiste, la fonte dei dati sui consumi è registrata come decisione, e docs/ spiega in inglese da dove vengono i dati e perché esiste il profilo snello (D24). Da quella decisione dipende lo schema della fase 5.
-**Domande da risolvere prima:** nessuna.
-**Stato: fatta (2026-10-14).** Nota in notes/consumi.md, decisione D20. In più è emerso che:
-- anche la status line riceve la % della subscription;
-- il costo fisso di avvio scende da ~29k a ~12k token spegnendo per progetto plugin, connettori claude.ai e skill non usate.
+**Testable result:** a short note with the available fields, where they are and a real example of each. Fabio reads it and sees where the viewer's numbers will come from.
+**Done when:** the note exists, the source of usage data is recorded as a decision, and docs/ explains in English where the data comes from and why the lean profile exists (D24). The schema of phase 5 depends on that decision.
+**Questions to settle first:** none.
+**Status: done (2026-10-14).** Note in notes/usage-probe.md, decision D20. It also turned out that:
+- the status line receives the subscription % too;
+- the fixed startup cost drops from ~29k to ~12k tokens by turning off unused plugins, claude.ai connectors and skills per project.
 
-## Fase 1 — Comando "nuovo progetto" e controllo del setup
+## Phase 1 — "New project" command and setup check
 
-Il pacchetto si installa con `npm i -g github:meltinbitfarm/jerome` (D19). `jerome new <nome>`:
-- crea la cartella dal template;
-- inizializza git;
-- crea il marcatore `.jerome`;
-- verifica Node ≥ 24, Claude Code installato e login con la subscription (V3);
-- scrive il profilo snello in `.claude/settings.json` (D21).
+The package is installed with `npm i -g github:meltinbitfarm/jerome` (D19). `jerome new <name>`:
+- creates the folder from the template;
+- initializes git;
+- creates the `.jerome` marker;
+- checks Node ≥ 24, Claude Code installed and subscription login (V3);
+- writes the lean profile into `.claude/settings.json` (D21).
 
-Il marcatore `.jerome` va creato esplicitamente da `jerome new`: non è in `template/` né nel MANIFEST, quindi la copia del template non lo porta con sé.
-Lo stesso vale per `.claude/settings.json`: lo scrive la CLI, perché l'elenco dei plugin da spegnere dipende da cosa è installato sulla macchina. La CLI gestisce solo le proprie chiavi e lascia intatte le altre.
-`jerome doctor` ripete le verifiche e ricontrolla il profilo rispetto a ciò che è installato in quel momento.
-**Risultato provabile:**
-- dopo l'installazione, `jerome new prova` produce una cartella pronta;
-- senza login, o senza Claude Code, il comando si ferma con un messaggio chiaro;
-- in `prova`, `claude -p "/context"` elenca come skill solo project-brief (copia di progetto), e una chiamata `claude -p` resta intorno ai 12k token di avvio;
-- dopo aver installato un plugin nuovo, `jerome doctor` lo segnala e lo spegne nel profilo.
+The `.jerome` marker must be created explicitly by `jerome new`: it is not in `template/` nor in the MANIFEST, so copying the template does not bring it along.
+The same goes for `.claude/settings.json`: the CLI writes it, because the list of plugins to turn off depends on what is installed on the machine. The CLI manages only its own keys and leaves the others alone.
+`jerome doctor` repeats the checks and rechecks the profile against what is installed at that moment.
+**Testable result:**
+- after installing, `jerome new prova` produces a ready folder;
+- without a login, or without Claude Code, the command stops with a clear message;
+- in `prova`, `claude -p "/context"` lists only project-brief (the project copy) as a skill, and a `claude -p` call stays around 12k startup tokens;
+- after installing a new plugin, `jerome doctor` reports it and turns it off in the profile.
 
-**Fatto quando:**
-- dopo il push, l'installazione da GitHub sul Mac di Fabio funziona, e `jerome new` e `jerome doctor` funzionano anche con il login mancante;
-- rilanciare `jerome new` su una cartella esistente non sovrascrive nulla;
-- `jerome doctor` modifica solo le chiavi del profilo, non le altre;
-- i messaggi della CLI sono in inglese, e README e docs/ spiegano installazione, `new` e `doctor` (D24).
+**Done when:**
+- after the push, installing from GitHub on Fabio's Mac works, and `jerome new` and `jerome doctor` also work with the login missing;
+- running `jerome new` again on an existing folder overwrites nothing;
+- `jerome doctor` changes only the profile keys, not the others;
+- CLI messages are in English, and README and docs/ explain installation, `new` and `doctor` (D24).
 
-**Domande da risolvere prima:** nessuna. La parte CLI di Q5 è risolta da D19.
-**Stato (2026-10-14): implementata, manca l'installazione da GitHub dopo il push.**
-- Codice in `bin/` e `src/`, 14 test con `npm test`, che usano un `claude` finto e non chiamano il vero Claude Code.
-- Provate col pacchetto vero (`npm pack`, installato in un prefix temporaneo):
-  - creazione del progetto;
-  - blocco senza login e senza Claude Code, senza creare la cartella;
-  - nessuna sovrascrittura di una cartella esistente;
-  - `doctor` che ripristina il profilo e lascia le altre chiavi, con il secondo giro senza modifiche.
-- Avvio misurato: 12.384 token reali, `/context` mostra solo project-brief di progetto.
-- La verifica con `/context` ha trovato e spento `plugin-authoring`, che non si vede né tra i plugin né tra le skill sincronizzate.
-- Manca: l'installazione da GitHub sul Mac di Fabio dopo il push. La prova su una macchina pulita è spostata tra i controlli prima del rilascio pubblico.
+**Questions to settle first:** none. The CLI part of Q5 is resolved by D19.
+**Status (2026-10-14): implemented; installing from GitHub after the push is still missing.**
+- Code in `bin/` and `src/`, 14 tests with `npm test`, which use a fake `claude` and never call the real Claude Code.
+- Tried with the real package (`npm pack`, installed into a temporary prefix):
+  - project creation;
+  - stopping without a login and without Claude Code, without creating the folder;
+  - no overwrite of an existing folder;
+  - `doctor` restoring the profile while leaving the other keys, with no changes on the second run.
+- Measured startup: 12,384 real tokens, `/context` shows only the project's project-brief.
+- The `/context` check found and turned off `plugin-authoring`, which shows up neither among the plugins nor among the synced skills.
+- Missing: installing from GitHub on Fabio's Mac after the push. The test on a clean machine has moved to the checks before the public release.
 
-## Fase 2 — Il referente in CLAUDE.md
+## Phase 2 — The lead agent in CLAUDE.md
 
-Il CLAUDE.md del template definisce il referente:
-- all'avvio legge PROJECT.md, decisions.md e open.md, non l'intero storico;
-- è l'unico che aggiorna quei tre file (D7);
-- cita le voci per ID ("vedi D4") invece di ripeterle;
-- rispetta i limiti L1;
-- quando serve Fabio, chiude con una "decisione richiesta" (D13).
+The template's CLAUDE.md defines the lead agent:
+- at startup it reads PROJECT.md, decisions.md and open.md, not the whole history;
+- it is the only one that updates those three files (D7);
+- it cites entries by ID ("see D4") instead of repeating them;
+- it respects the L1 limits;
+- when Fabio is needed, it ends with a "decision request" (D13).
 
-**Risultato provabile:** in un progetto di prova con i tre file già compilati, Fabio apre Claude Code e chiede "a che punto siamo". Il referente risponde citando gli ID. Se gli si chiede un deploy, propone una bozza e non lo esegue.
-**Fatto quando:** le due prove passano in una sessione nuova, e CLAUDE.md resta corto (pochi token caricati a ogni sessione, V1).
-**Domande da risolvere prima:** nessuna.
+**Testable result:** in a test project with the three files already filled in, Fabio opens Claude Code and asks "where are we". The lead agent answers citing the IDs. Asked to deploy, it proposes a draft and does not run it.
+**Done when:** both tests pass in a new session, and CLAUDE.md stays short (few tokens loaded per session, V1).
+**Questions to settle first:** none.
 
-## Fase 3 — Briefing e import nel template
+## Phase 3 — Briefing and import in the template
 
-Entrambi i flussi di D15 funzionano dentro un progetto creato dal template:
-- da PC, il briefing con la skill project-brief in Claude Code scrive subito i file;
-- da telefono, il brief salvato in MementoVault viene importato al PC dalla CLI con `jerome new <nome> --from-vault <slug>` (D22), senza il modello.
+Both flows of D15 work inside a project created from the template:
+- from the PC, the briefing with the project-brief skill in Claude Code writes the files right away;
+- from the phone, the brief saved in MementoVault is imported on the PC by the CLI with `jerome new <name> --from-vault <slug>` (D22), without the model.
 
-La CLI legge il token da `~/.config/jerome/`, scarica il documento `brief`, controlla `format: brief/v1` e smista le sezioni nei tre file secondo la tabella "Import" di `references/brief-v1.md`. La sezione Import della skill rimanda alla CLI.
-**Risultato provabile:** da un brief salvato dal telefono, un solo comando porta a un progetto con il referente pronto (Successo 1). Rifacendo il briefing sull'idea iniziale di Jérôme si arriva alle stesse decisioni (Successo 2).
-**Fatto quando:** entrambi i criteri di Successo passano, e un brief con formato diverso da brief/v1 viene rifiutato con un messaggio.
-**Domande da risolvere prima:** nessuna. Va però verificato quale strada usa la CLI (D22): l'endpoint REST di MementoVault, se ne esiste uno per leggere un documento, altrimenti l'endpoint MCP chiamato via HTTP con il token.
+The CLI reads the token from `~/.config/jerome/`, downloads the `brief` document, checks `format: brief/v1` and sorts the sections into the three files following the "Import" table in `references/brief-v1.md`. The skill's Import section points to the CLI.
+**Testable result:** from a brief saved on the phone, a single command leads to a project with the lead agent ready (Success 1). Redoing the briefing on Jérôme's original idea leads to the same decisions (Success 2).
+**Done when:** both Success criteria pass, and a brief in a format other than brief/v1 is rejected with a message.
+**Questions to settle first:** none. Still to verify which route the CLI takes (D22): MementoVault's REST endpoint, if there is one for reading a document, otherwise the MCP endpoint called over HTTP with the token.
 
-## Fase 4 — Regole di creazione dei subagent
+## Phase 4 — Rules for creating subagents
 
-Dopo il brief, il referente propone la squadra e la crea solo dopo l'approvazione di Fabio. Parte dal catalogo in templates/agents/ (D10). Per ogni agente:
-- un modello adatto al compito (D5);
-- input sotto forma di percorsi di file e output come una sintesi breve, con il dettaglio scritto su file (D4);
-- solo subagent, mai Agent Teams (D3);
-- se cambia qualcosa di rilevante, una riga in coda in `docs/_da-integrare.md` (D25).
+After the brief, the lead agent proposes the team and creates it only after Fabio approves. It starts from the catalog in templates/agents/ (D10). For each agent:
+- a model suited to the task (D5);
+- input as file paths and output as a short summary, with the details written to files (D4);
+- subagents only, never Agent Teams (D3);
+- if something relevant changes, one line appended to `docs/_da-integrare.md` (D25).
 
-Il catalogo comprende il documentarista su Haiku (D25). Lo si lancia con `/docs` in sessione o con `jerome docs` in headless, e integra la coda nella documentazione del progetto. `jerome doctor` avvisa quando la coda supera le 20 righe.
-**Risultato provabile:** su un progetto di prova il referente propone una squadra, Fabio la approva, e un subagent esegue un compito. Il referente riceve poche righe di sintesi, il dettaglio si trova su file e la coda ha una riga in più. Dopo `jerome docs`, la documentazione contiene la modifica e la coda è vuota.
-**Fatto quando:** gli agenti creati hanno il modello dichiarato, nessuno usa il modello grosso senza motivo, la sintesi restituita sta entro un limite fissato nelle regole, il documentarista gira su Haiku, e `doctor` avvisa oltre le 20 righe senza bloccare.
-**Domande da risolvere prima:** nessuna.
+The catalog includes the documentation agent on Haiku (D25). It is launched with `/docs` in a session or `jerome docs` headless, and integrates the queue into the project's documentation. `jerome doctor` warns when the queue exceeds 20 lines.
+**Testable result:** on a test project the lead agent proposes a team, Fabio approves it, and a subagent runs a task. The lead agent receives a few lines of summary, the details are in files and the queue has one more line. After `jerome docs`, the documentation contains the change and the queue is empty.
+**Done when:** the agents created have their model declared, none uses the large model without reason, the returned summary stays within a limit set in the rules, the documentation agent runs on Haiku, and `doctor` warns above 20 lines without blocking.
+**Questions to settle first:** none.
 
-## Fase 5 — Database SQLite e migrations
+## Phase 5 — SQLite databases and migrations
 
-Migrations SQL numerate nel pacchetto, applicate dalla CLI con `node:sqlite` (D19). `jerome new` crea il DB del progetto in modalità WAL e il DB globale in ~/.config/jerome/ (D9, D12). Il seed contiene solo dati di riferimento: stati, tipi evento, budget di default e tabella modelli (D10).
-**Risultato provabile:** un progetto nuovo ha il DB creato da `jerome new`. Aggiungendo una migration e applicandola con la CLI, i dati esistenti restano. Il file .db non compare in git.
-**Fatto quando:** le tre prove passano sia per il DB di progetto sia per quello globale.
-**Domande da risolvere prima:**
-- ~~esito della fase 0.5~~ risolto da D20: consumi per agente e per run (modello, input, output, cache read e cache write) nel DB di progetto, letture della subscription nel DB globale;
-- Q4: se la gerarchia Company → progetto → agenti resta, va prevista nello schema globale fin da subito;
-- Q2 e Q3 non bloccano, perché i valori di default sono righe del seed modificabili in seguito.
+Numbered SQL migrations in the package, applied by the CLI with `node:sqlite` (D19). `jerome new` creates the project DB in WAL mode and the global DB in ~/.config/jerome/ (D9, D12). The seed contains only reference data: states, event types, default budgets and the model table (D10).
+**Testable result:** a new project has the DB created by `jerome new`. Adding a migration and applying it with the CLI keeps the existing data. The .db file does not show up in git.
+**Done when:** all three tests pass for both the project DB and the global DB.
+**Questions to settle first:**
+- ~~outcome of phase 0.5~~ resolved by D20: usage per agent and per run (model, input, output, cache read and cache write) in the project DB, subscription readings in the global DB;
+- Q4: if the Company → project → agents hierarchy stays, the global schema must allow for it from the start;
+- Q2 and Q3 do not block, because the defaults are seed rows that can be changed later.
 
-## Fase 6 — Tracciamento con hook
+## Phase 6 — Tracking with hooks
 
-Il template configura gli hook di Claude Code in modo che chiamino `jerome hook <evento>` (D19), che scrive nel DB eventi, run e consumi di token per agente. Il modello li interroga via bash (D8); qui si decide se con script o con un comando della CLI. L'avviso sperimentale di `node:sqlite` va soppresso, così non finisce nell'output degli hook. Il modello non spende token per scrivere i log.
-Il profilo di progetto configura anche la status line, che chiama `jerome statusline` (D23). Il comando salva nel DB globale la % delle finestre della subscription, ma solo se è cambiata rispetto all'ultima lettura. Non sostituisce la status line personale: se ce n'è una configurata, la richiama con lo stesso input e aggiunge la sua parte. Con gli heartbeat, che salvano la % dal `rate_limit_event` (D20), le sessioni interattive diventano la seconda fonte.
-**Risultato provabile:**
-- dopo una sessione con un subagent, uno script mostra gli eventi e i token per agente e per run, e il dato coincide a grandi linee con quanto riporta Claude Code;
-- dopo una sessione interattiva, il DB globale ha una lettura nuova della % solo se il valore è cambiato;
-- con una status line personale configurata, nei progetti Jérôme si vedono sia la riga personale sia la parte di Jérôme.
-**Fatto quando:** ogni run e ogni subagent lascia una riga di log (D13, primo livello), e nessuna chiamata a tool del modello serve per il tracciamento.
-**Domande da risolvere prima:** nessuna. Il rischio sui dati dei consumi è già stato verificato nella fase 0.5.
+The template configures Claude Code's hooks to call `jerome hook <event>` (D19), which writes events, runs and token usage per agent to the DB. The model queries them through bash (D8); this phase decides whether through scripts or a CLI command. The experimental warning of `node:sqlite` must be suppressed so it does not end up in the hooks' output. The model spends no tokens writing logs.
+The project profile also configures the status line, which calls `jerome statusline` (D23). The command stores the % of the subscription windows in the global DB, but only if it changed since the last reading. It does not replace the personal status line: if one is configured, it calls it with the same input and appends its own part. With heartbeats storing the % from the `rate_limit_event` (D20), interactive sessions become the second source.
+**Testable result:**
+- after a session with a subagent, a script shows the events and tokens per agent and per run, and the figures roughly match what Claude Code reports;
+- after an interactive session, the global DB has a new % reading only if the value changed;
+- with a personal status line configured, Jérôme projects show both the personal line and Jérôme's part.
+**Done when:** every run and every subagent leaves a log line (D13, first level), and tracking requires no tool call from the model.
+**Questions to settle first:** none. The risk around usage data was already checked in phase 0.5.
 
-## Fase 7 — Viewer in sola lettura
+## Phase 7 — Read-only viewer
 
-Viewer locale separato dall'esecuzione (D11): struttura degli agenti, messaggi, log, report, token e costo stimato. Mostra anche l'ultima % della subscription letta (D20, D23), con la sua data.
-**Risultato provabile:** Fabio apre il viewer su un progetto con qualche run e vede gli agenti e i consumi. Spegnendo il viewer durante un run, il run continua senza errori.
-**Fatto quando:** il viewer legge solo dal DB e dai file, non scrive mai, e si avvia con `jerome view`.
-**Domande da risolvere prima:**
-- Q5, parte viewer (stack dell'interfaccia; il comando è `jerome view`);
-- Q4 (se il grafo drag fa parte del viewer o di una fase successiva).
+Local viewer separate from execution (D11): agent structure, messages, logs, reports, tokens and estimated cost. It also shows the latest subscription % read (D20, D23), with its date.
+**Testable result:** Fabio opens the viewer on a project with a few runs and sees the agents and their usage. Shutting the viewer down during a run, the run carries on without errors.
+**Done when:** the viewer only reads from the DB and the files, never writes, and starts with `jerome view`.
+**Questions to settle first:**
+- Q5, viewer part (interface stack; the command is `jerome view`);
+- Q4 (whether the drag-and-drop graph belongs to the viewer or to a later phase).
 
-## Fase 8 — Heartbeat
+## Phase 8 — Heartbeat
 
-Uno scheduler lancia `claude -p` headless con permessi preconfigurati, un lock anti-sovrapposizione e un budget per run (D6). Prima di ogni run passa da `jerome doctor` (D21): se il profilo si è allargato lo riporta allo stato snello e lo annota nel log. Se non riesce, il run non parte, il blocco va nel log e si apre una "decisione richiesta" (D13). Il referente produce un digest periodico (D13, secondo livello).
-**Risultato provabile:**
-- un heartbeat programmato esegue un compito e lascia la sua riga di log;
-- un secondo heartbeat lanciato in contemporanea si ferma per il lock;
-- un run che supera il budget viene interrotto;
-- il digest compare dove previsto;
-- con un plugin installato dopo `jerome new`, il run successivo parte comunque con il profilo snello;
-- con un profilo che `doctor` non riesce a correggere, il run non parte e compaiono la riga di log e la "decisione richiesta".
+A scheduler launches headless `claude -p` with preconfigured permissions, an overlap lock and a budget per run (D6). Before every run it goes through `jerome doctor` (D21): if the profile has grown, it brings it back to lean and logs it. If it cannot, the run does not start, the block is logged and a "decision request" is opened (D13). The lead agent produces a periodic digest (D13, second level).
+**Testable result:**
+- a scheduled heartbeat runs a task and leaves its log line;
+- a second heartbeat launched at the same time stops because of the lock;
+- a run that exceeds its budget is stopped;
+- the digest appears where expected;
+- with a plugin installed after `jerome new`, the next run still starts with the lean profile;
+- with a profile `doctor` cannot fix, the run does not start, and the log line and the "decision request" appear.
 
-**Fatto quando:** le sei prove passano, e un heartbeat non esegue mai azioni vietate da L1.
-**Domande da risolvere prima:** Q3 (frequenza e budget per run di default).
+**Done when:** all six tests pass, and a heartbeat never performs actions forbidden by L1.
+**Questions to settle first:** Q3 (default frequency and budget per run).
 
-## Fase 9 — Soglie, pausa e % della subscription
+## Phase 9 — Limits, pause and subscription %
 
-Soglie giornaliere e settimanali per progetto e globali; quelle globali sono in % delle finestre a 5 ore e a 7 giorni (D20). Oltre una soglia, gli heartbeat vanno in pausa automatica (V4, D12). Il viewer mostra la % della subscription letta da Claude Code (D20).
-**Risultato provabile:**
-- con una soglia di progetto bassa, il prossimo heartbeat non parte e lo stato di pausa è visibile;
-- con una soglia globale bassa, la pausa vale per due progetti diversi;
-- il viewer mostra la % e la data dell'ultima lettura.
+Daily and weekly limits per project and global; the global ones are in % of the 5-hour and 7-day windows (D20). Above a limit, heartbeats pause automatically (V4, D12). The viewer shows the subscription % read from Claude Code (D20).
+**Testable result:**
+- with a low project limit, the next heartbeat does not start and the paused state is visible;
+- with a low global limit, the pause applies to two different projects;
+- the viewer shows the % and the date of the latest reading.
 
-**Fatto quando:** le prove passano, la pausa si toglie in modo esplicito, e i consumi per progetto sono visibili e sotto controllo (Successo 3).
-**Domande da risolvere prima:** Q2, ridotta da D20 alle sole soglie per progetto.
+**Done when:** the tests pass, the pause is lifted explicitly, and per-project usage is visible and under control (Success 3).
+**Questions to settle first:** Q2, narrowed by D20 to per-project limits only.
 
-## Prima del rilascio pubblico
+## Before the public release
 
-Controlli da fare prima di annunciare Jérôme o pubblicarlo su npm:
-- installazione da GitHub e `jerome new` su una macchina pulita (utente macOS nuovo o macchina virtuale), senza plugin, skill o connettori dell'account di Fabio;
-- README e docs/ allineati a tutte le fasi chiuse (D24);
-- nessun dato personale nei file versionati e nella storia di git.
+Checks to do before announcing Jérôme or publishing it on npm:
+- installing from GitHub and running `jerome new` on a clean machine (a new macOS user or a virtual machine), without the plugins, skills or connectors of Fabio's account;
+- README and docs/ aligned with all closed phases (D24);
+- no personal data in the versioned files or in the git history.
 
-## Domande aperte per fase
+## Open questions by phase
 
-| Domanda | Da risolvere prima della fase |
+| Question | To settle before phase |
 |---|---|
-| Q5 (parte CLI) | risolta da D19 |
-| Q4 | 5 (schema) e 7 (viewer) |
-| Q5 (parte viewer) | 7 |
+| Q5 (CLI part) | resolved by D19 |
+| Q4 | 5 (schema) and 7 (viewer) |
+| Q5 (viewer part) | 7 |
 | Q3 | 8 |
 | Q2 | 9 |
 
-Restano fuori dal piano P1 e P2 (parcheggiate) e il Fuori scope di PROJECT.md.
+P1 and P2 (parked) and the Out of scope section of PROJECT.md stay outside the plan.

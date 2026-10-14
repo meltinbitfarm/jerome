@@ -11,10 +11,11 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 │   └── .claude/skills/  the project-brief skill (canonical copy)
 ├── docs/                this documentation
 ├── PROJECT.md           ┐
-├── decisions.md         │ Jérôme's own project state and development notes,
-├── open.md              │ written in Italian; never copied into projects
+├── decisions.md         │ Jérôme's own project state and development notes;
+├── open.md              │ never copied into projects
 ├── PLAN.md              │
 ├── notes/               ┘
+├── brief.md             the original brief, kept in Italian as a snapshot
 └── .jerome              marks this folder as a Jérôme project
 ```
 

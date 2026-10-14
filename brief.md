@@ -7,6 +7,8 @@ created: 2026-10-14
 source: mobile
 ---
 
+> This is Jérôme's original project brief, kept in Italian as a snapshot of how the project started. It is not updated: the living project state is in PROJECT.md, decisions.md and open.md, in English.
+
 ## Obiettivo
 Repo template da clonare in una cartella per ogni nuovo progetto, basata su Claude Code con subscription: un agente referente fa il briefing, crea i subagent necessari, li orchestra e riporta a Fabio. Un'alternativa snella e parca di token agli strumenti di orchestrazione già provati.
 

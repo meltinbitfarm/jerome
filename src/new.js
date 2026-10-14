@@ -12,7 +12,7 @@ export async function newProject(name) {
     console.error(`${target} already exists: nothing was changed.`);
     return 1;
   }
-  // Le verifiche vengono prima di creare qualsiasi cosa, così un setup incompleto non lascia cartelle a metà.
+  // The checks come before creating anything, so an incomplete setup leaves no half-made folders.
   if (!printChecks(setupChecks())) {
     console.error('\nIncomplete setup: the project was not created.');
     return 1;
@@ -31,7 +31,7 @@ export async function newProject(name) {
   return ok ? 0 : 1;
 }
 
-// Copia solo i percorsi elencati nel MANIFEST del template (D17).
+// Copies only the paths listed in the template's MANIFEST (D17).
 export function copyTemplate(templateDir, target) {
   for (const entry of readManifest(templateDir)) {
     cpSync(join(templateDir, entry), join(target, entry), { recursive: true, errorOnExist: true, force: false });

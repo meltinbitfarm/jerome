@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { runClaude } from './claude.js';
 
-// Verifiche di setup (V3). Ognuna restituisce { ok, label, detail }; si fermano alla prima che blocca le successive.
+// Setup checks (V3). Each returns { ok, label, detail }; they stop at the first failure that makes the next ones pointless.
 export function setupChecks() {
   const results = [];
   const node = process.versions.node;

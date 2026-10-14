@@ -1,11 +1,11 @@
-// Profilo snello di progetto (D21): spegne plugin, connettori claude.ai, skill integrate e skill sincronizzate,
-// così ogni sessione parte con il minimo indispensabile. Restano attive solo le skill del progetto.
+// Lean project profile (D21): turns off plugins, claude.ai connectors, bundled skills and synced skills,
+// so every session starts with the bare minimum. Only the project's own skills stay on.
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { runClaude, claudeConfigDir } from './claude.js';
 
-// Prefisso con cui Claude Code espone le skill sincronizzate da claude.ai. Serve il nome qualificato:
-// quello semplice spegnerebbe anche la skill di progetto con lo stesso nome (project-brief, D14).
+// Prefix under which Claude Code exposes skills synced from claude.ai. The qualified name is required:
+// the plain one would also turn off the project skill with the same name (project-brief, D14).
 const SYNCED_PREFIX = 'anthropic-skills:';
 
 export function discoverInstalled() {
@@ -34,8 +34,8 @@ export function desiredProfile({ plugins, syncedSkills }) {
   };
 }
 
-// Unisce il profilo (anche parziale) nelle impostazioni esistenti toccando solo le chiavi di Jérôme.
-// Restituisce le nuove impostazioni e l'elenco leggibile delle modifiche.
+// Merges the profile (possibly partial) into the existing settings, touching only Jérôme's keys.
+// Returns the new settings and a readable list of the changes.
 export function applyProfile(settings, profile) {
   const next = structuredClone(settings);
   const changes = [];
@@ -76,8 +76,8 @@ export function writeSettings(dir, settings) {
   writeFileSync(settingsPath(dir), JSON.stringify(settings, null, 2) + '\n');
 }
 
-// Quello che Claude Code carica davvero in quella cartella, secondo `/context`.
-// È un comando locale: non chiama l'API e, senza persistenza, non lascia transcript.
+// What Claude Code actually loads in that folder, according to `/context`.
+// It is a local command: it makes no API call and, without persistence, leaves no transcript.
 export function inspectContext(dir) {
   const out = runClaude(['-p', '/context', '--no-session-persistence'], { cwd: dir, timeout: 120_000 });
   return parseContext(out);
@@ -104,14 +104,14 @@ export function parseContext(text) {
   return { total, categories, skills };
 }
 
-// Ciò che il profilo snello non dovrebbe lasciar passare. I tool MCP sono ammessi solo se il progetto ha un .mcp.json.
+// What the lean profile should not let through. MCP tools are allowed only if the project has a .mcp.json.
 export function findLeaks(context, { hasProjectMcp }) {
   const skills = context.skills.filter((s) => s.source !== 'Project');
   const mcp = hasProjectMcp ? [] : context.categories.filter((c) => c.name.startsWith('MCP tools'));
   return { skills, mcp };
 }
 
-// Override per una skill sfuggita al profilo. Le skill dei plugin non si spengono qui ma con enabledPlugins.
+// Override for a skill that slipped past the profile. Plugin skills are not turned off here but through enabledPlugins.
 export function overrideFor(skill) {
   if (skill.source.startsWith('Plugin')) return null;
   if (skill.source === 'claude.ai sync') {

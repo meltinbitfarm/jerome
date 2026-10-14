@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-// Esegue la CLI di Claude Code e restituisce stdout; lancia un errore con il motivo se fallisce.
-// Con stdoutOnFailure restituisce comunque lo stdout (es. `auth status` esce con 1 senza login ma stampa il JSON).
+// Runs the Claude Code CLI and returns stdout; throws an error with the reason if it fails.
+// With stdoutOnFailure it returns stdout anyway (e.g. `auth status` exits with 1 when logged out but still prints the JSON).
 export function runClaude(args, { cwd, timeout = 60_000, stdoutOnFailure = false } = {}) {
   try {
     return execFileSync('claude', args, { cwd, timeout, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

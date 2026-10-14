@@ -1,4 +1,4 @@
-// Prove di `jerome new` e `jerome doctor` con un `claude` finto nel PATH: niente chiamate al vero Claude Code.
+// Tests of `jerome new` and `jerome doctor` with a fake `claude` on the PATH: no calls to the real Claude Code.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 
-// Il finto claude legge lo stato da variabili d'ambiente e, per /context, dal settings.json della cartella.
+// The fake claude reads its state from environment variables and, for /context, from the folder's settings.json.
 const FAKE_CLAUDE = `#!/bin/sh
 case "$1" in
   --version) echo "9.9.9 (Claude Code)";;
@@ -60,79 +60,79 @@ function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
   return { root, run };
 }
 
-test('new crea il progetto con template, marcatore, git e profilo snello', () => {
+test('new creates the project with template, marker, git and lean profile', () => {
   const { root, run } = sandbox();
-  const r = run('new', 'prova');
+  const r = run('new', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  const dir = join(root, 'prova');
+  const dir = join(root, 'demo');
   assert.ok(existsSync(join(dir, '.jerome')));
   assert.ok(existsSync(join(dir, '.git')));
   assert.ok(existsSync(join(dir, '.claude', 'skills', 'project-brief', 'SKILL.md')));
   assert.ok(existsSync(join(dir, 'MANIFEST')));
   for (const devFile of ['PROJECT.md', 'decisions.md', 'open.md', 'PLAN.md', 'package.json']) {
-    assert.ok(!existsSync(join(dir, devFile)), `${devFile} non deve finire nel progetto`);
+    assert.ok(!existsSync(join(dir, devFile)), `${devFile} must not end up in the project`);
   }
   const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
   assert.deepEqual(settings.enabledPlugins, { 'shop@official': false, 'sito@synced': false });
   assert.equal(settings.skillOverrides['anthropic-skills:docx'], 'off');
-  // plugin-authoring non è tra le fonti note: lo trova la verifica con /context e lo spegne.
+  // plugin-authoring is not among the known sources: the /context check finds it and turns it off.
   assert.equal(settings.skillOverrides['plugin-authoring'], 'off');
   assert.match(r.stdout, /project skills: project-brief/);
 });
 
-test('new su una cartella esistente non tocca nulla', () => {
+test('new on an existing folder changes nothing', () => {
   const { root, run } = sandbox();
-  mkdirSync(join(root, 'esiste'));
-  writeFileSync(join(root, 'esiste', 'mio.txt'), 'ciao');
-  const r = run('new', 'esiste');
+  mkdirSync(join(root, 'existing'));
+  writeFileSync(join(root, 'existing', 'mine.txt'), 'hello');
+  const r = run('new', 'existing');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /already exists/);
-  assert.deepEqual(readdirSync(join(root, 'esiste')), ['mio.txt']);
+  assert.deepEqual(readdirSync(join(root, 'existing')), ['mine.txt']);
 });
 
-test('new senza login si ferma e non crea la cartella', () => {
+test('new without a login stops and creates no folder', () => {
   const { root, run } = sandbox({ loggedIn: false });
-  const r = run('new', 'prova');
+  const r = run('new', 'demo');
   assert.equal(r.status, 1);
   assert.match(r.stdout, /✗ Logged in with a subscription — not logged in/);
-  assert.ok(!existsSync(join(root, 'prova')));
+  assert.ok(!existsSync(join(root, 'demo')));
 });
 
-test('new senza Claude Code si ferma e non crea la cartella', () => {
+test('new without Claude Code stops and creates no folder', () => {
   const { root, run } = sandbox({ withClaude: false });
-  const r = run('new', 'prova');
+  const r = run('new', 'demo');
   assert.equal(r.status, 1);
   assert.match(r.stdout, /✗ Claude Code installed — Claude Code is not installed/);
-  assert.ok(!existsSync(join(root, 'prova')));
+  assert.ok(!existsSync(join(root, 'demo')));
 });
 
-test('doctor rimette il profilo dopo un plugin nuovo e lascia le altre chiavi', () => {
+test('doctor restores the profile after a new plugin and keeps the other keys', () => {
   const { root, run } = sandbox();
-  assert.equal(run('new', 'prova').status, 0);
-  const path = join(root, 'prova', '.claude', 'settings.json');
+  assert.equal(run('new', 'demo').status, 0);
+  const path = join(root, 'demo', '.claude', 'settings.json');
   const settings = JSON.parse(readFileSync(path, 'utf8'));
   delete settings.enabledPlugins['shop@official'];
   settings.permissions = { allow: ['Bash(ls)'] };
   writeFileSync(path, JSON.stringify(settings));
 
-  const r = run('doctor', 'prova');
+  const r = run('doctor', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /enabledPlugins\.shop@official = false/);
   const after = JSON.parse(readFileSync(path, 'utf8'));
   assert.equal(after.enabledPlugins['shop@official'], false);
   assert.deepEqual(after.permissions, { allow: ['Bash(ls)'] });
-  assert.match(run('doctor', 'prova').stdout, /Lean profile already in place/);
+  assert.match(run('doctor', 'demo').stdout, /Lean profile already in place/);
 });
 
-test('doctor fallisce se una skill di plugin resta caricata', () => {
+test('doctor fails if a plugin skill stays loaded', () => {
   const { root, run } = sandbox({ env: { FAKE_STUCK_PLUGIN: '1' } });
-  assert.equal(run('new', 'prova').status, 1);
-  const r = run('doctor', 'prova');
+  assert.equal(run('new', 'demo').status, 1);
+  const r = run('doctor', 'demo');
   assert.equal(r.status, 1);
   assert.match(r.stdout, /✗ skill still loaded: shop:x \(Plugin \(shop\)\)/);
 });
 
-test('doctor fuori da un progetto Jérôme', () => {
+test('doctor outside a Jérôme project', () => {
   const { run } = sandbox();
   const r = run('doctor');
   assert.equal(r.status, 1);

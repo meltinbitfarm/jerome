@@ -26,7 +26,7 @@ const CONTEXT = `## Context Usage
 | plugin-authoring | Built-in | ~90 |
 `;
 
-test('desiredProfile spegne plugin e skill sincronizzate con il nome qualificato', () => {
+test('desiredProfile turns off plugins and synced skills by qualified name', () => {
   const p = desiredProfile({ plugins: ['a@m', 'b@synced'], syncedSkills: ['project-brief', 'docx'] });
   assert.deepEqual(p.enabledPlugins, { 'a@m': false, 'b@synced': false });
   assert.deepEqual(p.skillOverrides, { 'anthropic-skills:project-brief': 'off', 'anthropic-skills:docx': 'off' });
@@ -34,7 +34,7 @@ test('desiredProfile spegne plugin e skill sincronizzate con il nome qualificato
   assert.equal(p.disableBundledSkills, true);
 });
 
-test('applyProfile tocca solo le chiavi di Jérôme e conserva le altre', () => {
+test('applyProfile touches only Jérôme keys and keeps the others', () => {
   const current = {
     hooks: { Stop: [] },
     permissions: { allow: ['Bash(ls)'] },
@@ -47,16 +47,16 @@ test('applyProfile tocca solo le chiavi di Jérôme e conserva le altre', () => 
   assert.deepEqual(settings.enabledPlugins, { 'mio@m': true, 'a@m': false });
   assert.deepEqual(settings.skillOverrides, { mia: 'off', 'anthropic-skills:docx': 'off' });
   assert.equal(changes.length, 4);
-  assert.equal(current.enabledPlugins['a@m'], true, "l'input non va modificato");
+  assert.equal(current.enabledPlugins['a@m'], true, 'the input must not be modified');
 });
 
-test('applyProfile è idempotente', () => {
+test('applyProfile is idempotent', () => {
   const profile = desiredProfile({ plugins: ['a@m'], syncedSkills: ['docx'] });
   const once = applyProfile({}, profile).settings;
   assert.deepEqual(applyProfile(once, profile).changes, []);
 });
 
-test('parseContext legge totale, categorie e skill', () => {
+test('parseContext reads total, categories and skills', () => {
   const ctx = parseContext(CONTEXT);
   assert.equal(ctx.total, '12.2k');
   assert.deepEqual(ctx.categories.map((c) => c.name), ['System prompt', 'MCP tools', 'Skills']);
@@ -64,11 +64,11 @@ test('parseContext legge totale, categorie e skill', () => {
   assert.deepEqual(ctx.skills[0], { name: 'project-brief', source: 'Project', tokens: '~200' });
 });
 
-test('parseContext rifiuta un formato sconosciuto', () => {
+test('parseContext rejects an unknown format', () => {
   assert.throws(() => parseContext('something else'), /unrecognized/);
 });
 
-test('findLeaks: skill non di progetto e tool MCP senza .mcp.json', () => {
+test('findLeaks: non-project skills and MCP tools without .mcp.json', () => {
   const ctx = parseContext(CONTEXT);
   const leaks = findLeaks(ctx, { hasProjectMcp: false });
   assert.equal(leaks.skills.length, 4);
@@ -76,7 +76,7 @@ test('findLeaks: skill non di progetto e tool MCP senza .mcp.json', () => {
   assert.equal(findLeaks(ctx, { hasProjectMcp: true }).mcp.length, 0);
 });
 
-test('overrideFor qualifica le sincronizzate e ignora i plugin', () => {
+test('overrideFor qualifies synced skills and skips plugins', () => {
   assert.equal(overrideFor({ name: 'docx', source: 'claude.ai sync' }), 'anthropic-skills:docx');
   assert.equal(overrideFor({ name: 'anthropic-skills:docx', source: 'claude.ai sync' }), 'anthropic-skills:docx');
   assert.equal(overrideFor({ name: 'plugin-authoring', source: 'Built-in' }), 'plugin-authoring');
