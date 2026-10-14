@@ -42,6 +42,10 @@ Out of the box, every Claude Code session loads the descriptions of all your ins
 
 Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes from: [docs/usage-data.md](docs/usage-data.md).
 
+## The briefing
+
+Every project starts from a brief. The template ships a `project-brief` skill that runs the briefing in your language and writes the project files, or saves the brief to a store such as MementoVault when you start from claude.ai. See [docs/project-brief.md](docs/project-brief.md).
+
 ## Roadmap
 
 1. ~~Project creation and setup checks~~ (`jerome new`, `jerome doctor`)

@@ -1,6 +1,6 @@
 # Jérôme development plan
 
-Based on PROJECT.md and decisions.md (D1–D25). Each phase has a result Fabio can try by hand and a definition of "done". The next phase starts only when the previous one is done.
+Based on PROJECT.md and decisions.md (D1–D26). Each phase has a result Fabio can try by hand and a definition of "done". The next phase starts only when the previous one is done.
 Per D24, every phase's "done" also includes up-to-date English documentation (README.md and docs/), even where the phase does not say so.
 
 ## Phase 0 — Separate Jérôme's development from the template
@@ -97,9 +97,9 @@ Both flows of D15 work inside a project created from the template:
 - from the PC, the briefing with the project-brief skill in Claude Code writes the files right away;
 - from the phone, the brief saved in MementoVault is imported on the PC by the CLI with `jerome new <name> --from-vault <slug>` (D22), without the model.
 
-The CLI reads the token from `~/.config/jerome/`, downloads the `brief` document, checks `format: brief/v1` and sorts the sections into the three files following the "Import" table in `references/brief-v1.md`. The skill's Import section points to the CLI.
+The CLI reads the token from `~/.config/jerome/`, downloads the `brief` document, checks `format: brief/v2` (or the older brief/v1) and sorts the sections into the three files following the "Import" table in `references/brief-v2.md` (D26). The skill's Import section points to the CLI.
 **Testable result:** from a brief saved on the phone, a single command leads to a project with the lead agent ready (Success 1). Redoing the briefing on Jérôme's original idea leads to the same decisions (Success 2).
-**Done when:** both Success criteria pass, and a brief in a format other than brief/v1 is rejected with a message.
+**Done when:** both Success criteria pass, and a brief in a format other than brief/v2 or brief/v1 is rejected with a message.
 **Questions to settle first:** none. Still to verify which route the CLI takes (D22): MementoVault's REST endpoint, if there is one for reading a document, otherwise the MCP endpoint called over HTTP with the token.
 
 ## Phase 4 — Rules for creating subagents
@@ -108,7 +108,7 @@ After the brief, the lead agent proposes the team and creates it only after Fabi
 - a model suited to the task (D5);
 - input as file paths and output as a short summary, with the details written to files (D4);
 - subagents only, never Agent Teams (D3);
-- if something relevant changes, one line appended to `docs/_da-integrare.md` (D25).
+- if something relevant changes, one line appended to `docs/_pending.md` (D25).
 
 The catalog includes the documentation agent on Haiku (D25). It is launched with `/docs` in a session or `jerome docs` headless, and integrates the queue into the project's documentation. `jerome doctor` warns when the queue exceeds 20 lines.
 **Testable result:** on a test project the lead agent proposes a team, Fabio approves it, and a subagent runs a task. The lead agent receives a few lines of summary, the details are in files and the queue has one more line. After `jerome docs`, the documentation contains the change and the queue is empty.

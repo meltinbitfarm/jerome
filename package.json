@@ -9,7 +9,10 @@
   "files": [
     "bin/",
     "src/",
-    "template/"
+    "template/",
+    "migrations/",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=24"

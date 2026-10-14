@@ -1,47 +1,53 @@
 ---
 name: project-brief
-description: Conduce il briefing iniziale di un nuovo progetto di Fabio e lo salva nel formato standard brief/v1. Usala ogni volta che Fabio vuole partire con un progetto, un prodotto, un tool o una funzionalità nuova ("ho un'idea", "stavo pensando di fare", "facciamo il briefing", "nuovo progetto"), quando dice "salva il brief", "chiudi il brief", "il brief è pronto", o quando chiede di importare un brief ("importa il brief di …") in una cartella di progetto. Vale sia su claude.ai (anche da telefono, spesso con messaggi dettati) sia in Claude Code dentro un progetto creato dal template.
+description: Runs the initial briefing for a new project and saves it in the brief/v2 format. Use it whenever the user wants to start a new project, product, tool or feature ("I have an idea", "I was thinking of building", "let's do the briefing", "new project", or the same in any language), when they say "save the brief", "close the brief", "the brief is ready", or when they ask to import a brief into a project folder. Works on claude.ai (including from a phone, often with dictated messages) and in Claude Code, inside or outside a Jérôme project.
 ---
 
 # Project brief
 
-Il briefing è il punto di partenza di ogni progetto di Fabio. Lo scopo è arrivare, con poche domande mirate, a un brief compatto che un agente referente in Claude Code possa leggere spendendo pochi token, e da cui proporre gli agenti.
+The briefing is where every project starts. The goal is to reach, with a few targeted questions, a compact brief that a lead agent in Claude Code can read with few tokens and use to propose the agents.
 
-Il formato è in `references/brief-v1.md`: leggilo prima di compilare o importare un brief.
+The format is in `references/brief-v2.md`: read it before writing or importing a brief.
 
-## Come condurre il briefing
+## Language
 
-- **Ingresso libero.** Fabio spesso detta: messaggi lunghi, disordinati, con errori di trascrizione ("MaldB" = "il DB", "immigration" = "migration"). Interpreta senza farlo notare e non chiedere di riformulare.
-- **Una domanda alla volta.** Alla fine di ogni risposta chiedi solo la cosa aperta più importante. Mai elenchi di domande.
-- **Spirito critico.** Di' con franchezza cosa esiste già (verifica con una ricerca quando parli di strumenti o funzioni attuali), cosa costa token, cosa è fragile o ipercomplesso. Non assecondare per cortesia.
-- **Risposte brevi.** Fabio legge spesso dal telefono: vai al punto, niente premesse.
-- **Tieni il conto.** Ogni scelta presa è una decisione con il suo perché. Non rimettere in discussione decisioni già prese, a meno che emerga un problema concreto, e in quel caso dillo esplicitamente.
-- **Parcheggio.** Quando Fabio mette un tema in pausa, registralo come parcheggiato e non riproporlo finché non lo riapre lui.
-- **Niente agenti nel brief.** La squadra la propone il referente dopo aver letto il brief. Se Fabio ha già idee sugli agenti, annotale in Contesto.
+- Hold the briefing in the language the user writes in, and write the brief's content in that language too.
+- Front matter keys, section headings and ID prefixes stay exactly as in the format, in English: tools parse them.
 
-## Quando Fabio chiede di salvare il brief
+## How to run the briefing
 
-1. Compila il brief seguendo `references/brief-v1.md`, usando solo ciò che è emerso nella conversazione. Quello che non è stato deciso va in Domande aperte, non inventarlo.
-2. `status: ready` solo se Fabio dice che è pronto o che passa allo sviluppo, altrimenti `draft`.
-3. Salva secondo l'ambiente (sezione sotto).
-4. Rispondi con 2-3 righe: dove l'hai salvato, quante decisioni e domande aperte contiene, e il comando o la frase per riprenderlo.
+- **Free-form input.** Users often dictate: long, messy messages with transcription errors. Interpret them without pointing it out and don't ask them to rephrase.
+- **One question at a time.** End each reply with only the most important open point. Never a list of questions.
+- **Critical spirit.** Say frankly what already exists (check with a search when you talk about current tools or features), what costs tokens, what is fragile or overly complex. Don't agree just to be polite.
+- **Short replies.** The user may be reading on a phone: get to the point, no preambles.
+- **Keep track.** Every choice made is a decision with its reason. Don't reopen decisions already made, unless a concrete problem comes up, and in that case say so explicitly.
+- **Parking.** When the user puts a topic on hold, record it as parked and don't bring it up again until they reopen it.
+- **No agents in the brief.** The lead agent proposes the team after reading the brief. If the user already has ideas about agents, note them under Context.
 
-## Dove salvare: due ambienti
+## When the user asks to save the brief
 
-**Claude Code dentro un progetto del template** (la radice della cartella contiene il file marcatore `.jerome`):
-- Scrivi direttamente i file di progetto come indicato in "Import" in `references/brief-v1.md`.
-- Salva anche una copia del brief completo in `brief.md`.
+1. Write the brief following `references/brief-v2.md`, using only what came up in the conversation. Whatever was not decided goes under Open questions: don't make it up.
+2. `status: ready` only if the user says it is ready or that development starts now; otherwise `draft`.
+3. Save it according to where you are (next section).
+4. Reply in 2–3 lines: where you saved it, how many decisions and open questions it contains, and the command or phrase to pick it up again.
 
-**Qualsiasi altro ambiente** (claude.ai, telefono, Claude Code fuori dal template), con MementoVault disponibile via MCP:
-- Cerca una collection esistente per il progetto (graph overview o search). Se non esiste, creala con lo slug del brief.
-- Salva il brief come documento `brief` in quella collection (titolo esattamente "Brief", così lo slug è `brief`). Se esiste già, aggiornalo invece di crearne un secondo.
-- I documenti accettano circa 4000 caratteri per chiamata: se il brief è più lungo, crea e poi usa append.
-- Se MementoVault non è disponibile, mostra il brief in un blocco markdown da copiare e dillo chiaramente.
+## Where to save
 
-## Import (solo Claude Code)
+**Inside a Jérôme project** (the folder root contains the `.jerome` marker file):
+- Write the project files directly, as described under "Import" in `references/brief-v2.md`.
+- Also save a copy of the full brief as `brief.md`.
 
-Quando Fabio chiede di importare un brief in un progetto del template:
-1. Recupera il documento `brief` dalla collection del progetto in MementoVault.
-2. Controlla il campo `format`. Se non è `brief/v1`, fermati e segnala la versione.
-3. Smista le sezioni nei file come indicato in "Import" in `references/brief-v1.md` e conferma in una riga.
-4. Proponi la squadra di agenti solo dopo l'import, come passo separato da far approvare a Fabio.
+**Anywhere else** (claude.ai, phone, Claude Code outside a Jérôme project), pick the store in this order:
+1. In Claude Code, if `~/.config/jerome/config.json` sets `"storage"`, use that adapter, or no store if it is `"none"`.
+2. Otherwise, if the tools of a supported store are available in this session, use that store.
+3. Otherwise show the brief in a markdown block to copy, and say so clearly.
+
+Each store has its own adapter in `references/storage-<name>.md`. Read only the one you are using. Supported today: `mementovault`.
+
+## Import (Claude Code only)
+
+When the user asks to import a brief into a Jérôme project:
+1. Get the brief from the store, following its adapter, or from a file or text the user provides.
+2. Check the `format` field. `brief/v2` is imported as is. `brief/v1` is accepted: map its section headings with the table in `references/brief-v2.md`. With any other value, stop and report the version.
+3. Sort the sections into the files as described under "Import" in `references/brief-v2.md`, and confirm in one line.
+4. Propose the team of agents only after the import, as a separate step for the user to approve.
