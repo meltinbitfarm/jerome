@@ -65,6 +65,16 @@ Lo stesso vale per `.claude/settings.json`: lo scrive la CLI, perché l'elenco d
 - `jerome doctor` modifica solo le chiavi del profilo, non le altre.
 
 **Domande da risolvere prima:** nessuna. La parte CLI di Q5 è risolta da D19.
+**Stato (2026-10-14): implementata, manca la prova su macchina pulita.**
+- Codice in `bin/` e `src/`, 14 test con `npm test`, che usano un `claude` finto e non chiamano il vero Claude Code.
+- Provate col pacchetto vero (`npm pack`, installato in un prefix temporaneo):
+  - creazione del progetto;
+  - blocco senza login e senza Claude Code, senza creare la cartella;
+  - nessuna sovrascrittura di una cartella esistente;
+  - `doctor` che ripristina il profilo e lascia le altre chiavi, con il secondo giro senza modifiche.
+- Avvio misurato: 12.384 token reali, `/context` mostra solo project-brief di progetto.
+- La verifica con `/context` ha trovato e spento `plugin-authoring`, che non si vede né tra i plugin né tra le skill sincronizzate.
+- Manca: l'installazione da GitHub e la prova su macchina pulita, perché la repo non ha ancora un remote.
 
 ## Fase 2 — Il referente in CLAUDE.md
 

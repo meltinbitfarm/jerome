@@ -1,0 +1,22 @@
+{
+  "name": "jerome",
+  "version": "0.1.0",
+  "description": "Referente e subagent per progetti Claude Code, con consumi sotto controllo.",
+  "type": "module",
+  "bin": {
+    "jerome": "bin/jerome.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "template/"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
