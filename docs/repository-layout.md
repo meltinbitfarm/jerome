@@ -8,6 +8,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 ├── test/                tests, run with `npm test`
 ├── template/            what ends up in every project
 │   ├── MANIFEST         the paths copied into projects and kept in sync
+│   ├── CLAUDE.md        the lead agent's instructions
 │   └── .claude/skills/  the project-brief skill (canonical copy)
 ├── docs/                this documentation
 ├── PROJECT.md           ┐

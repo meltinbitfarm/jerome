@@ -48,6 +48,10 @@ Out of the box, every Claude Code session loads the descriptions of all your ins
 
 Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes from: [docs/usage-data.md](docs/usage-data.md).
 
+## The lead agent
+
+The template's `CLAUDE.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to subagents on cheap models, and only drafts things it is not allowed to do, such as deploying. It is kept within 600 tokens, because it is loaded into every session. See [docs/lead-agent.md](docs/lead-agent.md).
+
 ## The briefing
 
 Every project starts from a brief. The template ships a `project-brief` skill that runs the briefing in your language and writes the project files, or saves the brief to a store such as MementoVault when you start from claude.ai. See [docs/project-brief.md](docs/project-brief.md).

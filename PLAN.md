@@ -1,6 +1,6 @@
 # Jérôme development plan
 
-Based on PROJECT.md and decisions.md (D1–D26). Each phase has a result Fabio can try by hand and a definition of "done". The next phase starts only when the previous one is done.
+Based on PROJECT.md and decisions.md (D1–D27). Each phase has a result Fabio can try by hand and a definition of "done". The next phase starts only when the previous one is done.
 Per D24, every phase's "done" also includes up-to-date English documentation (README.md and docs/), even where the phase does not say so.
 
 ## Phase 0 — Separate Jérôme's development from the template
@@ -81,16 +81,26 @@ The same goes for `.claude/settings.local.json`: the CLI writes it, because the 
 
 ## Phase 2 — The lead agent in CLAUDE.md
 
-The template's CLAUDE.md defines the lead agent:
-- at startup it reads PROJECT.md, decisions.md and open.md, not the whole history;
-- it is the only one that updates those three files (D7);
-- it cites entries by ID ("see D4") instead of repeating them;
-- it respects the L1 limits;
-- when Fabio is needed, it ends with a "decision request" (D13).
+The template's CLAUDE.md defines the lead agent. It is loaded into every session and every heartbeat, so it has a budget of **600 tokens**; PROJECT.md, which it imports, has a target of about **800 tokens**. `jerome doctor` warns, without blocking, when either is over budget, using the per-file counts of `/context`.
+- At startup only PROJECT.md is loaded, through `@PROJECT.md`: no tool call, no extra turn. decisions.md and open.md are read when needed; `archive.md` only when a cited ID is not elsewhere.
+- It talks in the user's language, with at most one question per reply.
+- It cites entries by ID ("see D4") and does not reopen recorded decisions unless a concrete problem appears.
+- It is the only one that updates the state files (D7). It moves closed open.md entries and long-superseded decisions to `archive.md`, keeping their IDs, so the files read on demand stay light.
+- It delegates to subagents only, passing file paths and asking for short summaries, on the cheapest model that fits (D3–D5). The rules are spelled out, not cited by ID: in a project, D-numbers belong to the project.
+- It respects the agent limits of PROJECT.md, with L1 as the default.
+- When the user is needed, it ends with a "decision request" in the user's language (D13).
 
 **Testable result:** in a test project with the three files already filled in, Fabio opens Claude Code and asks "where are we". The lead agent answers citing the IDs. Asked to deploy, it proposes a draft and does not run it.
-**Done when:** both tests pass in a new session, and CLAUDE.md stays short (few tokens loaded per session, V1).
+**Done when:** both tests pass in a new session, CLAUDE.md stays within 600 tokens, and the startup cost before and after is measured and documented.
 **Questions to settle first:** none.
+**Status (2026-10-14): implemented, waiting for Fabio's test.**
+- `template/CLAUDE.md`, listed in the MANIFEST: 496 tokens according to `/context`. The budget was first set at 500 and then raised to 600: 4 tokens of headroom were too few for the delegation rule of phase 4, and 100 tokens are about 0.7% of a call.
+- Measured on a project from `jerome new`, with Jérôme's own state files as a realistic example (PROJECT.md: 614 tokens):
+  - estimated startup context: 10.4k without CLAUDE.md, 11.5k with it;
+  - real cost of one call: 12,348 input tokens without, 13,735 with: **+1,387 tokens per call**;
+  - a built-in subagent loads CLAUDE.md and PROJECT.md too: 2,518 tokens instead of 1,142. With `omitClaudeMd: true` it is back to 1,142 (D27).
+- Both tests pass in headless sessions. "A che punto siamo?" gets an answer in Italian citing IDs, after reading open.md and decisions.md only for that question. "Pubblica adesso il pacchetto su npm" is refused under L1, with a draft and a decision request.
+- A project without PROJECT.md (before the briefing) loads fine: the import of a missing file is skipped.
 
 ## Phase 3 — Briefing and import in the template
 
@@ -109,8 +119,10 @@ After the brief, the lead agent proposes the team and creates it only after Fabi
 - a model suited to the task (D5);
 - input as file paths and output as a short summary, with the details written to files (D4);
 - subagents only, never Agent Teams (D3);
-- if something relevant changes, one line appended to `docs/_pending.md` (D25).
+- if something relevant changes, one line appended to `docs/_pending.md` (D25);
+- `omitClaudeMd: true`, so it does not load the lead agent's CLAUDE.md and PROJECT.md (D27).
 
+Once the catalog exists, CLAUDE.md's delegation rule should point to the project's agents in `.claude/agents/`, within its 600-token budget.
 The catalog includes the documentation agent on Haiku (D25). It is launched with `/docs` in a session or `jerome docs` headless, and integrates the queue into the project's documentation. `jerome doctor` warns when the queue exceeds 20 lines.
 **Testable result:** on a test project the lead agent proposes a team, Fabio approves it, and a subagent runs a task. The lead agent receives a few lines of summary, the details are in files and the queue has one more line. After `jerome docs`, the documentation contains the change and the queue is empty.
 **Done when:** the agents created have their model declared, none uses the large model without reason, the returned summary stays within a limit set in the rules, the documentation agent runs on Haiku, and `doctor` warns above 20 lines without blocking.
@@ -150,6 +162,8 @@ Local viewer separate from execution (D11): agent structure, messages, logs, rep
 
 A scheduler launches headless `claude -p` with preconfigured permissions, an overlap lock and a budget per run (D6). Before every run it goes through `jerome doctor` (D21): if the profile has grown, it brings it back to lean and logs it. If it cannot, the run does not start, the block is logged and a "decision request" is opened (D13). The lead agent produces a periodic digest (D13, second level).
 
+**Decision requests without a reader.** In a heartbeat nobody reads the reply, so a decision request in the final message would be lost. The heartbeat prompt (not CLAUDE.md, which has no room for it) tells the lead agent to write decision requests to a file or to the DB, where the viewer and the notifications pick them up, and to stop that line of work until the user answers.
+
 **Executable paths.** Jobs started by launchd or cron do not load the user's shell profile, so they do not see version managers like nvm. On Fabio's Mac, Node and jerome are installed through nvm (`~/.nvm/versions/node/v24.13.0/bin/`) and would not be found by a scheduled job. The same holds for `claude`, installed in `~/.local/bin`.
 - When a heartbeat is scheduled, the CLI writes into the job the absolute paths of `node`, `jerome` and `claude` detected at that moment, or an explicit `PATH` built from them. It never relies on the PATH of the environment the job runs in.
 - `jerome doctor` checks that the paths recorded in the project's jobs still exist and are executable, for example after switching Node version with nvm. If one is missing, it reports it with the command to reschedule the job.
@@ -163,9 +177,10 @@ A scheduler launches headless `claude -p` with preconfigured permissions, an ove
 - with a plugin installed after `jerome new`, the next run still starts with the lean profile;
 - with a profile `doctor` cannot fix, the run does not start, and the log line and the "decision request" appear;
 - a job scheduled from a shell with Node from nvm runs under launchd, with no shell profile loaded;
-- after switching Node version with nvm (or removing the recorded path), `jerome doctor` reports the job's broken path and how to reschedule it.
+- after switching Node version with nvm (or removing the recorded path), `jerome doctor` reports the job's broken path and how to reschedule it;
+- a heartbeat that needs the user leaves its decision request where the viewer shows it, and the next heartbeat does not redo that work before the answer.
 
-**Done when:** all eight tests pass, and a heartbeat never performs actions forbidden by L1.
+**Done when:** all nine tests pass, and a heartbeat never performs actions forbidden by L1.
 **Questions to settle first:** Q3 (default frequency and budget per run).
 
 ## Phase 9 — Limits, pause and subscription %

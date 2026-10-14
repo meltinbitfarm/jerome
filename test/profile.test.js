@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  applyProfile, desiredProfile, parseContext, findLeaks, overrideFor, splitProfileKeys, ensureGitignored,
+  applyProfile, desiredProfile, parseContext, parseTokens, findLeaks, overrideFor, splitProfileKeys, ensureGitignored,
 } from '../src/profile.js';
 
 const CONTEXT = `## Context Usage
@@ -29,6 +29,13 @@ const CONTEXT = `## Context Usage
 | docx | claude.ai sync | ~320 |
 | shopify-plugin:shopify-dev | Plugin (shopify-plugin) | ~40 |
 | plugin-authoring | Built-in | ~90 |
+
+### Memory Files
+
+| Type | Path | Tokens |
+|------|------|--------|
+| Project | /tmp/demo/CLAUDE.md | 496 |
+| Project | /tmp/demo/PROJECT.md | 1.1k |
 `;
 
 test('desiredProfile turns off plugins and synced skills by qualified name', () => {
@@ -106,4 +113,13 @@ test('ensureGitignored adds the local settings once', () => {
   assert.equal(ensureGitignored(dir), true);
   assert.equal(ensureGitignored(dir), false);
   assert.equal(readFileSync(join(dir, '.gitignore'), 'utf8'), 'node_modules\n.claude/settings.local.json\n');
+});
+
+test('parseContext reads the memory files and their tokens', () => {
+  assert.deepEqual(parseContext(CONTEXT).memoryFiles, [
+    { type: 'Project', path: '/tmp/demo/CLAUDE.md', tokens: 496 },
+    { type: 'Project', path: '/tmp/demo/PROJECT.md', tokens: 1100 },
+  ]);
+  assert.equal(parseTokens('~200'), 200);
+  assert.equal(parseTokens('12.2k'), 12200);
 });

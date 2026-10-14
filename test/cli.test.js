@@ -31,6 +31,9 @@ case "$1" in
     echo "$S" | grep -q '"anthropic-skills:docx": "off"' || echo "| docx | claude.ai sync | ~320 |"
     echo "$S" | grep -q '"plugin-authoring": "off"' || echo "| plugin-authoring | Built-in | ~90 |"
     [ "$FAKE_STUCK_PLUGIN" = "1" ] && echo "| shop:x | Plugin (shop) | ~40 |"
+    echo; echo "### Memory Files"; echo; echo "| Type | Path | Tokens |"; echo "|---|---|---|"
+    [ -f CLAUDE.md ] && echo "| Project | $(pwd -P)/CLAUDE.md | \${FAKE_CLAUDE_MD_TOKENS:-496} |"
+    [ -f PROJECT.md ] && echo "| Project | $(pwd -P)/PROJECT.md | 1.1k |"
     exit 0;;
 esac
 `;
@@ -70,6 +73,8 @@ test('new creates the project with template, marker, git and lean profile', () =
   assert.ok(existsSync(join(dir, '.git')));
   assert.ok(existsSync(join(dir, '.claude', 'skills', 'project-brief', 'SKILL.md')));
   assert.ok(existsSync(join(dir, 'MANIFEST')));
+  assert.ok(existsSync(join(dir, 'CLAUDE.md')));
+  assert.doesNotMatch(r.stdout, /budget/);
   for (const devFile of ['PROJECT.md', 'decisions.md', 'open.md', 'PLAN.md', 'package.json']) {
     assert.ok(!existsSync(join(dir, devFile)), `${devFile} must not end up in the project`);
   }
@@ -144,6 +149,16 @@ test('doctor moves a profile left in settings.json to the local settings', () =>
   assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')), { permissions: { allow: ['Bash(ls)'] } });
   assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.local.json'), 'utf8')), profile);
   assert.match(run('doctor', 'demo').stdout, /Lean profile already in place/);
+});
+
+test('doctor warns, without failing, when the files loaded every session are over budget', () => {
+  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '620' } });
+  assert.equal(run('new', 'demo').status, 0);
+  writeFileSync(join(root, 'demo', 'PROJECT.md'), '# Demo\n');
+  const r = run('doctor', 'demo');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /! CLAUDE\.md: 620 tokens, over its 600-token budget/);
+  assert.match(r.stdout, /! PROJECT\.md: 1100 tokens, over its 800-token budget/);
 });
 
 test('doctor fails if a plugin skill stays loaded', () => {

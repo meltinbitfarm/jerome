@@ -20,6 +20,7 @@ Run it whenever you install a plugin, sync new skills from claude.ai, or move th
 3. **Verifies what Claude Code actually loads** by running `claude -p "/context"` in the project. This is a local command: it makes no API call, uses no tokens and saves no session.
    - Any skill that is not a project skill, and any MCP tool without a project `.mcp.json`, counts as a leak.
    - Leaked skills that can be turned off are added to `skillOverrides`, and the check runs once more.
+4. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` at most 600 tokens, `PROJECT.md` about 800. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
 
 ## What it changes
 

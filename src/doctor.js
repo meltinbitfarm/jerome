@@ -1,5 +1,5 @@
-import { existsSync, rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, realpathSync, rmSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks, printChecks } from './checks.js';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
@@ -13,7 +13,27 @@ export async function doctor(dirArg) {
     return 1;
   }
   if (!printChecks(setupChecks())) return 1;
-  return reportProfile(ensureLeanProfile(dir)) ? 0 : 1;
+  const result = ensureLeanProfile(dir);
+  const ok = reportProfile(result);
+  reportBudgets(checkBudgets(dir, result.context));
+  return ok ? 0 : 1;
+}
+
+// Token budgets for the files loaded into every session (phase 2). Going over them only warns.
+export const BUDGETS = { 'CLAUDE.md': 600, 'PROJECT.md': 800 };
+
+export function checkBudgets(dir, context) {
+  const root = realpathSync(dir);
+  return context.memoryFiles
+    .filter((f) => f.type === 'Project' && dirname(f.path) === root && basename(f.path) in BUDGETS)
+    .map((f) => ({ file: basename(f.path), tokens: f.tokens, budget: BUDGETS[basename(f.path)] }))
+    .filter((f) => f.tokens > f.budget);
+}
+
+export function reportBudgets(overBudget) {
+  for (const f of overBudget) {
+    console.log(`! ${f.file}: ${f.tokens} tokens, over its ${f.budget}-token budget. It is loaded into every session: keep it short.`);
+  }
 }
 
 // Brings the project to the lean profile, in the git-ignored local settings, and checks with `/context`

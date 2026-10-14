@@ -2,5 +2,6 @@
 # One path per line, relative to the project root. A folder covers all of its contents.
 # Only these files are copied at creation and synced on updates:
 # project state (PROJECT.md, decisions.md, open.md, brief.md, DB) is never listed.
+CLAUDE.md
 .claude/skills/project-brief/
 MANIFEST

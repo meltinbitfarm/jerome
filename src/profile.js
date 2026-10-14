@@ -131,6 +131,7 @@ export function parseContext(text) {
   }
   const categories = [];
   const skills = [];
+  const memoryFiles = [];
   let section = null;
   for (const line of text.split('\n')) {
     if (line.startsWith('### ')) section = line.slice(4).trim();
@@ -140,10 +141,19 @@ export function parseContext(text) {
       categories.push({ name: cells[0], tokens: cells[1] });
     } else if (section === 'Skills' && cells[0] !== 'Skill') {
       skills.push({ name: cells[0], source: cells[1], tokens: cells[2] });
+    } else if (section === 'Memory Files' && cells[0] !== 'Type') {
+      memoryFiles.push({ type: cells[0], path: cells[1], tokens: parseTokens(cells[2]) });
     }
   }
   const total = text.match(/\*\*Tokens:\*\*\s*([^\s/]+)/)?.[1] ?? null;
-  return { total, categories, skills };
+  return { total, categories, skills, memoryFiles };
+}
+
+// "481" → 481, "1.1k" → 1100, "~200" → 200.
+export function parseTokens(value) {
+  const m = String(value).match(/([\d.]+)\s*(k)?/i);
+  if (!m) return null;
+  return Math.round(Number(m[1]) * (m[2] ? 1000 : 1));
 }
 
 // What the lean profile should not let through. MCP tools are allowed only if the project has a .mcp.json.
