@@ -9,7 +9,7 @@ import {
 export async function doctor(dirArg) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, '.jerome'))) {
-    console.error(`${dir} non è un progetto Jérôme (manca il marcatore .jerome).`);
+    console.error(`${dir} is not a Jérôme project (the .jerome marker is missing).`);
     return 1;
   }
   if (!printChecks(setupChecks())) return 1;
@@ -45,13 +45,13 @@ export function ensureLeanProfile(dir) {
 
 export function reportProfile({ changes, context, leaks }) {
   console.log(changes.length
-    ? `✓ Profilo snello aggiornato (${changes.length} ${changes.length === 1 ? 'modifica' : 'modifiche'}):\n${changes.map((c) => `    ${c}`).join('\n')}`
-    : '✓ Profilo snello già in ordine');
+    ? `✓ Lean profile updated (${changes.length} ${changes.length === 1 ? 'change' : 'changes'}):\n${changes.map((c) => `    ${c}`).join('\n')}`
+    : '✓ Lean profile already in place');
 
   const ok = leaks.skills.length === 0 && leaks.mcp.length === 0;
   const projectSkills = context.skills.filter((s) => s.source === 'Project').map((s) => s.name);
-  console.log(`${ok ? '✓' : '✗'} Contesto all'avvio: ${context.total ?? '?'} token stimati, skill di progetto: ${projectSkills.join(', ') || 'nessuna'}`);
-  for (const s of leaks.skills) console.log(`    ✗ skill ancora caricata: ${s.name} (${s.source})`);
-  for (const c of leaks.mcp) console.log(`    ✗ ${c.name}: ${c.tokens} token, senza un .mcp.json di progetto`);
+  console.log(`${ok ? '✓' : '✗'} Startup context: ${context.total ?? '?'} estimated tokens, project skills: ${projectSkills.join(', ') || 'none'}`);
+  for (const s of leaks.skills) console.log(`    ✗ skill still loaded: ${s.name} (${s.source})`);
+  for (const c of leaks.mcp) console.log(`    ✗ ${c.name}: ${c.tokens} tokens, without a project .mcp.json`);
   return ok;
 }

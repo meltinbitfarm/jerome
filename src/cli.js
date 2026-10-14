@@ -2,9 +2,9 @@ import { parseArgs } from 'node:util';
 import { newProject } from './new.js';
 import { doctor } from './doctor.js';
 
-const USAGE = `Uso:
-  jerome new <nome>     crea un progetto dal template nella cartella <nome>
-  jerome doctor [dir]   ricontrolla setup e profilo snello (default: cartella corrente)`;
+const USAGE = `Usage:
+  jerome new <name>     create a project from the template in the folder <name>
+  jerome doctor [dir]   check the setup and the lean profile (default: current folder)`;
 
 export async function main(argv) {
   let parsed;
@@ -21,13 +21,13 @@ export async function main(argv) {
   }
   switch (command) {
     case 'new':
-      if (rest.length !== 1) return usageError('jerome new vuole esattamente un nome.');
+      if (rest.length !== 1) return usageError('jerome new takes exactly one name.');
       return newProject(rest[0]);
     case 'doctor':
-      if (rest.length > 1) return usageError('jerome doctor accetta al massimo una cartella.');
+      if (rest.length > 1) return usageError('jerome doctor takes at most one folder.');
       return doctor(rest[0] ?? '.');
     default:
-      return usageError(`Comando sconosciuto: ${command}`);
+      return usageError(`Unknown command: ${command}`);
   }
 }
 

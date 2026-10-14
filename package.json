@@ -1,7 +1,7 @@
 {
-  "name": "jerome",
+  "name": "@meltinbitfarm/jerome",
   "version": "0.1.0",
-  "description": "Referente e subagent per progetti Claude Code, con consumi sotto controllo.",
+  "description": "A lead agent and lean subagents for Claude Code projects, with token usage kept in check.",
   "type": "module",
   "bin": {
     "jerome": "bin/jerome.js"
@@ -17,6 +17,10 @@
   "scripts": {
     "test": "node --test"
   },
-  "license": "UNLICENSED",
-  "private": true
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meltinbitfarm/jerome.git"
+  },
+  "homepage": "https://github.com/meltinbitfarm/jerome#readme",
+  "license": "MIT"
 }

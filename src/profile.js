@@ -67,7 +67,7 @@ export function readSettings(dir) {
   try {
     return JSON.parse(readFileSync(path, 'utf8'));
   } catch (err) {
-    throw new Error(`${path} non è JSON valido: ${err.message}`);
+    throw new Error(`${path} is not valid JSON: ${err.message}`);
   }
 }
 
@@ -85,7 +85,7 @@ export function inspectContext(dir) {
 
 export function parseContext(text) {
   if (!text.includes('## Context Usage')) {
-    throw new Error('output di `/context` non riconosciuto: il formato di Claude Code potrebbe essere cambiato.');
+    throw new Error('unrecognized `/context` output: the Claude Code format may have changed.');
   }
   const categories = [];
   const skills = [];

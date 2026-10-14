@@ -1,0 +1,63 @@
+# Jérôme
+
+A lean setup for running projects with [Claude Code](https://docs.claude.com/en/docs/claude-code) on a Claude subscription. Each project gets one **lead agent** that runs the briefing, creates the subagents the work needs, coordinates them and reports back. Token usage is the first constraint: sessions start with the smallest possible context, and the tracking runs outside the model.
+
+The name is a nod to Saint Jerome, patron saint of translators: the lead agent translates ideas into tasks.
+
+> **Status: early development.** What works today is creating a project (`jerome new`) and keeping its lean profile in place (`jerome doctor`). The lead agent, usage tracking, the viewer and scheduled runs are planned; see [Roadmap](#roadmap).
+
+## Requirements
+
+- macOS or Linux
+- Node.js 24 or later
+- git
+- Claude Code, logged in with a Claude subscription (`claude auth login`), not an API key
+
+## Install
+
+```sh
+npm install -g github:meltinbitfarm/jerome
+```
+
+## Quick start
+
+```sh
+jerome new my-project
+cd my-project
+claude
+```
+
+`jerome new` checks your setup before creating anything. If something is missing, such as the Claude Code login, it stops and tells you what to fix.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| [`jerome new <name>`](docs/commands/new.md) | Creates a project from the template, with git and the lean profile |
+| [`jerome doctor [dir]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project |
+
+## The lean profile
+
+Out of the box, every Claude Code session loads the descriptions of all your installed plugins, synced skills and claude.ai connectors. On the test machine that was about 29k tokens before the first word. Jérôme projects turn all of that off in their own `.claude/settings.json` and keep only the project's skills, which brings startup down to about 12k tokens. Your user settings are not touched.
+
+Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes from: [docs/usage-data.md](docs/usage-data.md).
+
+## Roadmap
+
+1. ~~Project creation and setup checks~~ (`jerome new`, `jerome doctor`)
+2. Lead agent instructions in the project's `CLAUDE.md`
+3. Briefing in Claude Code and import of a saved brief (`jerome new --from-vault`)
+4. Rules for creating subagents, including a documentation agent
+5. SQLite databases, per project and global
+6. Usage tracking through hooks and the status line
+7. Read-only local viewer (`jerome view`)
+8. Scheduled headless runs, with a lock and a budget per run
+9. Daily and weekly limits with automatic pause
+
+## Repository layout
+
+The root of this repository holds Jérôme's own development files. Only `template/` ends up in projects. See [docs/repository-layout.md](docs/repository-layout.md).
+
+## License
+
+[MIT](LICENSE)

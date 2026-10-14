@@ -9,12 +9,12 @@ export const TEMPLATE_DIR = join(import.meta.dirname, '..', 'template');
 export async function newProject(name) {
   const target = resolve(name);
   if (existsSync(target)) {
-    console.error(`${target} esiste già: non tocco nulla.`);
+    console.error(`${target} already exists: nothing was changed.`);
     return 1;
   }
   // Le verifiche vengono prima di creare qualsiasi cosa, così un setup incompleto non lascia cartelle a metà.
   if (!printChecks(setupChecks())) {
-    console.error('\nSetup incompleto: il progetto non è stato creato.');
+    console.error('\nIncomplete setup: the project was not created.');
     return 1;
   }
 
@@ -22,12 +22,12 @@ export async function newProject(name) {
   copyTemplate(TEMPLATE_DIR, target);
   writeFileSync(join(target, '.jerome'), '');
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: target });
-  console.log(`✓ Progetto creato in ${target}`);
+  console.log(`✓ Project created in ${target}`);
 
   const ok = reportProfile(ensureLeanProfile(target));
   console.log(ok
-    ? `\nPronto: cd ${basename(target)} && claude`
-    : '\nIl progetto è creato ma il profilo non è snello: correggi quanto sopra e lancia `jerome doctor`.');
+    ? `\nReady: cd ${basename(target)} && claude`
+    : '\nThe project was created but the profile is not lean: fix the issues above and run `jerome doctor`.');
   return ok ? 0 : 1;
 }
 
@@ -45,7 +45,7 @@ export function readManifest(templateDir) {
     .filter((line) => line && !line.startsWith('#'))
     .map((entry) => {
       const clean = normalize(entry).replace(/\/$/, '');
-      if (clean.startsWith('..') || clean.startsWith('/')) throw new Error(`Percorso non valido nel MANIFEST: ${entry}`);
+      if (clean.startsWith('..') || clean.startsWith('/')) throw new Error(`Invalid path in MANIFEST: ${entry}`);
       return clean;
     });
 }

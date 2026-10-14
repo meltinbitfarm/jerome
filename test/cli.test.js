@@ -77,7 +77,7 @@ test('new crea il progetto con template, marcatore, git e profilo snello', () =>
   assert.equal(settings.skillOverrides['anthropic-skills:docx'], 'off');
   // plugin-authoring non è tra le fonti note: lo trova la verifica con /context e lo spegne.
   assert.equal(settings.skillOverrides['plugin-authoring'], 'off');
-  assert.match(r.stdout, /skill di progetto: project-brief/);
+  assert.match(r.stdout, /project skills: project-brief/);
 });
 
 test('new su una cartella esistente non tocca nulla', () => {
@@ -86,7 +86,7 @@ test('new su una cartella esistente non tocca nulla', () => {
   writeFileSync(join(root, 'esiste', 'mio.txt'), 'ciao');
   const r = run('new', 'esiste');
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /esiste già/);
+  assert.match(r.stderr, /already exists/);
   assert.deepEqual(readdirSync(join(root, 'esiste')), ['mio.txt']);
 });
 
@@ -94,7 +94,7 @@ test('new senza login si ferma e non crea la cartella', () => {
   const { root, run } = sandbox({ loggedIn: false });
   const r = run('new', 'prova');
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /✗ Login con la subscription — non hai fatto il login/);
+  assert.match(r.stdout, /✗ Logged in with a subscription — not logged in/);
   assert.ok(!existsSync(join(root, 'prova')));
 });
 
@@ -102,7 +102,7 @@ test('new senza Claude Code si ferma e non crea la cartella', () => {
   const { root, run } = sandbox({ withClaude: false });
   const r = run('new', 'prova');
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /✗ Claude Code installato — Claude Code non è installato/);
+  assert.match(r.stdout, /✗ Claude Code installed — Claude Code is not installed/);
   assert.ok(!existsSync(join(root, 'prova')));
 });
 
@@ -121,7 +121,7 @@ test('doctor rimette il profilo dopo un plugin nuovo e lascia le altre chiavi', 
   const after = JSON.parse(readFileSync(path, 'utf8'));
   assert.equal(after.enabledPlugins['shop@official'], false);
   assert.deepEqual(after.permissions, { allow: ['Bash(ls)'] });
-  assert.match(run('doctor', 'prova').stdout, /Profilo snello già in ordine/);
+  assert.match(run('doctor', 'prova').stdout, /Lean profile already in place/);
 });
 
 test('doctor fallisce se una skill di plugin resta caricata', () => {
@@ -129,12 +129,12 @@ test('doctor fallisce se una skill di plugin resta caricata', () => {
   assert.equal(run('new', 'prova').status, 1);
   const r = run('doctor', 'prova');
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /✗ skill ancora caricata: shop:x \(Plugin \(shop\)\)/);
+  assert.match(r.stdout, /✗ skill still loaded: shop:x \(Plugin \(shop\)\)/);
 });
 
 test('doctor fuori da un progetto Jérôme', () => {
   const { run } = sandbox();
   const r = run('doctor');
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /non è un progetto Jérôme/);
+  assert.match(r.stderr, /is not a Jérôme project/);
 });

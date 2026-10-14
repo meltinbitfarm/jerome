@@ -1,6 +1,7 @@
 # Piano di sviluppo Jérôme
 
-Basato su PROJECT.md e decisions.md (D1–D19). Ogni fase ha un risultato che Fabio può provare a mano e un criterio di "fatto". Si passa alla fase dopo solo quando la precedente è fatta.
+Basato su PROJECT.md e decisions.md (D1–D25). Ogni fase ha un risultato che Fabio può provare a mano e un criterio di "fatto". Si passa alla fase dopo solo quando la precedente è fatta.
+Per D24, il "fatto" di ogni fase comprende anche la documentazione in inglese aggiornata (README.md e docs/), anche quando non è scritto nella fase.
 
 ## Fase 0 — Separare lo sviluppo di Jérôme dal template
 
@@ -20,7 +21,7 @@ Se il template è l'intera repo, D1 ("un progetto = una cartella con la repo tem
 **D1 è precisato da D17:** "clonata" diventa "creata dal template". Il senso resta lo stesso: un progetto per cartella, autonomo.
 
 **Risultato provabile:** l'albero della repo mostra la radice di sviluppo separata da `template/`, e una cartella creata copiando `template/` non contiene nessun file di sviluppo di Jérôme.
-**Fatto quando:** D17 è registrata in decisions.md, la skill è spostata in `template/` con il collegamento per lo sviluppo, e il manifest dei file del template esiste.
+**Fatto quando:** D17 è registrata in decisions.md, la skill è spostata in `template/` con il collegamento per lo sviluppo, il manifest dei file del template esiste, e docs/ spiega la struttura del repository (radice di sviluppo e `template/`, D24).
 **Domande da risolvere prima:** nessuna.
 
 ## Fase 0.5 — Verifica rapida dei dati sui consumi
@@ -35,7 +36,7 @@ Cosa verificare:
 - per gli heartbeat: cosa restituisce `claude -p` con l'output JSON.
 
 **Risultato provabile:** una nota breve con i campi disponibili, dove si trovano e un esempio reale per ciascuno. Fabio la legge e vede da dove verranno i numeri del viewer.
-**Fatto quando:** la nota esiste e la fonte dei dati sui consumi è registrata come decisione. Da quella decisione dipende lo schema della fase 5.
+**Fatto quando:** la nota esiste, la fonte dei dati sui consumi è registrata come decisione, e docs/ spiega in inglese da dove vengono i dati e perché esiste il profilo snello (D24). Da quella decisione dipende lo schema della fase 5.
 **Domande da risolvere prima:** nessuna.
 **Stato: fatta (2026-10-14).** Nota in notes/consumi.md, decisione D20. In più è emerso che:
 - anche la status line riceve la % della subscription;
@@ -43,7 +44,7 @@ Cosa verificare:
 
 ## Fase 1 — Comando "nuovo progetto" e controllo del setup
 
-Il pacchetto si installa da GitHub con `npm i -g` (D19). `jerome new <nome>`:
+Il pacchetto si installa con `npm i -g github:meltinbitfarm/jerome` (D19). `jerome new <nome>`:
 - crea la cartella dal template;
 - inizializza git;
 - crea il marcatore `.jerome`;
@@ -60,12 +61,13 @@ Lo stesso vale per `.claude/settings.json`: lo scrive la CLI, perché l'elenco d
 - dopo aver installato un plugin nuovo, `jerome doctor` lo segnala e lo spegne nel profilo.
 
 **Fatto quando:**
-- installazione, `jerome new` e `jerome doctor` funzionano sia su una macchina pulita sia con il login mancante;
+- dopo il push, l'installazione da GitHub sul Mac di Fabio funziona, e `jerome new` e `jerome doctor` funzionano anche con il login mancante;
 - rilanciare `jerome new` su una cartella esistente non sovrascrive nulla;
-- `jerome doctor` modifica solo le chiavi del profilo, non le altre.
+- `jerome doctor` modifica solo le chiavi del profilo, non le altre;
+- i messaggi della CLI sono in inglese, e README e docs/ spiegano installazione, `new` e `doctor` (D24).
 
 **Domande da risolvere prima:** nessuna. La parte CLI di Q5 è risolta da D19.
-**Stato (2026-10-14): implementata, manca la prova su macchina pulita.**
+**Stato (2026-10-14): implementata, manca l'installazione da GitHub dopo il push.**
 - Codice in `bin/` e `src/`, 14 test con `npm test`, che usano un `claude` finto e non chiamano il vero Claude Code.
 - Provate col pacchetto vero (`npm pack`, installato in un prefix temporaneo):
   - creazione del progetto;
@@ -74,7 +76,7 @@ Lo stesso vale per `.claude/settings.json`: lo scrive la CLI, perché l'elenco d
   - `doctor` che ripristina il profilo e lascia le altre chiavi, con il secondo giro senza modifiche.
 - Avvio misurato: 12.384 token reali, `/context` mostra solo project-brief di progetto.
 - La verifica con `/context` ha trovato e spento `plugin-authoring`, che non si vede né tra i plugin né tra le skill sincronizzate.
-- Manca: l'installazione da GitHub e la prova su macchina pulita, perché la repo non ha ancora un remote.
+- Manca: l'installazione da GitHub sul Mac di Fabio dopo il push. La prova su una macchina pulita è spostata tra i controlli prima del rilascio pubblico.
 
 ## Fase 2 — Il referente in CLAUDE.md
 
@@ -105,10 +107,12 @@ La CLI legge il token da `~/.config/jerome/`, scarica il documento `brief`, cont
 Dopo il brief, il referente propone la squadra e la crea solo dopo l'approvazione di Fabio. Parte dal catalogo in templates/agents/ (D10). Per ogni agente:
 - un modello adatto al compito (D5);
 - input sotto forma di percorsi di file e output come una sintesi breve, con il dettaglio scritto su file (D4);
-- solo subagent, mai Agent Teams (D3).
+- solo subagent, mai Agent Teams (D3);
+- se cambia qualcosa di rilevante, una riga in coda in `docs/_da-integrare.md` (D25).
 
-**Risultato provabile:** su un progetto di prova il referente propone una squadra, Fabio la approva, e un subagent esegue un compito. Il referente riceve poche righe di sintesi e il dettaglio si trova su file.
-**Fatto quando:** gli agenti creati hanno il modello dichiarato, nessuno usa il modello grosso senza motivo, e la sintesi restituita sta entro un limite fissato nelle regole.
+Il catalogo comprende il documentarista su Haiku (D25). Lo si lancia con `/docs` in sessione o con `jerome docs` in headless, e integra la coda nella documentazione del progetto. `jerome doctor` avvisa quando la coda supera le 20 righe.
+**Risultato provabile:** su un progetto di prova il referente propone una squadra, Fabio la approva, e un subagent esegue un compito. Il referente riceve poche righe di sintesi, il dettaglio si trova su file e la coda ha una riga in più. Dopo `jerome docs`, la documentazione contiene la modifica e la coda è vuota.
+**Fatto quando:** gli agenti creati hanno il modello dichiarato, nessuno usa il modello grosso senza motivo, la sintesi restituita sta entro un limite fissato nelle regole, il documentarista gira su Haiku, e `doctor` avvisa oltre le 20 righe senza bloccare.
 **Domande da risolvere prima:** nessuna.
 
 ## Fase 5 — Database SQLite e migrations
@@ -165,6 +169,13 @@ Soglie giornaliere e settimanali per progetto e globali; quelle globali sono in 
 
 **Fatto quando:** le prove passano, la pausa si toglie in modo esplicito, e i consumi per progetto sono visibili e sotto controllo (Successo 3).
 **Domande da risolvere prima:** Q2, ridotta da D20 alle sole soglie per progetto.
+
+## Prima del rilascio pubblico
+
+Controlli da fare prima di annunciare Jérôme o pubblicarlo su npm:
+- installazione da GitHub e `jerome new` su una macchina pulita (utente macOS nuovo o macchina virtuale), senza plugin, skill o connettori dell'account di Fabio;
+- README e docs/ allineati a tutte le fasi chiuse (D24);
+- nessun dato personale nei file versionati e nella storia di git.
 
 ## Domande aperte per fase
 

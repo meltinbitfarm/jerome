@@ -9,35 +9,35 @@ export function setupChecks() {
 
   try {
     const git = execFileSync('git', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-    results.push({ ok: true, label: 'git installato', detail: git });
+    results.push({ ok: true, label: 'git installed', detail: git });
   } catch {
-    results.push({ ok: false, label: 'git installato', detail: 'comando `git` non trovato.' });
+    results.push({ ok: false, label: 'git installed', detail: '`git` command not found.' });
   }
 
   let version;
   try {
     version = runClaude(['--version']).trim();
-    results.push({ ok: true, label: 'Claude Code installato', detail: version });
+    results.push({ ok: true, label: 'Claude Code installed', detail: version });
   } catch (err) {
-    results.push({ ok: false, label: 'Claude Code installato', detail: err.message });
+    results.push({ ok: false, label: 'Claude Code installed', detail: err.message });
     return results;
   }
 
   try {
     const status = JSON.parse(runClaude(['auth', 'status'], { stdoutOnFailure: true }));
     if (!status.loggedIn) {
-      results.push({ ok: false, label: 'Login con la subscription', detail: 'non hai fatto il login: lancia `claude auth login`.' });
+      results.push({ ok: false, label: 'Logged in with a subscription', detail: 'not logged in: run `claude auth login`.' });
     } else if (status.authMethod !== 'claude.ai') {
       results.push({
         ok: false,
-        label: 'Login con la subscription',
-        detail: `il login usa "${status.authMethod}", non la subscription claude.ai (c'è ANTHROPIC_API_KEY nell'ambiente?).`,
+        label: 'Logged in with a subscription',
+        detail: `logged in via "${status.authMethod}", not a claude.ai subscription (is ANTHROPIC_API_KEY set?).`,
       });
     } else {
-      results.push({ ok: true, label: 'Login con la subscription', detail: status.email ?? '' });
+      results.push({ ok: true, label: 'Logged in with a subscription', detail: status.email ?? '' });
     }
   } catch (err) {
-    results.push({ ok: false, label: 'Login con la subscription', detail: err.message });
+    results.push({ ok: false, label: 'Logged in with a subscription', detail: err.message });
   }
   return results;
 }

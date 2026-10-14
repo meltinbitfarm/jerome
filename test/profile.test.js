@@ -65,7 +65,7 @@ test('parseContext legge totale, categorie e skill', () => {
 });
 
 test('parseContext rifiuta un formato sconosciuto', () => {
-  assert.throws(() => parseContext('qualcos\'altro'), /non riconosciuto/);
+  assert.throws(() => parseContext('something else'), /unrecognized/);
 });
 
 test('findLeaks: skill non di progetto e tool MCP senza .mcp.json', () => {
