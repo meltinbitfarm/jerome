@@ -43,10 +43,27 @@ Cosa verificare:
 
 ## Fase 1 — Comando "nuovo progetto" e controllo del setup
 
-Il pacchetto si installa da GitHub con `npm i -g` (D19). `jerome new <nome>` crea la cartella dal template, inizializza git, crea il marcatore `.jerome` e verifica Node ≥ 24, Claude Code installato e login con la subscription (V3).
+Il pacchetto si installa da GitHub con `npm i -g` (D19). `jerome new <nome>`:
+- crea la cartella dal template;
+- inizializza git;
+- crea il marcatore `.jerome`;
+- verifica Node ≥ 24, Claude Code installato e login con la subscription (V3);
+- scrive il profilo snello in `.claude/settings.json` (D21).
+
 Il marcatore `.jerome` va creato esplicitamente da `jerome new`: non è in `template/` né nel MANIFEST, quindi la copia del template non lo porta con sé.
-**Risultato provabile:** dopo l'installazione, `jerome new prova` produce una cartella pronta. Senza login, o senza Claude Code, il comando si ferma con un messaggio chiaro.
-**Fatto quando:** installazione e comando funzionano sia su una macchina pulita sia con il login mancante, e rilanciare il comando su una cartella esistente non sovrascrive nulla.
+Lo stesso vale per `.claude/settings.json`: lo scrive la CLI, perché l'elenco dei plugin da spegnere dipende da cosa è installato sulla macchina. La CLI gestisce solo le proprie chiavi e lascia intatte le altre.
+`jerome doctor` ripete le verifiche e ricontrolla il profilo rispetto a ciò che è installato in quel momento.
+**Risultato provabile:**
+- dopo l'installazione, `jerome new prova` produce una cartella pronta;
+- senza login, o senza Claude Code, il comando si ferma con un messaggio chiaro;
+- in `prova`, `claude -p "/context"` elenca come skill solo project-brief (copia di progetto), e una chiamata `claude -p` resta intorno ai 12k token di avvio;
+- dopo aver installato un plugin nuovo, `jerome doctor` lo segnala e lo spegne nel profilo.
+
+**Fatto quando:**
+- installazione, `jerome new` e `jerome doctor` funzionano sia su una macchina pulita sia con il login mancante;
+- rilanciare `jerome new` su una cartella esistente non sovrascrive nulla;
+- `jerome doctor` modifica solo le chiavi del profilo, non le altre.
+
 **Domande da risolvere prima:** nessuna. La parte CLI di Q5 è risolta da D19.
 
 ## Fase 2 — Il referente in CLAUDE.md
@@ -64,14 +81,14 @@ Il CLAUDE.md del template definisce il referente:
 
 ## Fase 3 — Briefing e import nel template
 
-La skill project-brief funziona dentro un progetto creato dal template, in entrambi i flussi di D15:
-- da PC, il briefing in Claude Code scrive subito i file;
-- da telefono, il brief in MementoVault viene importato al PC.
+Entrambi i flussi di D15 funzionano dentro un progetto creato dal template:
+- da PC, il briefing con la skill project-brief in Claude Code scrive subito i file;
+- da telefono, il brief salvato in MementoVault viene importato al PC dalla CLI con `jerome new <nome> --from-vault <slug>` (D22), senza il modello.
 
-L'import diventa un passo del comando "nuovo progetto": nome del progetto, recupero del brief e file pronti.
+La CLI legge il token da `~/.config/jerome/`, scarica il documento `brief`, controlla `format: brief/v1` e smista le sezioni nei tre file secondo la tabella "Import" di `references/brief-v1.md`. La sezione Import della skill rimanda alla CLI.
 **Risultato provabile:** da un brief salvato dal telefono, un solo comando porta a un progetto con il referente pronto (Successo 1). Rifacendo il briefing sull'idea iniziale di Jérôme si arriva alle stesse decisioni (Successo 2).
 **Fatto quando:** entrambi i criteri di Successo passano, e un brief con formato diverso da brief/v1 viene rifiutato con un messaggio.
-**Domande da risolvere prima:** nessuna. Va però verificato come il progetto accede a MementoVault: MCP configurato nel template o a livello utente.
+**Domande da risolvere prima:** nessuna. Va però verificato quale strada usa la CLI (D22): l'endpoint REST di MementoVault, se ne esiste uno per leggere un documento, altrimenti l'endpoint MCP chiamato via HTTP con il token.
 
 ## Fase 4 — Regole di creazione dei subagent
 
@@ -97,13 +114,17 @@ Migrations SQL numerate nel pacchetto, applicate dalla CLI con `node:sqlite` (D1
 ## Fase 6 — Tracciamento con hook
 
 Il template configura gli hook di Claude Code in modo che chiamino `jerome hook <evento>` (D19), che scrive nel DB eventi, run e consumi di token per agente. Il modello li interroga via bash (D8); qui si decide se con script o con un comando della CLI. L'avviso sperimentale di `node:sqlite` va soppresso, così non finisce nell'output degli hook. Il modello non spende token per scrivere i log.
-**Risultato provabile:** dopo una sessione con un subagent, uno script mostra gli eventi e i token per agente e per run. Il dato coincide, a grandi linee, con quanto riporta Claude Code.
+Il profilo di progetto configura anche la status line, che chiama `jerome statusline` (D23). Il comando salva nel DB globale la % delle finestre della subscription, ma solo se è cambiata rispetto all'ultima lettura. Non sostituisce la status line personale: se ce n'è una configurata, la richiama con lo stesso input e aggiunge la sua parte. Con gli heartbeat, che salvano la % dal `rate_limit_event` (D20), le sessioni interattive diventano la seconda fonte.
+**Risultato provabile:**
+- dopo una sessione con un subagent, uno script mostra gli eventi e i token per agente e per run, e il dato coincide a grandi linee con quanto riporta Claude Code;
+- dopo una sessione interattiva, il DB globale ha una lettura nuova della % solo se il valore è cambiato;
+- con una status line personale configurata, nei progetti Jérôme si vedono sia la riga personale sia la parte di Jérôme.
 **Fatto quando:** ogni run e ogni subagent lascia una riga di log (D13, primo livello), e nessuna chiamata a tool del modello serve per il tracciamento.
 **Domande da risolvere prima:** nessuna. Il rischio sui dati dei consumi è già stato verificato nella fase 0.5.
 
 ## Fase 7 — Viewer in sola lettura
 
-Viewer locale separato dall'esecuzione (D11): struttura degli agenti, messaggi, log, report, token e costo stimato. Per ora non mostra la % della subscription.
+Viewer locale separato dall'esecuzione (D11): struttura degli agenti, messaggi, log, report, token e costo stimato. Mostra anche l'ultima % della subscription letta (D20, D23), con la sua data.
 **Risultato provabile:** Fabio apre il viewer su un progetto con qualche run e vede gli agenti e i consumi. Spegnendo il viewer durante un run, il run continua senza errori.
 **Fatto quando:** il viewer legge solo dal DB e dai file, non scrive mai, e si avvia con `jerome view`.
 **Domande da risolvere prima:**
@@ -112,14 +133,16 @@ Viewer locale separato dall'esecuzione (D11): struttura degli agenti, messaggi, 
 
 ## Fase 8 — Heartbeat
 
-Uno scheduler lancia `claude -p` headless con permessi preconfigurati, un lock anti-sovrapposizione e un budget per run (D6). Il referente produce un digest periodico (D13, secondo livello).
+Uno scheduler lancia `claude -p` headless con permessi preconfigurati, un lock anti-sovrapposizione e un budget per run (D6). Prima di ogni run passa da `jerome doctor` (D21): se il profilo si è allargato lo riporta allo stato snello e lo annota nel log. Se non riesce, il run non parte, il blocco va nel log e si apre una "decisione richiesta" (D13). Il referente produce un digest periodico (D13, secondo livello).
 **Risultato provabile:**
 - un heartbeat programmato esegue un compito e lascia la sua riga di log;
 - un secondo heartbeat lanciato in contemporanea si ferma per il lock;
 - un run che supera il budget viene interrotto;
-- il digest compare dove previsto.
+- il digest compare dove previsto;
+- con un plugin installato dopo `jerome new`, il run successivo parte comunque con il profilo snello;
+- con un profilo che `doctor` non riesce a correggere, il run non parte e compaiono la riga di log e la "decisione richiesta".
 
-**Fatto quando:** le quattro prove passano, e un heartbeat non esegue mai azioni vietate da L1.
+**Fatto quando:** le sei prove passano, e un heartbeat non esegue mai azioni vietate da L1.
 **Domande da risolvere prima:** Q3 (frequenza e budget per run di default).
 
 ## Fase 9 — Soglie, pausa e % della subscription
@@ -128,7 +151,7 @@ Soglie giornaliere e settimanali per progetto e globali; quelle globali sono in 
 **Risultato provabile:**
 - con una soglia di progetto bassa, il prossimo heartbeat non parte e lo stato di pausa è visibile;
 - con una soglia globale bassa, la pausa vale per due progetti diversi;
-- il viewer mostra la %.
+- il viewer mostra la % e la data dell'ultima lettura.
 
 **Fatto quando:** le prove passano, la pausa si toglie in modo esplicito, e i consumi per progetto sono visibili e sotto controllo (Successo 3).
 **Domande da risolvere prima:** Q2, ridotta da D20 alle sole soglie per progetto.
