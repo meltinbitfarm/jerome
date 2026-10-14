@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node
 import { execFileSync } from 'node:child_process';
 import { basename, join, normalize, resolve } from 'node:path';
 import { setupChecks, printChecks } from './checks.js';
-import { ensureLeanProfile, reportProfile, checkBudgets, reportBudgets } from './doctor.js';
+import { runDoctor, printReport } from './doctor.js';
 
 export const TEMPLATE_DIR = join(import.meta.dirname, '..', 'template');
 
@@ -24,9 +24,9 @@ export async function newProject(name) {
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: target });
   console.log(`✓ Project created in ${target}`);
 
-  const result = ensureLeanProfile(target);
-  const ok = reportProfile(result);
-  reportBudgets(checkBudgets(target, result.context));
+  const report = runDoctor(target, { setup: false });
+  printReport(report);
+  const ok = report.ok;
   console.log(ok
     ? `\nReady: cd ${basename(target)} && claude`
     : '\nThe project was created but the profile is not lean: fix the issues above and run `jerome doctor`.');

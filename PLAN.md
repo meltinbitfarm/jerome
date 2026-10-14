@@ -78,6 +78,7 @@ The same goes for `.claude/settings.local.json`: the CLI writes it, because the 
 - The `/context` check found and turned off `plugin-authoring`, which shows up neither among the plugins nor among the synced skills.
 - After the release, D21 was corrected: the profile moved to `.claude/settings.local.json`, which git ignores. `/context` shows the same result (10.4k, only project-brief), and a real call starts at 12,318 tokens. `jerome doctor` moves profile entries left in `settings.json` by earlier versions, which covers `prova-jerome`.
 - The test on a clean machine has moved to the checks before the public release.
+- Bug found later in a test: `parseContext` only checked the `## Context Usage` marker, so a renamed section gave empty lists and a false pass. `/context` is now parsed strictly: required sections, table headers and `**Tokens:**` line, missing told apart from empty, unknown skill source labels rejected; renamed section, different header and unknown label each make `doctor` fail. `jerome doctor --json` was added as the stable interface for external tools, with `--check` to verify without writing anything (D28).
 
 ## Phase 2 — The lead agent in CLAUDE.md
 

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -26,7 +26,11 @@ case "$1" in
     echo "### Estimated usage by category"; echo; echo "| Category | Tokens | Percentage |"; echo "|---|---|---|"
     echo "| System prompt | 2.4k | 0.2% |"
     echo "$S" | grep -q '"disableClaudeAiConnectors": true' || echo "| MCP tools | 615 | 0.1% |"
-    echo; echo "### Skills"; echo; echo "| Skill | Source | Tokens |"; echo "|---|---|---|"
+    # FAKE_CONTEXT breaks the format on purpose: renamed section, different table header, unknown source label.
+    if [ "$FAKE_CONTEXT" = "renamed" ]; then echo; echo "### Skill list"; else echo; echo "### Skills"; fi
+    if [ "$FAKE_CONTEXT" = "header" ]; then echo; echo "| Name | Origin | Tokens |"; else echo; echo "| Skill | Source | Tokens |"; fi
+    echo "|---|---|---|"
+    [ "$FAKE_CONTEXT" = "source" ] && echo "| team-skill | Workspace | ~50 |"
     for s in .claude/skills/*/; do [ -d "$s" ] && echo "| $(basename $s) | Project | ~200 |"; done
     echo "$S" | grep -q '"anthropic-skills:docx": "off"' || echo "| docx | claude.ai sync | ~320 |"
     echo "$S" | grep -q '"plugin-authoring": "off"' || echo "| plugin-authoring | Built-in | ~90 |"
@@ -49,7 +53,8 @@ function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
   const config = join(root, 'claude-config');
   mkdirSync(join(config, 'skills', 'synced', 'acct', 'docx'), { recursive: true });
   writeFileSync(join(config, 'skills', 'synced', 'acct', 'docx', 'SKILL.md'), '');
-  const run = (...args) => spawnSync(process.execPath, [BIN, ...args], {
+  // runWith adds environment variables for one call, e.g. a broken /context on an existing project.
+  const runWith = (extra, ...args) => spawnSync(process.execPath, [BIN, ...args], {
     cwd: root,
     encoding: 'utf8',
     env: {
@@ -59,9 +64,11 @@ function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
       FAKE_LOGGED_IN: loggedIn ? '1' : '0',
       GIT_CONFIG_NOSYSTEM: '1',
       ...env,
+      ...extra,
     },
   });
-  return { root, run };
+  const run = (...args) => runWith({}, ...args);
+  return { root, run, runWith };
 }
 
 test('new creates the project with template, marker, git and lean profile', () => {
@@ -174,4 +181,148 @@ test('doctor outside a Jérôme project', () => {
   const r = run('doctor');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /is not a Jérôme project/);
+});
+
+for (const [variant, problem] of [
+  ['renamed', /section "Skills" is missing/],
+  ['header', /section "Skills" has table header "Name \| Origin \| Tokens"/],
+  ['source', /unknown skill source label\(s\): "Workspace"/],
+]) {
+  test(`doctor fails when /context changes: ${variant}`, () => {
+    const { run, runWith } = sandbox();
+    assert.equal(run('new', 'demo').status, 0);
+    const r = runWith({ FAKE_CONTEXT: variant }, 'doctor', 'demo');
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /✗ Claude Code's \/context output was not recognized/);
+    assert.match(r.stdout, problem);
+    assert.doesNotMatch(r.stdout, /✓ Startup context/);
+  });
+}
+
+test('doctor --json: schema, checks, sections, counts and warnings, with a matching exit code', () => {
+  const { run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '620' } });
+  assert.equal(run('new', 'demo').status, 0);
+  const r = run('doctor', 'demo', '--json');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const report = JSON.parse(r.stdout);
+  assert.equal(report.schema, 'jerome.doctor/v1');
+  assert.equal(report.mode, 'fix');
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.checks.map((c) => c.id),
+    ['project', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
+  assert.ok(report.checks.every((c) => c.ok));
+  assert.deepEqual(report.context.sections, {
+    'Estimated usage by category': { found: true, rows: 1 },
+    Skills: { found: true, rows: 1 },
+    'Memory Files': { found: true, rows: 1 },
+  });
+  assert.deepEqual(report.context.counts, { categories: 1, skills: 1, projectSkills: 1, memoryFiles: 1 });
+  assert.equal(report.context.totalTokens, 12100);
+  assert.deepEqual(report.warnings.map((w) => [w.id, w.file, w.tokens, w.budget]), [['budget', 'CLAUDE.md', 620, 600]]);
+});
+
+test('doctor --json reports a broken /context with ok false and exit code 1', () => {
+  const { run, runWith } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const r = runWith({ FAKE_CONTEXT: 'renamed' }, 'doctor', 'demo', '--json');
+  assert.equal(r.status, 1);
+  const report = JSON.parse(r.stdout);
+  assert.equal(report.ok, false);
+  const check = report.checks.find((c) => c.id === 'context-format');
+  assert.equal(check.ok, false);
+  assert.match(check.problems.join('\n'), /section "Skills" is missing/);
+  assert.equal(report.context.sections.Skills.found, false);
+});
+
+test('doctor --json outside a Jérôme project', () => {
+  const { run } = sandbox();
+  const r = run('doctor', '--json');
+  assert.equal(r.status, 1);
+  const report = JSON.parse(r.stdout);
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.checks.map((c) => [c.id, c.ok]), [['project', false]]);
+});
+
+test('--json is refused for jerome new', () => {
+  const { run } = sandbox();
+  const r = run('new', 'demo', '--json');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /only available for jerome doctor/);
+});
+
+// Every file of a project except git's internals, with its content and modification time.
+function snapshot(dir) {
+  const files = {};
+  const walk = (d) => {
+    for (const entry of readdirSync(d, { withFileTypes: true })) {
+      const path = join(d, entry.name);
+      if (entry.name === '.git') continue;
+      if (entry.isDirectory()) walk(path);
+      else files[path.slice(dir.length)] = [readFileSync(path, 'utf8'), statSync(path).mtimeMs];
+    }
+  };
+  walk(dir);
+  return files;
+}
+
+// Leaves the profile in need of every kind of fix: a missing plugin entry, entries left in settings.json
+// by an earlier version, and .gitignore without the local settings.
+function unsettle(dir) {
+  const local = join(dir, '.claude', 'settings.local.json');
+  const settings = JSON.parse(readFileSync(local, 'utf8'));
+  delete settings.enabledPlugins['shop@official'];
+  delete settings.skillOverrides['anthropic-skills:docx'];
+  writeFileSync(local, JSON.stringify(settings, null, 2));
+  writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify({ skillOverrides: { 'anthropic-skills:docx': 'off' }, permissions: { allow: ['Bash(ls)'] } }));
+  writeFileSync(join(dir, '.gitignore'), 'node_modules\n');
+}
+
+test('doctor --check on a lean project passes and writes nothing', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = join(root, 'demo');
+  const before = snapshot(dir);
+  const r = run('doctor', 'demo', '--check');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /✓ Lean profile already in place/);
+  assert.deepEqual(snapshot(dir), before);
+});
+
+test('doctor --check reports the needed changes, fails, and writes nothing', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = join(root, 'demo');
+  unsettle(dir);
+  const before = snapshot(dir);
+
+  const r = run('doctor', 'demo', '--check');
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /✗ Lean profile — 3 changes needed: run `jerome doctor` to apply them/);
+  assert.match(r.stdout, /\.gitignore: added \.claude\/settings\.local\.json/);
+  assert.match(r.stdout, /moved 1 profile entries from settings\.json to settings\.local\.json/);
+  assert.match(r.stdout, /enabledPlugins\.shop@official = false/);
+  assert.deepEqual(snapshot(dir), before);
+
+  // The same changes are real: the plain command applies them, and then --check passes.
+  assert.equal(run('doctor', 'demo').status, 0);
+  assert.notDeepEqual(snapshot(dir), before);
+  assert.equal(run('doctor', 'demo', '--check').status, 0);
+});
+
+test('doctor --check --json lists pending changes, matches the exit code, and writes nothing', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = join(root, 'demo');
+  unsettle(dir);
+  const before = snapshot(dir);
+
+  const r = run('doctor', 'demo', '--check', '--json');
+  assert.equal(r.status, 1);
+  const report = JSON.parse(r.stdout);
+  assert.equal(report.mode, 'check');
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.profile.changes, []);
+  assert.equal(report.profile.pending.length, 3);
+  assert.equal(report.checks.find((c) => c.id === 'profile').ok, false);
+  assert.deepEqual(snapshot(dir), before);
 });

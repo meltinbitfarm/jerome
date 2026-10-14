@@ -40,7 +40,7 @@ claude
 | Command | What it does |
 |---|---|
 | [`jerome new <name>`](docs/commands/new.md) | Creates a project from the template, with git and the lean profile |
-| [`jerome doctor [dir]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project |
+| [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report |
 
 ## The lean profile
 

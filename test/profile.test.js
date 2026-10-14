@@ -80,6 +80,26 @@ test('parseContext rejects an unknown format', () => {
   assert.throws(() => parseContext('something else'), /unrecognized/);
 });
 
+test('parseContext fails on a renamed section, a different header or an unknown source', () => {
+  const cases = [
+    [CONTEXT.replace('### Skills', '### Skill list'), /section "Skills" is missing/],
+    [CONTEXT.replace('| Skill | Source | Tokens |', '| Name | Source | Tokens |'), /section "Skills" has table header/],
+    [CONTEXT.replace('| docx | claude.ai sync |', '| docx | Workspace |'), /unknown skill source label\(s\): "Workspace"/],
+    [CONTEXT.replace('**Tokens:** 12.2k / 1m (1%)', ''), /"\*\*Tokens:\*\*" line is missing/],
+    [CONTEXT.replace('### Memory Files', '### Memory'), /section "Memory Files" is missing/],
+  ];
+  for (const [text, problem] of cases) assert.throws(() => parseContext(text), problem);
+});
+
+test('parseContext tells a missing section from an empty one', () => {
+  const noMemoryRows = CONTEXT.replace(/\| Project \| \/tmp\/demo\/[^\n]*\n/g, '');
+  assert.deepEqual(parseContext(noMemoryRows).sections['Memory Files'], { found: true, rows: 0 });
+  const headingOnly = CONTEXT.slice(0, CONTEXT.indexOf('### Memory Files')) + '### Memory Files\n\nNo memory files.\n';
+  assert.deepEqual(parseContext(headingOnly).sections['Memory Files'], { found: true, rows: 0 });
+  const noSkills = CONTEXT.replace(/^\| (?!Skill \|)[^|\n]+\| (Project|claude\.ai sync|Plugin \(shopify-plugin\)|Built-in) \|[^\n]*\n/gm, '');
+  assert.throws(() => parseContext(noSkills), /section "Skills" is empty, but a Jérôme project always has project-brief/);
+});
+
 test('findLeaks: non-project skills and MCP tools without .mcp.json', () => {
   const ctx = parseContext(CONTEXT);
   const leaks = findLeaks(ctx, { hasProjectMcp: false });

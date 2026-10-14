@@ -107,14 +107,17 @@ export function writeSettings(dir, settings, file = LOCAL_SETTINGS) {
   writeFileSync(settingsPath(dir, file), JSON.stringify(settings, null, 2) + '\n');
 }
 
-// Makes sure the local settings never end up in git. Returns true if .gitignore was changed.
-export function ensureGitignored(dir) {
+// Makes sure the local settings never end up in git. Returns true if .gitignore needed the entry;
+// with write: false it only reports that, without touching the file.
+export function ensureGitignored(dir, { write = true } = {}) {
   const entry = `.claude/${LOCAL_SETTINGS}`;
   const path = join(dir, '.gitignore');
   const current = existsSync(path) ? readFileSync(path, 'utf8') : '';
   if (current.split('\n').some((line) => line.trim() === entry)) return false;
-  const prefix = current && !current.endsWith('\n') ? '\n' : '';
-  writeFileSync(path, `${current}${prefix}${entry}\n`);
+  if (write) {
+    const prefix = current && !current.endsWith('\n') ? '\n' : '';
+    writeFileSync(path, `${current}${prefix}${entry}\n`);
+  }
   return true;
 }
 
@@ -125,28 +128,87 @@ export function inspectContext(dir) {
   return parseContext(out);
 }
 
-export function parseContext(text) {
-  if (!text.includes('## Context Usage')) {
-    throw new Error('unrecognized `/context` output: the Claude Code format may have changed.');
+// The parts of `/context` that doctor depends on. If any of them is missing or different, the parse
+// fails loudly: silently getting empty lists back would make doctor report a false pass.
+export const CONTEXT_SECTIONS = {
+  categories: { heading: 'Estimated usage by category', header: ['Category', 'Tokens', 'Percentage'] },
+  skills: { heading: 'Skills', header: ['Skill', 'Source', 'Tokens'] },
+  memoryFiles: { heading: 'Memory Files', header: ['Type', 'Path', 'Tokens'] },
+};
+
+// Skill source labels Claude Code uses in `/context` (2.1.x). Overrides depend on them, so an unknown one is an error.
+const KNOWN_SOURCES = ['Project', 'User', 'Local', 'Flag', 'Managed', 'Built-in', 'MCP', 'Memory store', 'claude.ai sync'];
+
+export function isKnownSource(source) {
+  return KNOWN_SOURCES.includes(source) || /^Plugin \(.+\)$/.test(source);
+}
+
+export class ContextFormatError extends Error {
+  constructor(problems, sections) {
+    super(`unrecognized \`/context\` output, the Claude Code format may have changed: ${problems.join('; ')}`);
+    this.problems = problems;
+    this.sections = sections;
   }
-  const categories = [];
-  const skills = [];
-  const memoryFiles = [];
-  let section = null;
+}
+
+// Splits the output into `### ` sections and reads the first table of each.
+// A section whose heading is there but has no table counts as present and empty.
+function readSections(text) {
+  const sections = new Map();
+  let current = null;
   for (const line of text.split('\n')) {
-    if (line.startsWith('### ')) section = line.slice(4).trim();
-    if (!line.startsWith('| ') || /^\|\s*-/.test(line)) continue;
-    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
-    if (section === 'Estimated usage by category' && cells[0] !== 'Category') {
-      categories.push({ name: cells[0], tokens: cells[1] });
-    } else if (section === 'Skills' && cells[0] !== 'Skill') {
-      skills.push({ name: cells[0], source: cells[1], tokens: cells[2] });
-    } else if (section === 'Memory Files' && cells[0] !== 'Type') {
-      memoryFiles.push({ type: cells[0], path: cells[1], tokens: parseTokens(cells[2]) });
+    if (line.startsWith('### ')) {
+      current = { header: null, rows: [] };
+      sections.set(line.slice(4).trim(), current);
+    } else if (current && line.startsWith('|')) {
+      if (/^\|[\s|:-]+\|?\s*$/.test(line)) continue;
+      const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+      if (!current.header) current.header = cells;
+      else current.rows.push(cells);
     }
   }
+  return sections;
+}
+
+export function parseContext(text) {
+  const problems = [];
+  if (!text.includes('## Context Usage')) problems.push('the "## Context Usage" heading is missing');
   const total = text.match(/\*\*Tokens:\*\*\s*([^\s/]+)/)?.[1] ?? null;
-  return { total, categories, skills, memoryFiles };
+  if (total === null) problems.push('the "**Tokens:**" line is missing');
+
+  const found = readSections(text);
+  const rows = {};
+  const sections = {};
+  for (const [key, { heading, header }] of Object.entries(CONTEXT_SECTIONS)) {
+    const section = found.get(heading);
+    if (!section) {
+      problems.push(`section "${heading}" is missing`);
+      sections[heading] = { found: false, rows: 0 };
+      continue;
+    }
+    if (section.header && section.header.join('|') !== header.join('|')) {
+      problems.push(`section "${heading}" has table header "${section.header.join(' | ')}", expected "${header.join(' | ')}"`);
+    }
+    rows[key] = section.rows;
+    sections[heading] = { found: true, rows: section.rows.length };
+  }
+
+  const categories = (rows.categories ?? []).map(([name, tokens]) => ({ name, tokens }));
+  const skills = (rows.skills ?? []).map(([name, source, tokens]) => ({ name, source, tokens }));
+  const memoryFiles = (rows.memoryFiles ?? []).map(([type, path, tokens]) => ({ type, path, tokens: parseTokens(tokens) }));
+
+  if (sections[CONTEXT_SECTIONS.categories.heading].found && categories.length === 0) {
+    problems.push(`section "${CONTEXT_SECTIONS.categories.heading}" is empty`);
+  }
+  // A Jérôme project always has at least the project-brief skill.
+  if (sections[CONTEXT_SECTIONS.skills.heading].found && skills.length === 0) {
+    problems.push(`section "${CONTEXT_SECTIONS.skills.heading}" is empty, but a Jérôme project always has project-brief`);
+  }
+  const unknown = [...new Set(skills.map((s) => s.source).filter((source) => !isKnownSource(source)))];
+  if (unknown.length) problems.push(`unknown skill source label(s): ${unknown.map((u) => `"${u}"`).join(', ')}`);
+
+  if (problems.length) throw new ContextFormatError(problems, sections);
+  return { total, sections, categories, skills, memoryFiles };
 }
 
 // "481" → 481, "1.1k" → 1100, "~200" → 200.
@@ -163,9 +225,10 @@ export function findLeaks(context, { hasProjectMcp }) {
   return { skills, mcp };
 }
 
-// Override for a skill that slipped past the profile. Plugin skills are not turned off here but through enabledPlugins.
+// Override for a skill that slipped past the profile. Plugin skills are turned off through enabledPlugins,
+// and Managed (policy) skills cannot be turned off from a project.
 export function overrideFor(skill) {
-  if (skill.source.startsWith('Plugin')) return null;
+  if (skill.source.startsWith('Plugin') || skill.source === 'Managed') return null;
   if (skill.source === 'claude.ai sync') {
     return skill.name.startsWith(SYNCED_PREFIX) ? skill.name : SYNCED_PREFIX + skill.name;
   }
