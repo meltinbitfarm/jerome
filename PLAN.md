@@ -37,6 +37,9 @@ Cosa verificare:
 **Risultato provabile:** una nota breve con i campi disponibili, dove si trovano e un esempio reale per ciascuno. Fabio la legge e vede da dove verranno i numeri del viewer.
 **Fatto quando:** la nota esiste e la fonte dei dati sui consumi è registrata come decisione. Da quella decisione dipende lo schema della fase 5.
 **Domande da risolvere prima:** nessuna.
+**Stato: fatta (2026-10-14).** Nota in notes/consumi.md, decisione D20. In più è emerso che:
+- anche la status line riceve la % della subscription;
+- il costo fisso di avvio scende da ~29k a ~12k token spegnendo per progetto plugin, connettori claude.ai e skill non usate.
 
 ## Fase 1 — Comando "nuovo progetto" e controllo del setup
 
@@ -87,7 +90,7 @@ Migrations SQL numerate nel pacchetto, applicate dalla CLI con `node:sqlite` (D1
 **Risultato provabile:** un progetto nuovo ha il DB creato da `jerome new`. Aggiungendo una migration e applicandola con la CLI, i dati esistenti restano. Il file .db non compare in git.
 **Fatto quando:** le tre prove passano sia per il DB di progetto sia per quello globale.
 **Domande da risolvere prima:**
-- esito della fase 0.5: decide quali dati sui consumi entrano nello schema e con quale dettaglio;
+- ~~esito della fase 0.5~~ risolto da D20: consumi per agente e per run (modello, input, output, cache read e cache write) nel DB di progetto, letture della subscription nel DB globale;
 - Q4: se la gerarchia Company → progetto → agenti resta, va prevista nello schema globale fin da subito;
 - Q2 e Q3 non bloccano, perché i valori di default sono righe del seed modificabili in seguito.
 
@@ -121,14 +124,14 @@ Uno scheduler lancia `claude -p` headless con permessi preconfigurati, un lock a
 
 ## Fase 9 — Soglie, pausa e % della subscription
 
-Soglie giornaliere e settimanali per progetto e globali. Oltre una soglia, gli heartbeat vanno in pausa automatica (V4, D12). Il viewer mostra la % stimata della subscription.
+Soglie giornaliere e settimanali per progetto e globali; quelle globali sono in % delle finestre a 5 ore e a 7 giorni (D20). Oltre una soglia, gli heartbeat vanno in pausa automatica (V4, D12). Il viewer mostra la % della subscription letta da Claude Code (D20).
 **Risultato provabile:**
 - con una soglia di progetto bassa, il prossimo heartbeat non parte e lo stato di pausa è visibile;
 - con una soglia globale bassa, la pausa vale per due progetti diversi;
 - il viewer mostra la %.
 
 **Fatto quando:** le prove passano, la pausa si toglie in modo esplicito, e i consumi per progetto sono visibili e sotto controllo (Successo 3).
-**Domande da risolvere prima:** Q2 (budget di riferimento e calibrazione della %).
+**Domande da risolvere prima:** Q2, ridotta da D20 alle sole soglie per progetto.
 
 ## Domande aperte per fase
 
