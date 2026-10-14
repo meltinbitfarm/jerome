@@ -1,4 +1,4 @@
-# Odino
+# Jérôme
 
 Fonte: brief.md (brief/v1, importato da MementoVault agent-orchestrator il 2026-10-14). Da qui la fonte viva sono PROJECT.md, decisions.md, open.md.
 

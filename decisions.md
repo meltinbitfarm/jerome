@@ -1,6 +1,6 @@
 # Decisioni
 
-- D1: Un progetto = una cartella con la repo template clonata — progetti autonomi e semplici da avviare.
+- D1: Un progetto = una cartella con la repo template clonata — progetti autonomi e semplici da avviare. (precisata da D17)
 - D2: Si parla col referente in Claude Code normale (terminale o VS Code), senza CLI/TUI propria — non duplicare ciò che Claude Code fa già bene.
 - D3: Subagent, non Agent Teams — le Teams consumano diverse volte tanto.
 - D4: Il referente passa ai subagent percorsi di file, non contenuti; i subagent restituiscono una sintesi breve e scrivono il dettaglio su file — il contesto del referente cresce lentamente.
@@ -11,8 +11,11 @@
 - D9: Il file .db non è versionato: migrations SQL numerate nella repo, DB creato al setup, modalità WAL — niente binari in git, aggiornamenti senza perdere dati.
 - D10: Seed solo per dati di riferimento (stati, tipi evento, budget di default, tabella modelli); catalogo dei modelli di agente come markdown in templates/agents/ — agenti e obiettivi nascono dal briefing, non da strutture rigide.
 - D11: Viewer locale in sola lettura, separato dall'esecuzione: struttura agenti, messaggi, log, report, token, costo e % stimata della subscription — se si rompe, gli agenti continuano a lavorare.
-- D12: Soglie su due livelli, per progetto e globale (DB globale in ~/.config/odino/) — la subscription è unica e condivisa tra progetti.
+- D12: Soglie su due livelli, per progetto e globale (DB globale in ~/.config/jerome/) — la subscription è unica e condivisa tra progetti.
 - D13: Report: riga di log per run, digest periodico del referente, "decisione richiesta" quando serve Fabio — per sapere sempre cosa è stato fatto.
 - D14: Brief in formato brief/v1 con la skill project-brief; la fonte di verità è nella repo (.claude/skills/), copia caricata su claude.ai — un solo metodo di briefing ovunque.
 - D15: Partenza da telefono: brief salvato in MementoVault e importato al PC; partenza da PC: briefing in Claude Code con file scritti subito — l'avvio da telefono è il caso tipico.
-- D16: Il tool si chiama Odino; marcatore di progetto `.odino` nella radice — scelta di Fabio, risolve Q1.
+- D16: (superata, vedi D18) Il tool si chiama Odino; marcatore di progetto `.odino` nella radice — scelta di Fabio, risolve Q1.
+- D17: Il contenuto del template sta in `template/` e il comando "nuovo progetto" copia solo quella cartella; la skill project-brief ha la copia canonica in `template/.claude/skills/`, collegata nella radice per lo sviluppo; gli aggiornamenti dei progetti toccano solo i file elencati nel manifest — nei progetti non finiscono i file di sviluppo di Jérôme e gli aggiornamenti non toccano lo stato del progetto.
+- D18: Il tool si chiama Jérôme; `jerome` (minuscolo, senza accenti) per comando, pacchetto, marcatore `.jerome` e percorsi — omaggio francese a Claude; san Girolamo è il patrono dei traduttori, come il referente che traduce le idee di Fabio in compiti.
+- D19: CLI come pacchetto Node con i comandi `jerome new`, `jerome view`, `jerome hook <evento>`, installabile da GitHub con `npm i -g`; gli hook dei progetti chiamano la CLI invece di script copiati; SQLite con `node:sqlite` integrato, senza dipendenze native (richiede Node ≥ 24, verificato su 24.13.0); se un giorno si pubblica su npm, il nome sarà `@meltinbit/jerome` — aggiornare il pacchetto aggiorna gli hook di tutti i progetti senza ricopiare script, e l'installazione non compila nulla (V2).

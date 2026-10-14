@@ -1,0 +1,6 @@
+# File di proprietà del template Jérôme (D17).
+# Un percorso per riga, relativo alla radice del progetto. Una cartella vale per tutto il suo contenuto.
+# Solo questi file vengono copiati alla creazione e sincronizzati negli aggiornamenti:
+# lo stato del progetto (PROJECT.md, decisions.md, open.md, brief.md, DB) non è mai elencato.
+.claude/skills/project-brief/
+MANIFEST

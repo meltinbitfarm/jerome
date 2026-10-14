@@ -28,7 +28,7 @@ Il formato è in `references/brief-v1.md`: leggilo prima di compilare o importar
 
 ## Dove salvare: due ambienti
 
-**Claude Code dentro un progetto del template** (la radice della cartella contiene il file marcatore `.odino`):
+**Claude Code dentro un progetto del template** (la radice della cartella contiene il file marcatore `.jerome`):
 - Scrivi direttamente i file di progetto come indicato in "Import" in `references/brief-v1.md`.
 - Salva anche una copia del brief completo in `brief.md`.
 
