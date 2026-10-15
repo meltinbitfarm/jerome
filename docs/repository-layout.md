@@ -28,7 +28,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 - Three files are not in the template because the CLI creates them in each project:
   - `.jerome`, a JSON file that records the Jérôme version and the template files the project was last reconciled with (see [update.md](commands/update.md#the-jerome-file));
   - `.claude/settings.local.json`, with the lean profile, which depends on the machine and is kept out of git (see [lean-profile.md](lean-profile.md));
-  - `.claude/settings.json`, versioned, with the deny rules that make the default limits binding (see [agents.md](agents.md#binding-limits)).
+  - `.claude/settings.json`, versioned, with the permission rules that make the default limits binding (see [agents.md](agents.md#binding-limits)).
 - The root `.claude/skills/` holds symlinks to the template's skills. Developing Jérôme and using Jérôme share one version of each.
 
 ## The package

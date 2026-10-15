@@ -36,7 +36,7 @@ At most 3 lines: what must exist at the end, and for whom.
 - D1: decision — reason
 
 ## Agent limits
-- L1: No sending, publishing, deploying, merging to main, purchases or emails: drafts and proposals only (default).
+- L1: No sending, publishing, deploying, pushing, purchases or emails: drafts and proposals only; tasks on branches, merged to main only by the lead agent when tests pass with no conflicts (default).
 
 ## Tools (optional)
 - MCP servers, services, requirements on the machine.

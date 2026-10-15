@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sandbox } from './sandbox.js';
-import { DENY_RULES } from '../src/limits.js';
+import { DENY_RULES, ASK_RULES, ALLOW_RULES } from '../src/limits.js';
 
 const AGENT = (meta) => `---\nname: x\ndescription: X.\n${meta}\n---\nDo x.\n`;
 
@@ -13,21 +13,22 @@ test('doctor --check fails on a missing deny rule, and doctor puts it back keepi
   const { root, run } = sandbox();
   assert.equal(run('new', 'demo').status, 0);
   const path = join(root, 'demo', '.claude', 'settings.json');
-  writeFileSync(path, JSON.stringify({ permissions: { deny: ['Bash(rm -rf *)', ...DENY_RULES.slice(1)] }, model: 'opus' }));
+  writeFileSync(path, JSON.stringify({ permissions: { deny: ['Bash(rm -rf *)', ...DENY_RULES.slice(1)], ask: ASK_RULES, allow: ALLOW_RULES.slice(1) }, model: 'opus' }));
 
   const check = run('doctor', 'demo', '--check', '--json');
   assert.equal(check.status, 1);
   const report = JSON.parse(check.stdout);
-  assert.deepEqual(report.limits.missing, [DENY_RULES[0]]);
+  assert.deepEqual(report.limits.missing, [{ list: 'deny', rule: DENY_RULES[0] }, { list: 'allow', rule: ALLOW_RULES[0] }]);
   assert.equal(report.checks.find((c) => c.id === 'limits').ok, false);
   assert.equal(JSON.parse(readFileSync(path, 'utf8')).permissions.deny.length, DENY_RULES.length);
 
   const fix = run('doctor', 'demo');
   assert.equal(fix.status, 0, fix.stdout + fix.stderr);
-  assert.match(fix.stdout, /✓ Default limits — 1 deny rule added/);
+  assert.match(fix.stdout, /✓ Default limits — 2 permission rules added/);
   const after = JSON.parse(readFileSync(path, 'utf8'));
   assert.equal(after.model, 'opus');
   assert.deepEqual(after.permissions.deny, ['Bash(rm -rf *)', ...DENY_RULES.slice(1), DENY_RULES[0]]);
+  assert.deepEqual(after.permissions.allow, [...ALLOW_RULES.slice(1), ALLOW_RULES[0]]);
 });
 
 test('doctor warns about agents without a model or loading CLAUDE.md, without failing', () => {
@@ -110,4 +111,16 @@ test('jerome docs runs the documentarist as a service call, outside the project'
   writeFileSync(join(dir, 'docs', '_pending.md'), '- 2026-10-15 · developer · a.js · added a\n');
   const own = run('docs', 'demo');
   assert.match(own.stdout, /Documentarist \(sonnet\) on 1 entry/);
+});
+
+test('doctor warns when Claude Code has not been told to trust the project, which disables its allow rules', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = realpathSync(join(root, 'demo'));
+  const config = join(root, 'claude-config', '.claude.json');
+  writeFileSync(config, JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: false } } }));
+  const warnings = (r) => JSON.parse(r.stdout).warnings.map((w) => w.id);
+  assert.ok(warnings(run('doctor', 'demo', '--check', '--json')).includes('trust'));
+  writeFileSync(config, JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true } } }));
+  assert.ok(!warnings(run('doctor', 'demo', '--check', '--json')).includes('trust'));
 });

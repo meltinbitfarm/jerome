@@ -10,7 +10,8 @@ Every Jérôme project has one lead agent: the main Claude Code session you talk
 - **Records only what you confirmed.** A decision it proposed is not recorded until you explicitly confirm it: silence is not confirmation. Before recording, it lists its unconfirmed proposals so you can confirm them in one block.
 - **Asks when it must.** When you need to decide, it ends with a decision request: the question, the options and its recommendation.
 - **Delegates cheaply.** It uses subagents, never agent teams. It passes file paths instead of contents, asks for a short summary with the details written to a file, and picks the cheapest model that fits the task.
-- **Stays within limits.** It follows the agent limits in `PROJECT.md`. By default it only prepares drafts and proposals: it never sends, publishes, deploys, merges to main, buys or emails.
+- **Stays within limits.** It follows the agent limits in `PROJECT.md`. By default it only prepares drafts and proposals: it never sends, publishes, deploys, pushes, buys or emails.
+- **Works on branches.** Every task runs on its own branch. When the tests pass and there are no conflicts, the lead agent merges it into `main` by itself and says so in its reply; it asks you only when tests fail or there is a conflict. Subagents never merge, and nobody pushes: that stays with you. Commands that change the repository run one at a time, each result checked before the next, so a blocked command never leaves it unclear what already ran.
 
 ## What it reads, and when
 
@@ -58,11 +59,15 @@ When `jerome new --from-file` gets a text that is not a valid brief, it saves th
 
 The instruction lives in `PROJECT.md` and not in `CLAUDE.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and scheduled runs (planned) will not start on it.
 
+## What goes in `CLAUDE.md`
+
+`CLAUDE.md` is paid at every call, so a rule goes there only if the lead agent needs it at every turn. Rules needed at specific moments go in a skill, whose description costs a few tokens and whose body is read only when it applies: the briefing in `project-brief`, the team in `project-team`.
+
 ## Token budget
 
 | File | Budget | Current |
 |---|---:|---:|
-| `CLAUDE.md` | 650 tokens | 635 |
+| `CLAUDE.md` | 680 tokens | 676 |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
 `jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome`:

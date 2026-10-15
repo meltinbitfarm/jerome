@@ -137,7 +137,7 @@ After the brief, the lead agent proposes the team with the project-team skill an
 - if something relevant changes, one line appended to `docs/_pending.md` (D25);
 - `omitClaudeMd: true`, so it does not load the lead agent's CLAUDE.md and PROJECT.md (D27), and the project's Agent limits copied into its file, kept in sync when they change (D45).
 
-CLAUDE.md's delegation rule points to the project's agents in `.claude/agents/`, within its 650-token budget (D37, D44). The default limits become binding through deny rules in the project's `.claude/settings.json` (D46).
+CLAUDE.md's delegation rule points to the project's agents in `.claude/agents/`, within its budget (650, then 680 with D49; D37, D44). The default limits become binding through deny rules in the project's `.claude/settings.json` (D46).
 **Service calls.** When the CLI launches `claude -p` for a task that is not the lead agent's, such as `jerome docs`, it starts from a service folder outside the project, with `--no-session-persistence`, `--settings` pointing to the project's `.claude/settings.local.json`, and `--add-dir` for the project when the task needs its files. This way the call does not load the lead agent's CLAUDE.md, leaves no transcript that would skew the usage figures, and runs with the lean profile. Checked on a test project: from a folder outside the project, without `--settings`, the call loads the user's plugins, skills and connectors (14.1k); with `--settings` it is 10.4k, with no CLAUDE.md, skills or MCP; with `--add-dir` CLAUDE.md stays out and only the project's skills come in. Claude Code creates an empty `memory` folder in `~/.claude/projects/` for every folder it starts from, so the service folder is one fixed path per project (for example under `~/.cache/jerome/`), emptied before each call, not a new temporary folder each time.
 
 The catalog includes the documentation agent on Haiku (D25). It is launched with `/docs` in a session or `jerome docs` headless, and integrates the queue into the project's documentation (D43). `jerome doctor` warns when the queue exceeds 20 lines.
@@ -169,6 +169,9 @@ The project's versioned `.claude/settings.json`, owned by the template, also con
 - after a session with a subagent, a script shows the events and tokens per agent and per run, and the figures roughly match what Claude Code reports;
 - after an interactive session, the global DB has a new % reading only if the value changed;
 - with a personal status line configured, Jérôme projects show both the personal line and Jérôme's part.
+Two more uses of the hooks:
+- a `PreToolUse` hook refuses Bash commands that chain operations changing the repository (`git commit … && git merge …`), as a second protection behind the CLAUDE.md rule (D49);
+- the length of each subagent's reply is measured per agent, since the 150-word limit (D41) is exceeded by Opus agents at times.
 **Done when:** every run and every subagent leaves a log line (D13, first level), and tracking requires no tool call from the model.
 **Questions to settle first:** none. The risk around usage data was already checked in phase 0.5.
 
@@ -187,7 +190,9 @@ A scheduler launches headless `claude -p` with preconfigured permissions, an ove
 
 **Service calls.** Runs that are not the lead agent's own work (for example the documentation agent, or a check run by the scheduler) follow the service-call rule of phase 4: service folder outside the project, `--no-session-persistence`, `--settings` with the project's local settings, `--add-dir` only if needed. Heartbeats themselves are the lead agent's work: they run in the project folder and keep their transcript, which is where their usage is read from (D20).
 
-**Decision requests without a reader.** In a heartbeat nobody reads the reply, so a decision request in the final message would be lost. The heartbeat prompt (not CLAUDE.md, which has no room for it) tells the lead agent to write decision requests to a file or to the DB, where the viewer and the notifications pick them up, and to stop that line of work until the user answers.
+**Decision requests without a reader.** In a heartbeat nobody reads the reply, so a decision request in the final message would be lost. The heartbeat prompt (not CLAUDE.md, which has no room for it) tells the lead agent to write decision requests to a file or to the DB, where the viewer and the notifications pick them up, and to stop that line of work until the user answers. The same holds for merges (D47): in a heartbeat the lead agent merges a task's branch when tests pass with no conflicts, and turns failing tests or a conflict into a decision request instead of asking; the phase's tests must cover both cases, and any other confirmation the lead agent would ask for in a session.
+
+**Trust.** Claude Code ignores a project's allow rules until the user has accepted the trust dialog in that folder (D48). The scheduler checks it, like `jerome doctor`, and does not start heartbeats on an untrusted project: without the allow rules, merges and test runs would be refused or left to the classifier.
 
 **Provisional projects.** The scheduler never runs a heartbeat on a project whose PROJECT.md is still provisional (D35): the brief has not been converted and confirmed yet, so there is nothing safe to work on. It logs the block and opens a decision request asking the user to open a session and finish the conversion.
 

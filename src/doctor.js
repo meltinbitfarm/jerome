@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks } from './checks.js';
 import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './template.js';
 import { isProvisional, misplacedSections } from './brief.js';
-import { DENY_RULES, missingDenyRules, addDenyRules } from './limits.js';
+import { RULE_COUNT, missingRules, addRules, isTrusted } from './limits.js';
 import { agentWarnings, queueWarning } from './agents.js';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
@@ -16,7 +16,7 @@ export const DOCTOR_SCHEMA = 'jerome.doctor/v1';
 
 // Token budgets for the files loaded into every session. Going over them only warns, and a project can
 // change them in `.jerome` under "budgets" (D37).
-export const BUDGETS = { 'CLAUDE.md': 650, 'PROJECT.md': 800 };
+export const BUDGETS = { 'CLAUDE.md': 680, 'PROJECT.md': 800 };
 
 export async function doctor(dirArg, { json = false, check = false } = {}) {
   const report = runDoctor(resolve(dirArg), { fix: !check });
@@ -123,22 +123,23 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
   return done();
 }
 
-// The deny rules that make the default agent limits binding (D46), in the versioned settings.json.
+// The permission rules that make the default agent limits binding (D46, D48), in the versioned settings.json.
 // With fix they are added where missing; with --check a missing rule fails the check.
 // Jérôme's own repository is skipped: its pushes are part of its development, decided by the user.
 function limitsCheck(dir, { fix }) {
   if (isJeromeRepo(dir)) return null;
   const label = 'Default limits';
+  const rules = (n) => `${n} permission ${n === 1 ? 'rule' : 'rules'}`;
   try {
     if (fix) {
-      const added = addDenyRules(dir);
-      const detail = added.length ? `${added.length} deny ${added.length === 1 ? 'rule' : 'rules'} added to .claude/${SHARED_SETTINGS}` : `${DENY_RULES.length} deny rules in place`;
+      const added = addRules(dir);
+      const detail = added.length ? `${rules(added.length)} added to .claude/${SHARED_SETTINGS}` : `${rules(RULE_COUNT)} in place`;
       return { added, missing: [], check: { id: 'limits', ok: true, label, detail } };
     }
-    const missing = missingDenyRules(dir);
+    const missing = missingRules(dir);
     const detail = missing.length
-      ? `${missing.length} deny ${missing.length === 1 ? 'rule' : 'rules'} missing from .claude/${SHARED_SETTINGS}: run \`jerome doctor\` to add ${missing.length === 1 ? 'it' : 'them'}`
-      : `${DENY_RULES.length} deny rules in place`;
+      ? `${rules(missing.length)} missing from .claude/${SHARED_SETTINGS}: run \`jerome doctor\` to add ${missing.length === 1 ? 'it' : 'them'}`
+      : `${rules(RULE_COUNT)} in place`;
     return { added: [], missing, check: { id: 'limits', ok: missing.length === 0, label, detail } };
   } catch (err) {
     return { added: [], missing: [], check: { id: 'limits', ok: false, label, detail: err.message } };
@@ -172,6 +173,12 @@ export function projectWarnings(dir) {
   const queue = queueWarning(dir);
   if (queue) warnings.push(queue);
   if (isJeromeRepo(dir)) return warnings;
+  if (isTrusted(dir) === false) {
+    warnings.push({
+      id: 'trust',
+      message: 'Claude Code ignores the allow rules in .claude/settings.json until you open `claude` in this folder once and accept the trust dialog; deny rules apply anyway.',
+    });
+  }
   try {
     const files = behind(templatePlan(dir)).map(({ path, status }) => ({ path, status }));
     if (files.length) {

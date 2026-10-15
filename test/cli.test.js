@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sandbox } from './sandbox.js';
-import { DENY_RULES } from '../src/limits.js';
+import { DENY_RULES, ASK_RULES, ALLOW_RULES, RULE_COUNT } from '../src/limits.js';
 
 test('new creates the project with template, marker, git and lean profile', () => {
   const { root, run } = sandbox();
@@ -24,8 +24,10 @@ test('new creates the project with template, marker, git and lean profile', () =
   }
   // The default limits are binding: deny rules in the versioned settings.json (D46).
   const shared = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
-  assert.deepEqual(shared, { permissions: { deny: DENY_RULES } });
-  assert.match(r.stdout, new RegExp(`✓ Default limits — ${DENY_RULES.length} deny rules added`));
+  assert.deepEqual(shared, { permissions: { deny: DENY_RULES, ask: ASK_RULES, allow: ALLOW_RULES } });
+  assert.match(r.stdout, new RegExp(`✓ Default limits — ${RULE_COUNT} permission rules added`));
+  // The fake Claude config has no .claude.json, so trust cannot be told and nothing is said about it.
+  assert.doesNotMatch(r.stdout, /trust dialog/);
   // The catalog ships inside the project-team skill; the project's agents folder starts empty (D40, D42).
   assert.ok(existsSync(join(dir, '.claude', 'skills', 'project-team', 'agents', 'documentarist.md')));
   assert.ok(existsSync(join(dir, '.claude', 'skills', 'docs', 'SKILL.md')));
@@ -98,23 +100,23 @@ test('doctor moves a profile left in settings.json to the local settings', () =>
   const r = run('doctor', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /moved \d+ profile entries from settings\.json to settings\.local\.json/);
-  assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')), { permissions: { allow: ['Bash(ls)'], deny: DENY_RULES } });
+  assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')), { permissions: { allow: ['Bash(ls)', ...ALLOW_RULES], deny: DENY_RULES, ask: ASK_RULES } });
   assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.local.json'), 'utf8')), profile);
   assert.match(run('doctor', 'demo').stdout, /Lean profile already in place/);
 });
 
 test('doctor warns, without failing, when the files loaded every session are over budget', () => {
-  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '670' } });
+  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '700' } });
   assert.equal(run('new', 'demo').status, 0);
   writeFileSync(join(root, 'demo', 'PROJECT.md'), '# Demo\n');
   const r = run('doctor', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /! CLAUDE\.md: 670 tokens, over its 650-token budget/);
+  assert.match(r.stdout, /! CLAUDE\.md: 700 tokens, over its 680-token budget/);
   assert.match(r.stdout, /! PROJECT\.md: 1100 tokens, over its 800-token budget/);
 });
 
 test('a project can raise its budgets in .jerome, and bad entries only warn', () => {
-  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '670' } });
+  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '700' } });
   assert.equal(run('new', 'demo').status, 0);
   const dir = join(root, 'demo');
   writeFileSync(join(dir, 'PROJECT.md'), '# Demo\n');
@@ -123,7 +125,7 @@ test('a project can raise its budgets in .jerome, and bad entries only warn', ()
   const r = run('doctor', 'demo', '--check', '--json');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const warnings = JSON.parse(r.stdout).warnings;
-  assert.deepEqual(warnings.filter((w) => w.id === 'budget').map((w) => [w.file, w.budget]), [['CLAUDE.md', 650]]);
+  assert.deepEqual(warnings.filter((w) => w.id === 'budget').map((w) => [w.file, w.budget]), [['CLAUDE.md', 680]]);
   assert.deepEqual(warnings.filter((w) => w.id === 'budgets-config').length, 2);
   // jerome update rewrites .jerome but keeps the budgets.
   run('update', 'demo', '--yes');
@@ -162,7 +164,7 @@ for (const [variant, problem] of [
 }
 
 test('doctor --json: schema, checks, sections, counts and warnings, with a matching exit code', () => {
-  const { run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '670' } });
+  const { run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '700' } });
   assert.equal(run('new', 'demo').status, 0);
   const r = run('doctor', 'demo', '--json');
   assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -181,7 +183,7 @@ test('doctor --json: schema, checks, sections, counts and warnings, with a match
   assert.deepEqual(report.context.counts, { categories: 1, skills: 3, projectSkills: 3, memoryFiles: 1 });
   assert.deepEqual(report.limits, { added: [], missing: [] });
   assert.equal(report.context.totalTokens, 12100);
-  assert.deepEqual(report.warnings.map((w) => [w.id, w.file, w.tokens, w.budget]), [['budget', 'CLAUDE.md', 670, 650]]);
+  assert.deepEqual(report.warnings.map((w) => [w.id, w.file, w.tokens, w.budget]), [['budget', 'CLAUDE.md', 700, 680]]);
 });
 
 test('doctor --json reports a broken /context with ok false and exit code 1', () => {

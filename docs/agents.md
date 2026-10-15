@@ -45,7 +45,7 @@ The files in `.claude/agents/` belong to the project. [`jerome update`](commands
 
 ## Binding limits
 
-By default the lead agent and its agents only prepare drafts: they never send, publish, deploy, merge to main, buy or email. Written rules can be ignored, so the commands that do those things are also denied by Claude Code. `jerome new` (through `jerome doctor`) writes these permission rules into the project's `.claude/settings.json`, which is versioned:
+By default the lead agent and its agents only prepare drafts: they never send, publish, deploy, push, buy or email. Tasks run on branches, and only the lead agent merges them into `main`, when the tests pass and there are no conflicts; agents never merge. Written rules can be ignored, so the commands that do those things are also denied by Claude Code. `jerome new` (through `jerome doctor`) writes permission rules into the project's `.claude/settings.json`, which is versioned. Deny rules come first:
 
 | What | Denied commands |
 |---|---|
@@ -62,6 +62,26 @@ Each rule is written as `Bash(<command>)`. Tested on Claude Code 2.1.300, the ru
 - inside compound commands (`cd x && git push`) and after environment variables (`FOO=1 git push`).
 
 They are a safety net for the common commands, not a sandbox. A command they do not list, such as an unusual form of `git` or a deploy tool not in the table, still relies on the written limits. Buying, and sending email through a connector, cannot be expressed as rules at all.
+
+### Allowed and asked
+
+The safe local operations of a task are allowed, so that Claude Code's auto mode never takes them for something else: a merge into `main` blocked as if it were a deploy, or even a `git status` blocked.
+
+| What | Allowed commands |
+|---|---|
+| Reading the repository | `git status *`, `git log *`, `git diff *`, `git show *`, `git rev-parse *`, `git merge-base *`, `git stash list *` |
+| Branches and merges | `git add *`, `git commit *`, `git switch *`, `git checkout *`, `git branch *`, `git merge *` |
+| Tests | `npm test`, `pnpm test`, `yarn test`, `bun test`, `node --test`, `pytest`, `cargo test`, `go test ./...` |
+
+The test commands are exact, because auto mode drops wildcarded package-manager and interpreter rules. If a project runs its tests differently, ask the lead agent to add that exact command.
+
+Some forms of the allowed commands discard work: an allow rule would approve them without the checks auto mode normally applies, so they always ask (in a headless run, asking means refusing): `git checkout -- *`, `git checkout * -- *`, `git checkout .`, `git checkout -f *`, `git switch -f *`, `git switch --discard-changes *`, `git branch -D *`, `git commit --amend *`.
+
+Deny wins over ask, and ask over allow. Tested on Claude Code 2.1.300 in a throwaway repository: in `dontAsk` mode, where only allowed commands run, every allowed command ran, the asked ones were refused and `git push` was denied; in auto mode the result was the same, the asked ones turning into permission requests.
+
+**Trust.** Claude Code ignores the allow rules of a project's `.claude/settings.json` until you have opened `claude` in that folder once and accepted the trust dialog; deny rules apply anyway. Opening the project after `jerome new` does it, and `jerome doctor` warns (`trust`) while it is missing. Scheduled runs will need it too.
+
+### Keeping the rules
 
 `jerome doctor` adds any missing rule and keeps your own settings and rules; `jerome doctor --check` fails while one is missing. To run a denied command yourself, type it with `!` in the session (for example `! git push`) or in a terminal: the rules apply to the model, not to you.
 
