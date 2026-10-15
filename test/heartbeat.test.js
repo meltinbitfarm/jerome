@@ -6,7 +6,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { sandbox } from './sandbox.js';
+import { sandbox, sandboxDb } from './sandbox.js';
 import { globalLimits, leadPrompt } from '../src/heartbeat.js';
 
 // A project ready for heartbeats: created, committed, and trusted in Claude Code.
@@ -19,7 +19,7 @@ function project(env = {}) {
   git('commit', '-q', '-m', 'init');
   const trust = (value) => writeFileSync(join(box.root, 'claude-config', '.claude.json'), JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: value } } }));
   trust(true);
-  const db = () => new DatabaseSync(join(dir, '.jerome', 'jerome.db'), { readOnly: true });
+  const db = () => new DatabaseSync(sandboxDb(box.root, dir), { readOnly: true });
   const lastRun = () => {
     const d = db();
     const r = d.prepare('SELECT * FROM runs ORDER BY id DESC LIMIT 1').get();
@@ -174,7 +174,7 @@ test('a decision request opened by the lead agent is linked to its run, and answ
   assert.match(p.run('state', 'demo').stdout, /jerome request answer <id>/);
 
   // The lead agent runs it from the project folder.
-  const inProject = (...args) => spawnSync(process.execPath, [new URL('../bin/jerome.js', import.meta.url).pathname, ...args], { cwd: p.dir, encoding: 'utf8' });
+  const inProject = (...args) => spawnSync(process.execPath, [new URL('../bin/jerome.js', import.meta.url).pathname, ...args], { cwd: p.dir, encoding: 'utf8', env: { ...process.env, XDG_DATA_HOME: join(p.root, '.local', 'share') } });
   assert.equal(inProject('request', 'answer', 'R1', 'No,', 'fix', 'the', 'tests', 'first').status, 0);
   assert.equal(p.requests().length, 0);
   assert.equal(inProject('request', 'answer', '1', 'again').status, 1);
@@ -234,7 +234,7 @@ test('calendar windows start at local midnight and on Monday, and a project limi
 
   const p = project();
   writeFileSync(join(p.dir, '.jerome', 'project.json'), readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8').replace('"files"', '"limits": { "daily": 0.01, "weekly": null },\n  "files"'));
-  const d = new DatabaseSync(join(p.dir, '.jerome', 'jerome.db'));
+  const d = new DatabaseSync(sandboxDb(p.root, p.dir));
   d.prepare("INSERT INTO usage (request_id, agent, model, input, output, cache_read, at) VALUES ('r1', 'main', 'claude-opus-5-5', 1000, 1000, 10000, ?)").run(new Date(2026, 9, 18, 10).toISOString());
   const over = projectOver(projectStatus(p.dir, d, sunday));
   assert.match(over.reason, /^project limit: today ≈\$0\.03 \/ \$0\.01 API \(12k tokens\), resets at midnight$/);
@@ -246,7 +246,7 @@ test('calendar windows start at local midnight and on Monday, and a project limi
 test('a project over its limit pauses heartbeats with one notification, and they start again under the limit', () => {
   const p = project({ JEROME_NOTIFY: '', FAKE_TRIAGE: '{"work": false, "reason": "nothing"}' });
   const log = join(p.root, 'notifications.log');
-  const d = new DatabaseSync(join(p.dir, '.jerome', 'jerome.db'));
+  const d = new DatabaseSync(sandboxDb(p.root, p.dir));
   d.prepare("INSERT INTO usage (request_id, agent, model, input, output, cache_read, at) VALUES ('r1', 'main', 'claude-opus-5-5', 1000, 1000, 10000, ?)").run(new Date().toISOString());
   d.close();
   assert.equal(p.run('limits', 'demo', '--daily', '0.01').status, 0);
@@ -301,7 +301,7 @@ test('a global limit pauses the heartbeats of every project, since account.json 
   assert.equal(box.run('limits', 'one', '--five-hour', '50').status, 0);
   for (const name of ['one', 'two']) {
     box.run('heartbeat', name);
-    const d = new DatabaseSync(join(box.root, name, '.jerome', 'jerome.db'), { readOnly: true });
+    const d = new DatabaseSync(sandboxDb(box.root, join(box.root, name)), { readOnly: true });
     assert.equal(d.prepare('SELECT reason FROM runs ORDER BY id DESC').get().reason, 'global limit: 5h 59% ≥ 50%', name);
     d.close();
   }

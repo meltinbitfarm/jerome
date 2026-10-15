@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { MARKER } from './template.js';
-import { openDb, DB_FILE } from './db.js';
+import { openDb } from './db.js';
 import { notProjectMessage } from './paths.js';
 
 export async function request(action, args, { dir: dirArg = '.', question, options, recommendation, env = process.env } = {}) {
@@ -15,7 +15,7 @@ export async function request(action, args, { dir: dirArg = '.', question, optio
   }
   const db = openDb(dir);
   if (!db) {
-    console.error(`${DB_FILE} is missing: run \`jerome doctor\` to create it.`);
+    console.error(`The project database is missing: run \`jerome doctor\` to create it.`);
     return 1;
   }
   try {

@@ -16,7 +16,7 @@ pbpaste | jerome new my-project --from-file -
 4. **Writes the project files from the brief**, with `--from-file` (next section).
 5. **Initializes git** (`git init`, branch `main`). No commit is made.
 6. **Makes the default limits binding**: writes into `.claude/settings.json` the permission rules that deny pushing, publishing, deploying and sending email, and allow the safe local git operations and tests (see [agents.md](../agents.md#binding-limits)). The allow rules take effect once you open `claude` in the project and accept the trust dialog.
-7. **Creates the project database**, `.jerome/jerome.db`, kept out of git (see [database.md](../database.md)).
+7. **Creates the project database**, outside the working tree (see [database.md](../database.md#where-it-lives)).
 8. **Writes the lean profile** into `.claude/settings.local.json`, adds that file to `.gitignore`, and verifies the profile, exactly as [`jerome doctor`](doctor.md) does.
 
 The template brings three skills: `project-brief` for the briefing, `project-team` with the agent catalog, and `docs`, run only when you type `/docs`. The project has no agents yet: the lead agent proposes them after the brief (see [agents.md](../agents.md)).
@@ -49,7 +49,7 @@ $ jerome new my-project
 ✓ Logged in with a subscription — you@example.com
 ✓ Project created in /Users/you/my-project
 ✓ Default limits — 70 permission rules added to .claude/settings.json
-✓ Project database — .jerome/jerome.db created (schema 1)
+✓ Project database — created in /Users/you/.local/share/jerome/projects/my-project-3f2a9c1b7d04/jerome.db (schema 1)
 ✓ Lean profile updated (22 changes):
     disableClaudeAiConnectors = true
     disableBundledSkills = true

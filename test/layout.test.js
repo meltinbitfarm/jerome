@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { sandbox } from './sandbox.js';
+import { sandbox, sandboxDb } from './sandbox.js';
+import { storeDir } from '../src/store.js';
 import { applyMigrations } from '../src/db.js';
 import { layoutPlan, migrateLayout, countRows } from '../src/migrate.js';
 import { readdirSync } from 'node:fs';
@@ -20,7 +21,7 @@ test('a new project keeps Jérôme in .jerome/ and .claude/, and nothing at its 
   assert.equal(run('new', 'demo').status, 0);
   const dir = join(root, 'demo');
   assert.ok(existsSync(join(dir, '.jerome', 'project.json')));
-  assert.ok(existsSync(join(dir, '.jerome', 'jerome.db')));
+  assert.ok(existsSync(sandboxDb(root, dir)), 'the database is outside the working tree (D93)');
   assert.ok(existsSync(join(dir, '.claude', 'rules', 'jerome.md')));
   assert.match(readFileSync(join(dir, '.claude', 'rules', 'jerome.md'), 'utf8'), /^@\.\.\/\.\.\/\.jerome\/PROJECT\.md$/m);
   for (const old of ['CLAUDE.md', 'PROJECT.md', 'decisions.md', '.jerome.db', 'notes', 'docs']) assert.ok(!existsSync(join(dir, old)), old);
@@ -108,7 +109,7 @@ test('jerome update moves an old project to .jerome/, keeping git history, data 
   const r = run('update', 'old', '--yes');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /✓ Moved to \.jerome\/ \(tracked files with git mv/);
-  for (const file of ['project.json', 'PROJECT.md', 'decisions.md', 'notes/review.md', 'docs-queue.md', 'jerome.db']) assert.ok(existsSync(join(dir, '.jerome', file)), file);
+  for (const file of ['project.json', 'PROJECT.md', 'decisions.md', 'notes/review.md', 'docs-queue.md']) assert.ok(existsSync(join(dir, '.jerome', file)), file);
   for (const old of ['CLAUDE.md', 'PROJECT.md', 'decisions.md', 'notes', '.jerome.db', 'docs/_pending.md']) assert.ok(!existsSync(join(dir, old)), old);
   assert.ok(existsSync(join(dir, 'docs', 'index.md')), 'the project\'s docs stay');
   assert.ok(existsSync(join(dir, '.claude', 'rules', 'jerome.md')), 'the template update brings jerome.md');
@@ -116,7 +117,8 @@ test('jerome update moves an old project to .jerome/, keeping git history, data 
   git(dir, 'add', '-A');
   git(dir, 'commit', '-q', '-m', 'move to .jerome/');
   assert.match(git(dir, 'log', '--follow', '--format=%s', '--', '.jerome/decisions.md'), /old layout/);
-  const db = new DatabaseSync(join(dir, '.jerome', 'jerome.db'), { readOnly: true });
+  assert.ok(!existsSync(join(dir, '.jerome', 'jerome.db')));
+  const db = new DatabaseSync(sandboxDb(root, dir), { readOnly: true });
   assert.equal(db.prepare('SELECT count(*) n FROM runs').get().n, 1);
   db.close();
   const marker = JSON.parse(readFileSync(join(dir, '.jerome', 'project.json'), 'utf8'));
@@ -167,26 +169,127 @@ test('an old project with an empty marker gets a readable record', () => {
   assert.equal(JSON.parse(run('doctor', 'old', '--check', '--json').stdout).checks.find((c) => c.id === 'project').ok, true);
 });
 
-test('the database survives what lost claude-watch\'s: a backup outside the repository, with every row', () => {
+test('the database survives what lost claude-watch\'s: moved on a side branch, then back to a branch from before', () => {
   const { root, run } = sandbox();
   const dir = legacyProject(root);
   const rows = countRows(join(dir, '.jerome.db'));
-  // The move on a side branch, then back to a branch from before it, where .jerome is a file.
   git(dir, 'switch', '-q', '-c', 'layout');
   const r = run('update', 'old', '--yes');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /database: 1 runs, 0 usage, 0 usage_daily, 0 transcript_reads, 0 events, 0 requests, copied and checked; a backup is in /);
-  assert.match(r.stdout, /Checking out a branch or commit from before the move deletes \.jerome\/jerome\.db/);
-  assert.deepEqual(countRows(join(dir, '.jerome', 'jerome.db')), rows);
+  assert.match(r.stdout, /✓ Database moved to .*\/jerome\.db: 1 runs, 0 usage, 0 usage_daily, 0 transcript_reads, 0 events, 0 requests, copied and checked; a backup is in /);
   git(dir, 'add', '-A');
   git(dir, 'commit', '-q', '-m', 'move');
+  // On claude-watch, git deleted the ignored .jerome/jerome.db to put .jerome back as a file. Outside the working
+  // tree (D93), neither the switch nor git clean reaches it.
   git(dir, 'switch', '-q', 'main');
-  // Git removed the ignored database to put .jerome back as a file: what happened on claude-watch.
-  assert.ok(!existsSync(join(dir, '.jerome', 'jerome.db')));
+  git(dir, 'clean', '-fdxq');
+  git(dir, 'switch', '-q', 'layout');
+  assert.deepEqual(countRows(sandboxDb(root, dir)), rows);
   const backups = join(root, '.cache', 'jerome', 'backups');
   const [backup] = readdirSync(backups);
   assert.match(backup, /^old-[0-9a-f]{8}-.*\.db$/);
   assert.deepEqual(countRows(join(backups, backup)), rows);
+});
+
+test('a database still in .jerome/ moves out of the working tree with jerome update, every row checked', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = join(root, 'demo');
+  // A project as D87-D92 left it: the database in .jerome/.
+  const stored = sandboxDb(root, dir);
+  const db = new DatabaseSync(stored);
+  db.prepare("INSERT INTO runs (session_id, kind, started_at) VALUES ('s1', 'interactive', '2026-10-01T00:00:00Z')").run();
+  db.close();
+  execFileSync('mv', [stored, join(dir, '.jerome', 'jerome.db')]);
+  const rows = countRows(join(dir, '.jerome', 'jerome.db'));
+  // Until it moves, it is still read and written there, so nothing is lost; doctor says to move it.
+  assert.match(run('state', 'demo').stdout, /s1|interactive|runs?/);
+  const check = run('doctor', 'demo', '--check');
+  assert.match(check.stdout, /✗ Project database — still in the working tree \(\.jerome\/jerome\.db\).*run `jerome update`/);
+  const plan = run('update', 'demo', '--check');
+  assert.equal(plan.status, 1);
+  assert.match(plan.stdout, /move +\.jerome\/jerome\.db → .*\/\.local\/share\/jerome\/projects\/demo-[0-9a-f]{12}\/jerome\.db/);
+  assert.ok(existsSync(join(dir, '.jerome', 'jerome.db')), '--check moves nothing');
+  const r = run('update', 'demo', '--yes');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(!existsSync(join(dir, '.jerome', 'jerome.db')));
+  assert.deepEqual(readdirSync(dirname(stored)).sort(), ['jerome.db', 'record.json'], 'nothing left from the check of the copy');
+  assert.deepEqual(countRows(stored), rows);
+  assert.equal(run('doctor', 'demo', '--check').stdout.match(/Project database — (.*)/)[1], 'schema 1');
+});
+
+test('the worktrees of a clone share its database, two clones have one each', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = join(root, 'demo');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'init');
+  git(dir, 'worktree', 'add', '-q', join(root, 'demo-task'), '-b', 'task');
+  assert.equal(sandboxDb(root, join(root, 'demo-task')), sandboxDb(root, dir));
+  execFileSync('git', ['clone', '-q', dir, join(root, 'other')]);
+  assert.notEqual(sandboxDb(root, join(root, 'other')), sandboxDb(root, dir));
+  // The clone is a different folder of the same repository, still in place: not a candidate, it gets its own.
+  const r = run('doctor', 'other');
+  assert.match(r.stdout, /✓ Project database — created in /);
+  assert.ok(existsSync(sandboxDb(root, join(root, 'other'))));
+});
+
+test('a project that moved is relinked only with a choice, or with --yes when it is the only candidate', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = join(root, 'demo');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'init');
+  // The first write after the commit completes the record with the repository's fingerprint.
+  assert.equal(run('doctor', 'demo').status, 0);
+  const db = new DatabaseSync(sandboxDb(root, dir));
+  db.prepare("INSERT INTO runs (session_id, kind, started_at) VALUES ('s1', 'interactive', '2026-10-01T00:00:00Z')").run();
+  db.close();
+  execFileSync('mv', [dir, join(root, 'moved')]);
+  const moved = join(root, 'moved');
+
+  // Without a choice nothing is created, and the hooks record nothing meanwhile.
+  const check = run('doctor', 'moved', '--check');
+  assert.match(check.stdout, /✗ Project database — missing, and a database of this repository left by a folder that no longer holds the project: demo-[0-9a-f]{12} \(was .*\/demo\), 1 run, the last on 2026-10-01/);
+  const plain = run('doctor', 'moved');
+  assert.equal(plain.status, 1);
+  assert.match(plain.stdout, /not relinked: .*`jerome doctor --yes` relinks it, or `jerome doctor --new-db` starts an empty one instead\. Nothing was created/);
+  assert.ok(!existsSync(sandboxDb(root, moved)));
+  assert.match(run('heartbeat', 'moved').stdout + run('heartbeat', 'moved').stderr, /not started/);
+
+  const r = run('doctor', 'moved', '--yes');
+  assert.match(r.stdout, /✓ Project database — relinked from .*\/demo \(schema 1\)/);
+  assert.equal(new DatabaseSync(sandboxDb(root, moved), { readOnly: true }).prepare('SELECT count(*) n FROM runs').get().n, 1);
+  assert.doesNotMatch(r.stdout, /no longer holds a Jérôme project/);
+});
+
+test('with more candidates, --yes relinks none: the choice is made with --relink', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = join(root, 'demo');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'init');
+  assert.equal(run('doctor', 'demo').status, 0);
+  execFileSync('git', ['clone', '-q', dir, join(root, 'copy')]);
+  assert.equal(run('doctor', 'copy').status, 0);
+  // Both clones' folders go: two databases of the same repository are left, with the same remote missing.
+  execFileSync('git', ['-C', join(root, 'copy'), 'remote', 'remove', 'origin']);
+  const keys = [dir, join(root, 'copy')].map((d) => storeDir(d).split('/').pop());
+  execFileSync('rm', ['-rf', join(root, 'copy')]);
+  execFileSync('mv', [dir, join(root, 'moved')]);
+  const many = run('doctor', 'moved', '--yes');
+  assert.equal(many.status, 1);
+  assert.match(many.stdout, /choose with `jerome doctor --relink <key>`/);
+  assert.ok(!existsSync(sandboxDb(root, join(root, 'moved'))));
+  assert.match(run('doctor', 'moved', '--relink', keys[0]).stdout, /✓ Project database — relinked from .*\/demo /);
+  // The other one is now an orphan: reported, never removed, until jerome forget.
+  const report = run('doctor', 'moved', '--check');
+  assert.match(report.stdout, new RegExp(`! A database belongs to a folder that no longer holds a Jérôme project: ${keys[1]} \\(was .*\\/copy\\).*\`jerome forget <key>\``));
+  assert.equal(run('forget', keys[0], '--yes').status, 1, 'a database whose project is in place stays');
+  const f = run('forget', keys[1], '--yes');
+  assert.equal(f.status, 0, f.stdout + f.stderr);
+  assert.match(f.stdout, /✓ Removed; a backup is in .*\.cache\/jerome\/backups\/copy-[0-9a-f]{12}-forgotten-/);
+  assert.doesNotMatch(run('doctor', 'moved', '--check').stdout, /no longer holds a Jérôme project/);
 });
 
 test('a copy of the database that does not match leaves everything where it was', () => {
@@ -209,7 +312,8 @@ test('a copy of the database that does not match leaves everything where it was'
   }
   assert.equal(readdirSync(join(root, '.cache', 'jerome', 'backups')).length, 1, 'the backup is kept');
   assert.deepEqual(countRows(join(dir, '.jerome.db')), rows);
-  assert.ok(!existsSync(join(dir, '.jerome.db.moving')));
+  assert.ok(!existsSync(join(storeDir(dir), 'jerome.db.moving')));
+  assert.ok(!existsSync(join(storeDir(dir), 'jerome.db')));
   assert.ok(existsSync(join(dir, 'decisions.md')), 'no file moved');
   assert.equal(readFileSync(join(dir, '.jerome'), 'utf8').startsWith('{'), true, '.jerome is still the file');
 });

@@ -14,6 +14,7 @@ import { request } from './request.js';
 import { digest } from './digest.js';
 import { deps } from './deps.js';
 import { limits } from './limitscmd.js';
+import { forget } from './forget.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -24,6 +25,11 @@ const USAGE = `Usage:
   jerome doctor [dir]     check the setup and restore the lean profile (default: current folder)
     --check               only check and report: write nothing (what external tools should use)
     --json                print a machine-readable report (schema jerome.doctor/v1)
+    --yes                 relink the database of a project that moved, when it is the only candidate
+    --relink <key>        relink that database, chosen among the candidates
+    --new-db              start an empty database instead of relinking one
+  jerome forget <key>     remove the database of a project that is gone, after a backup (doctor lists them)
+    --yes                 without asking
   jerome update [dir]     bring the project's template files up to the installed version
     --check               only show what would change: write nothing
     --yes                 apply without asking; files changed in the project are left as they are
@@ -85,10 +91,12 @@ const OPTIONS = {
   daily: { type: 'string' },
   weekly: { type: 'string' },
   'no-open': { type: 'boolean' },
+  relink: { type: 'string' },
+  'new-db': { type: 'boolean' },
 };
 
 // The options each command accepts; any other option is a usage error.
-const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
+const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
   schedule: ['at', 'day', 'max-tokens', 'max-turns', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
 
 export async function main(argv) {
@@ -120,7 +128,11 @@ export async function main(argv) {
       return prompt();
     case 'doctor':
       if (rest.length > 1) return usageError('jerome doctor takes at most one folder.');
-      return doctor(rest[0] ?? '.', { json: parsed.values.json, check: parsed.values.check });
+      if (parsed.values.relink && parsed.values['new-db']) return usageError('--relink and --new-db exclude each other.');
+      return doctor(rest[0] ?? '.', { json: parsed.values.json, check: parsed.values.check, yes: parsed.values.yes, relink: parsed.values.relink ?? null, newDb: parsed.values['new-db'] });
+    case 'forget':
+      if (rest.length !== 1) return usageError('jerome forget takes exactly one key, as `jerome doctor` lists it.');
+      return forget(rest[0], { yes: parsed.values.yes });
     case 'update':
       if (rest.length > 1) return usageError('jerome update takes at most one folder.');
       return update(rest[0] ?? '.', { check: parsed.values.check, yes: parsed.values.yes });

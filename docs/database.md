@@ -1,6 +1,16 @@
 # The project database
 
-Every Jérôme project has one SQLite database, `.jerome/jerome.db` at its root, for what happens in the project: runs, token usage, hook events and decision requests. It is kept out of git (`jerome doctor` adds `.jerome/jerome.db*` to `.gitignore`), and there is no global database.
+Every Jérôme project has one SQLite database for what happens in the project: runs, token usage, hook events and decision requests. There is no global database.
+
+## Where it lives
+
+Outside the project's folder, in `~/.local/share/jerome/projects/<name>-<hash>/jerome.db` (under `$XDG_DATA_HOME` if set). Agents switch branches all the time, at night too: a file in the working tree can be deleted by a checkout, as git removes ignored files that stand where it must put a tracked one, or by `git clean -X`. Out of the tree, no git command reaches it.
+
+- **One per clone.** The hash is that of the clone's main folder, the parent of `git rev-parse --git-common-dir`. The worktrees of a clone share its database; two clones of the same repository have one each. Nothing about it is versioned.
+- **A record next to it**, `record.json`: the folder it belongs to and the repository's fingerprint, its first commit and its `origin` remote. A database created before the first commit gets the fingerprint at the first write after it.
+- **A project that moved** (renamed folder, moved elsewhere) has no database at its new path. Hooks record nothing, heartbeats do not start, and the status line says `no database: run jerome doctor`. `jerome doctor` finds the databases of the same repository whose folder no longer holds the project and asks which to relink. `--yes` relinks without asking only when there is one; with more, the choice is yours (`--relink <key>`). Nothing is created until you choose; `--new-db` starts an empty database instead.
+- **A project that is gone** leaves its database: `jerome doctor` lists it in a warning, and never deletes it. [`jerome forget <key>`](commands/forget.md) removes it after a backup.
+- **Projects from before** kept it in `.jerome/jerome.db`. It is still used there, so nothing is lost, until [`jerome update`](commands/update.md) moves it out with a backup and a row count of every table; `doctor` fails until then. `.jerome/jerome.db*` stays in `.gitignore`, so an older Jérôme never puts one in git.
 
 ## Who writes it
 

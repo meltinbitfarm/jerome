@@ -7,7 +7,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { MARKER } from './template.js';
-import { openDb, DB_FILE } from './db.js';
+import { openDb, dbPath } from './db.js';
 import { readState } from './state.js';
 import { readAccount, accountPath } from './account.js';
 import { findTranscript, delegations, leadCalls } from './delegations.js';
@@ -23,8 +23,8 @@ export async function view(dirArg, { port = 0, open = true } = {}) {
     console.error(notProjectMessage(dir));
     return 1;
   }
-  if (!existsSync(join(dir, DB_FILE))) {
-    console.error(`${DB_FILE} is missing: run \`jerome doctor\` to create it.`);
+  if (!existsSync(dbPath(dir))) {
+    console.error(`The project database is missing: run \`jerome doctor\` to create it.`);
     return 1;
   }
   let viewer;

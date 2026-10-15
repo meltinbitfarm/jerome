@@ -19,7 +19,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test --import ./test/isolate.js"
   },
   "repository": {
     "type": "git",

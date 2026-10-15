@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { MARKER } from './template.js';
-import { openDb, schemaVersion, DbTooNewError, DB_FILE, LATEST } from './db.js';
+import { openDb, schemaVersion, DbTooNewError, LATEST } from './db.js';
 import { projectAgents } from './agents.js';
 import { projectStatus, projectOver, projectSummary, globalLimits } from './budget.js';
 import { callPrice, TIER_SQL } from './models.js';
@@ -27,7 +27,7 @@ export async function state(dirArg, { json = false, runs = 3, agent = null, repl
     return 1;
   }
   if (!report) {
-    console.error(`${DB_FILE} is missing: run \`jerome doctor\` to create it.`);
+    console.error(`The project database is missing: run \`jerome doctor\` to create it.`);
     return 1;
   }
   console.log(json ? JSON.stringify(report, null, 2) : formatState(report, { replies }));
@@ -43,7 +43,7 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
   const db = openDb(dir, readOnly ? { readOnly: true, migrate: false } : {});
   if (!db) return null;
   try {
-    if (readOnly && schemaVersion(db) < LATEST) throw new Error(`${DB_FILE} is at schema ${schemaVersion(db)} of ${LATEST}: run \`jerome doctor\``);
+    if (readOnly && schemaVersion(db) < LATEST) throw new Error(`The project database is at schema ${schemaVersion(db)} of ${LATEST}: run \`jerome doctor\``);
     const since = {
       today: startOfLocalDay(now).toISOString(),
       week: new Date(now.getTime() - 7 * 86_400_000).toISOString(),

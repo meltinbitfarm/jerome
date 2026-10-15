@@ -50,7 +50,8 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome new <name> [--from-file <path\|->]`](docs/commands/new.md) | Creates a project from the template, with git and the lean profile, optionally from a brief |
 | [`jerome init [dir]`](docs/commands/init.md) | Brings Jérôme into an existing project, overwriting nothing |
 | [`jerome prompt`](docs/commands/prompt.md) | Prints the briefing instructions, to paste into any chat |
-| [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report |
+| [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report; relinks the database of a project that moved |
+| [`jerome forget <key>`](docs/commands/forget.md) | Removes the database of a project that is gone, after a backup |
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
 | [`jerome state [dir] [--json]`](docs/commands/state.md) | Shows a project's usage, runs and open decision requests in a few lines, with dollars as API equivalents |
 | [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, runs, usage, subscription windows and the messages between agents |

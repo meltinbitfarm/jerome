@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { cloneRoot, storeKey } from '../src/store.js';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 
@@ -109,4 +110,9 @@ export function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
   // runWithInput does both, e.g. a hook payload with CLAUDE_PROJECT_DIR set.
   const runWithInput = (extra, input, ...args) => call(extra, input, args);
   return { root, run, runWith, runInput, runWithInput };
+}
+
+// Where a sandbox project's database is (D93): the store under the sandbox's home, which the CLI runs with.
+export function sandboxDb(root, dir) {
+  return join(root, '.local', 'share', 'jerome', 'projects', storeKey(cloneRoot(dir)), 'jerome.db');
 }

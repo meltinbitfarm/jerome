@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 const root = mkdtempSync(join(tmpdir(), 'jerome-view-'));
 process.env.CLAUDE_CONFIG_DIR = join(root, 'claude-config');
 process.env.XDG_CONFIG_HOME = join(root, 'config');
-const { openDb } = await import('../src/db.js');
+const { openDb, dbPath } = await import('../src/db.js');
 const { startViewer } = await import('../src/view.js');
 const { readState } = await import('../src/state.js');
 
@@ -71,7 +71,7 @@ function get(path, { host, token = 'secret-token', method = 'GET', headers = {} 
   });
 }
 
-const fingerprint = () => createHash('sha256').update(readFileSync(join(dir, '.jerome', 'jerome.db'))).digest('hex');
+const fingerprint = () => createHash('sha256').update(readFileSync(dbPath(dir))).digest('hex');
 
 test('the viewer listens on 127.0.0.1 and refuses requests without the token, from another host, or that write', async () => {
   assert.match(viewer.url, /^http:\/\/127\.0\.0\.1:\d+\/\?t=secret-token$/);
@@ -136,5 +136,5 @@ test('the page builds every text with textContent, so transcript contents are ne
 test('jerome state --json carries the team too', () => {
   const s = readState(dir, { readOnly: true });
   assert.ok(s.team.subagents.length >= 1);
-  assert.equal(statSync(join(dir, '.jerome', 'jerome.db')).isFile(), true);
+  assert.equal(statSync(dbPath(dir)).isFile(), true);
 });

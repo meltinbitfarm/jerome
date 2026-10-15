@@ -248,7 +248,7 @@ Daily and weekly limits per project and global; the global ones are in % of the 
 ## After phase 9 — Project layout
 
 Jérôme's state moves into `.jerome/` and the lead agent's instructions into `.claude/rules/jerome.md` (D87), so a project's root stays its own; `jerome init` adopts an existing project without overwriting anything (D88); `jerome update` moves older projects once (D89).
-**Status: done (2026-10-15).** 126 tests with `npm test`, among them `init` on a project with its own CLAUDE.md, settings, skill and docs, and the move of an old project with its git history, database, agents and a changed CLAUDE.md. claude-watch moved on a branch and merged: same call cost once committed, its tests pass. Jérôme's own repository moved in a separate commit (D91). The database move was then made safe against branch switches (D92).
+**Status: done (2026-10-15).** 131 tests with `npm test`, among them `init` on a project with its own CLAUDE.md, settings, skill and docs, and the move of an old project with its git history, database, agents and a changed CLAUDE.md. claude-watch moved on a branch and merged: same call cost once committed, its tests pass. Jérôme's own repository moved in a separate commit (D91). The database move was then made safe against branch switches (D92), and the database moved out of the working tree, one per clone, with relinking of moved projects (D93).
 
 ## Before the public release
 

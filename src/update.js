@@ -5,7 +5,10 @@ import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
 import { TEMPLATE_DIR, VERSION, MARKER, templatePlan, behind, reconciled, writeMarker, isJeromeRepo } from './template.js';
 import { notProjectMessage, isLegacy, isProject } from './paths.js';
-import { layoutPlan, describeLayoutPlan, migrateLayout, busy } from './migrate.js';
+import { layoutPlan, describeLayoutPlan, migrateLayout, moveTreeDatabase, busy } from './migrate.js';
+import { treeDb } from './db.js';
+import { storeDir, STORE_DB } from './store.js';
+import { TREE_DB } from './paths.js';
 import { jobLabel } from './schedule.js';
 import { homedir } from 'node:os';
 
@@ -21,6 +24,11 @@ export async function update(dirArg, { check = false, yes = false } = {}) {
   if (!existsSync(join(dir, MARKER))) {
     console.error(notProjectMessage(dir));
     return 1;
+  }
+  // A database still in .jerome/ moves out of the working tree (D93), once, after confirmation.
+  if (treeDb(dir)) {
+    const result = await moveDatabase(dir, { check, yes });
+    if (result !== 0) return result;
   }
   if (isJeromeRepo(dir)) {
     console.error(`${dir} is Jérôme's own repository: its template lives in template/, there is nothing to update.`);
@@ -99,8 +107,7 @@ async function migrate(dir, { check, yes }) {
   console.log(`This project keeps Jérôme's files at its root. Jérôme ${VERSION} keeps them in .jerome/ and the lead agent's instructions in .claude/rules/jerome.md:`);
   console.log(describeLayoutPlan(plan));
   if (check) return 1;
-  const lock = join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'jerome', 'locks', `${jobLabel(dir)}.lock`);
-  const why = busy(dir, lock);
+  const why = busy(dir, lockPath(dir));
   if (why) {
     console.error(`\nNot now: ${why}. Nothing was moved.`);
     return 1;
@@ -128,14 +135,52 @@ async function migrate(dir, { check, yes }) {
     return 1;
   }
   console.log(`✓ Moved to .jerome/ (tracked files with git mv: review and commit the moves)${plan.keepLead ? '. CLAUDE.md was changed in this project and stays as its own: check that it does not repeat or contradict .claude/rules/jerome.md' : ''}`);
-  if (moved.db) {
-    const rows = Object.entries(moved.db.rows).map(([t, n]) => `${n} ${t}`).join(', ');
-    console.log(`  database: ${rows}, copied and checked; a backup is in ${moved.db.backup}`);
-  }
-  // Git deletes ignored files that stand where it must put a tracked one: checking out a branch or commit from
-  // before the move, where .jerome is a file, removes .jerome/jerome.db (D92).
-  console.log('! Move on the branch you keep working on, and commit there. Checking out a branch or commit from before the move deletes .jerome/jerome.db: git removes ignored files that stand where it must put .jerome as a file. Merge or delete those branches, and keep the backup until then.');
+  if (moved.db) printMovedDb(moved.db);
+  console.log('! Move on the branch you keep working on, and commit there; then merge or delete the branches from before the move, where .jerome is still a file.');
   return 0;
+}
+
+// The database from .jerome/jerome.db to the store, outside the working tree (D93), with the checks of D92.
+async function moveDatabase(dir, { check, yes }) {
+  console.log(`The project database is in the working tree, where a checkout or \`git clean -X\` can delete it. Jérôme ${VERSION} keeps it outside:`);
+  console.log(`  move        ${TREE_DB} → ${join(storeDir(dir), STORE_DB)}`);
+  if (check) return 1;
+  const why = busy(dir, lockPath(dir), TREE_DB);
+  if (why) {
+    console.error(`\nNot now: ${why}. Nothing was moved.`);
+    return 1;
+  }
+  if (!yes) {
+    if (!process.stdin.isTTY) {
+      console.error('\nNothing was moved: run `jerome update` in a terminal to confirm, or add --yes.');
+      return 1;
+    }
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      if (!await confirm(rl, '\nMove it?')) {
+        console.log('Nothing was moved.');
+        return 1;
+      }
+    } finally {
+      rl.close();
+    }
+  }
+  try {
+    printMovedDb(moveTreeDatabase(dir));
+  } catch (err) {
+    console.error(`\nNot moved: ${err.message}`);
+    return 1;
+  }
+  return 0;
+}
+
+function printMovedDb(db) {
+  const rows = Object.entries(db.rows).map(([t, n]) => `${n} ${t}`).join(', ');
+  console.log(`✓ Database moved to ${db.path}: ${rows}, copied and checked; a backup is in ${db.backup}`);
+}
+
+function lockPath(dir) {
+  return join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'jerome', 'locks', `${jobLabel(dir)}.lock`);
 }
 
 async function confirm(rl, question) {

@@ -1,15 +1,15 @@
-// The project database (D51, D54, D87): `.jerome/jerome.db`, kept out of git, written only by the CLI
+// The project database (D51, D54, D93): outside the working tree, in the store of store.js, written only by the CLI
 // and the hooks (D56). The schema version is SQLite's `user_version`; numbered migrations in the package bring
 // it up to date, each in its own transaction.
 import { DatabaseSync } from 'node:sqlite';
-import { closeSync, existsSync, mkdirSync, openSync, readSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { closeSync, existsSync, openSync, readSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-import { DB_FILE } from './paths.js';
+import { TREE_DB } from './paths.js';
+import { storeDir, writeRecord, completeRecord, STORE_DB } from './store.js';
 
-export { DB_FILE };
-// The files SQLite keeps next to the database in WAL mode.
-export const DB_FILES = [DB_FILE, `${DB_FILE}-wal`, `${DB_FILE}-shm`];
+// How messages name it, now that its path is not the project's.
+export const DB_FILE = 'the project database';
 export const MIGRATIONS_DIR = join(import.meta.dirname, '..', 'migrations');
 
 // Retention (D55): usage rows are summed into usage_daily after 90 days; events and transcript offsets
@@ -19,7 +19,7 @@ export const EVENT_DAYS = 30;
 
 export class DbTooNewError extends Error {
   constructor(version, latest) {
-    super(`${DB_FILE} has schema version ${version}, this Jérôme knows up to ${latest}: update Jérôme`);
+    super(`The project database has schema version ${version}, this Jérôme knows up to ${latest}: update Jérôme`);
     this.version = version;
     this.latest = latest;
   }
@@ -39,8 +39,17 @@ export function migrations(dir = MIGRATIONS_DIR) {
 
 export const LATEST = migrations().length;
 
+// The database in the store; until `jerome update` moves it there, the one a project still has in .jerome/ (D93),
+// so nothing is lost in between.
 export function dbPath(dir) {
-  return join(dir, DB_FILE);
+  const stored = join(storeDir(dir), STORE_DB);
+  if (!existsSync(stored) && treeDb(dir)) return join(dir, TREE_DB);
+  return stored;
+}
+
+// A database still in the working tree (D87-D92), which `jerome update` moves to the store.
+export function treeDb(dir) {
+  return existsSync(join(dir, TREE_DB));
 }
 
 // Opens the project database. With create, a missing file is created; with migrate, pending migrations are applied.
@@ -48,7 +57,9 @@ export function dbPath(dir) {
 export function openDb(dir, { create = false, migrate = true, readOnly = false } = {}) {
   const path = dbPath(dir);
   if (!existsSync(path) && !create) return null;
-  if (create) mkdirSync(dirname(path), { recursive: true });
+  // A new database in the store gets its record: the folder it belongs to and the repository's fingerprint.
+  if (create && !existsSync(path)) writeRecord(dir);
+  else if (!readOnly) completeRecord(dir);
   const db = new DatabaseSync(path, { readOnly });
   db.exec('PRAGMA busy_timeout = 5000');
   if (!readOnly) {
@@ -72,7 +83,7 @@ export function peekVersion(dir) {
   try {
     const header = Buffer.alloc(100);
     if (readSync(fd, header, 0, 100, 0) < 100 || header.toString('latin1', 0, 15) !== 'SQLite format 3') {
-      throw new Error(`${DB_FILE} is not a SQLite database`);
+      throw new Error(`${dbPath(dir)} is not a SQLite database`);
     }
     return header.readUInt32BE(60);
   } finally {

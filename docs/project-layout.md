@@ -14,8 +14,7 @@ my-project/
 │   ├── brief.md                the original brief
 │   ├── digest.md               one line per heartbeat
 │   ├── docs-queue.md           documentation changes waiting for the documentarist
-│   ├── notes/                  the agents' detailed reports
-│   └── jerome.db               runs, usage, events, decision requests (kept out of git)
+│   └── notes/                  the agents' detailed reports
 ├── .claude/
 │   ├── rules/jerome.md         the lead agent's instructions (from the template)
 │   ├── skills/                 project-brief, project-team, docs (from the template)
@@ -35,10 +34,12 @@ When the project has its own `CLAUDE.md`, both are loaded in every session and e
 
 ## What is versioned
 
-Everything in `.jerome/` but the database, and everything in `.claude/` but `settings.local.json`. Moves of state files are ordinary commits, so their history stays with them.
+The database is not in the project: it lives outside the working tree, where no checkout reaches it (see [database.md](database.md#where-it-lives)).
+
+Everything in `.jerome/`, and everything in `.claude/` but `settings.local.json`. Moves of state files are ordinary commits, so their history stays with them.
 
 Uncommitted changes cost tokens: Claude Code puts the repository's status in the context of every call, so a long list of changed files is paid again at each one (about 500 tokens with some thirty changes on a real project).
 
 ## Projects from before `.jerome/`
 
-Projects created by earlier versions kept these files at their root. `jerome update` moves them once, with `git mv`, after asking, and moves the database with a backup and a check of every table (see [update.md](commands/update.md#moving-an-older-project-to-jerome)). Do it on the branch you keep working on: checking out a branch from before the move deletes the database, which git ignores.
+Projects created by earlier versions kept these files at their root. `jerome update` moves them once, with `git mv`, after asking, and moves the database out of the working tree with a backup and a check of every table (see [update.md](commands/update.md#moving-an-older-project-to-jerome)). Do it on the branch you keep working on.

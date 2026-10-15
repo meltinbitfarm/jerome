@@ -17,7 +17,9 @@ export const STATE = {
 };
 export const NOTES_DIR = '.jerome/notes';
 export const QUEUE = '.jerome/docs-queue.md';
-export const DB_FILE = '.jerome/jerome.db';
+// The database lived here from D87 to D93; it now lives outside the working tree (store.js). The line stays in
+// .gitignore, so a Jérôme from before D93 never puts it in git.
+export const TREE_DB = '.jerome/jerome.db';
 export const DB_IGNORE = '.jerome/jerome.db*';
 
 // Before D87 the marker was a file named `.jerome` at the root, next to the state files.

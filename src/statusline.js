@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { claudeConfigDir } from './claude.js';
 import { MARKER } from './template.js';
 import { recordWindows, WINDOWS } from './account.js';
-import { openDb } from './db.js';
+import { openDb, dbPath } from './db.js';
 import { projectStatus, globalLimits, money, limitText } from './budget.js';
 
 export const STATUSLINE_COMMAND = 'jerome statusline';
@@ -37,7 +37,10 @@ export async function statusline({ input = readStdin(), env = process.env } = {}
   }
   const dir = env.CLAUDE_PROJECT_DIR ?? data.workspace?.project_dir ?? data.cwd;
   try {
-    const status = dir && existsSync(join(dir, MARKER)) ? projectToday(dir) : null;
+    const project = dir && existsSync(join(dir, MARKER));
+    // A project without its database records nothing (D93): it may have moved, and doctor relinks it.
+    if (project && !existsSync(dbPath(dir))) parts.push(paint('no database: run jerome doctor', 'over'));
+    const status = project ? projectToday(dir) : null;
     if (status) parts.push(paint(`today ${money(status.usd)}${status.limit ? `/${limitText(status.limit)}` : ''} API`, status.level));
   } catch {
     // Without the database the line shows the rest.

@@ -3,12 +3,12 @@
 // `.claude/rules/jerome.md` (brought by the template update that follows). Tracked files move with `git mv`, so
 // their history follows them. Run once, by `jerome update`, after the user confirms.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { basename, dirname, join } from 'node:path';
-import { JEROME_DIR, PROJECT_FILE, STATE, NOTES_DIR, QUEUE, DB_FILE, DB_IGNORE, LEGACY } from './paths.js';
+import { JEROME_DIR, PROJECT_FILE, STATE, NOTES_DIR, QUEUE, TREE_DB, DB_IGNORE, LEGACY } from './paths.js';
+import { storeDir, writeRecord, backupsDir, STORE_DB } from './store.js';
 
 const sha = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
@@ -39,12 +39,12 @@ export function layoutPlan(dir) {
   const gitignorePath = join(dir, '.gitignore');
   const gitignore = existsSync(gitignorePath) && readFileSync(gitignorePath, 'utf8').split('\n').some((l) => l.trim() === LEGACY.dbIgnore);
   const db = existsSync(join(dir, LEGACY.db));
-  return { moves, removeLead, keepLead, agents, gitignore, db };
+  return { dir, moves, removeLead, keepLead, agents, gitignore, db };
 }
 
 export function describeLayoutPlan(plan) {
   const lines = plan.moves.map((m) => `  move        ${m.from} → ${m.to}`);
-  if (plan.db) lines.push(`  move        ${LEGACY.db} → ${DB_FILE}`);
+  if (plan.db) lines.push(`  move        ${LEGACY.db} → ${join(storeDir(plan.dir), STORE_DB)} (outside the working tree)`);
   if (plan.removeLead) lines.push(`  remove      ${LEGACY.lead} (the template's, replaced by .claude/rules/jerome.md)`);
   if (plan.keepLead) lines.push(`  keep        ${LEGACY.lead} (changed in this project: it stays as the project's own)`);
   for (const a of plan.agents) lines.push(`  paths       ${a} (${LEGACY.queue} → ${QUEUE}, notes/ → ${NOTES_DIR}/)`);
@@ -68,9 +68,9 @@ function move(dir, from, to) {
 }
 
 // Something still running in the project: the move must wait, since the database and the files are in use.
-export function busy(dir, lockPath) {
+export function busy(dir, lockPath, from = LEGACY.db) {
   if (lockPath && existsSync(lockPath)) return 'a heartbeat of this project is running';
-  const db = join(dir, LEGACY.db);
+  const db = join(dir, from);
   if (!existsSync(db)) return null;
   const d = new DatabaseSync(db, { readOnly: true });
   try {
@@ -87,8 +87,8 @@ export function busy(dir, lockPath) {
 export function migrateLayout(dir, plan, options = {}) {
   const marker = readLegacyMarker(dir);
 
-  // The database is checked before anything moves, and put in place once .jerome/ exists (prepareDatabase).
-  const db = plan.db ? prepareDatabase(dir, options) : null;
+  // The database is checked before anything moves, and put in place once the files have moved (prepareDatabase).
+  const db = plan.db ? prepareDatabase(dir, LEGACY.db, options) : null;
 
   // The marker file becomes the folder of the same name: through a temporary name, so git keeps its history.
   const temp = '.jerome-project.json';
@@ -96,7 +96,7 @@ export function migrateLayout(dir, plan, options = {}) {
   mkdirSync(join(dir, JEROME_DIR), { recursive: true });
   move(dir, temp, PROJECT_FILE);
   for (const m of plan.moves.slice(1)) move(dir, m.from, m.to);
-  if (db) finishDatabase(dir);
+  if (db) finishDatabase(dir, LEGACY.db);
 
   // An empty marker (from before the record existed) becomes a record with its schema, so it can be read.
   marker.schema ??= 'jerome.project/v1';
@@ -144,43 +144,55 @@ export function countRows(path) {
 
 // Where a database is copied before a move, outside the working tree: no git command can remove it there.
 export function backupPath(dir, now = new Date()) {
-  const cache = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
   const id = createHash('sha256').update(dir).digest('hex').slice(0, 8);
-  return join(cache, 'jerome', 'backups', `${basename(dir)}-${id}-${now.toISOString().replace(/[:.]/g, '-')}.db`);
+  return join(backupsDir(), `${basename(dir)}-${id}-${now.toISOString().replace(/[:.]/g, '-')}.db`);
 }
 
-// The database moves in two steps (D89, fixed by D92), never through git, which ignores it. Before anything else
-// moves: a backup outside the repository, where no git command can remove it, a checkpoint so the main file holds
-// everything, and a copy next to the original whose row count in every table must match. If it does not, the copy
-// is removed and nothing has moved. After .jerome/ exists, the checked copy takes its place and only then is the
-// original deleted.
-const STAGED = '.jerome.db.moving';
+// The database moves in two steps (D89, D92), never through git, which ignores it, and since D93 out of the
+// working tree, to the store. First: a backup outside the repository, a checkpoint so the main file holds
+// everything, and a copy in the store whose row count in every table must match. If it does not, the copy is
+// removed and nothing has moved. Then the checked copy takes its place and only then is the original deleted.
+const STAGED = `${STORE_DB}.moving`;
 
-export function prepareDatabase(dir, { copy = copyFileSync } = {}) {
-  const from = join(dir, LEGACY.db);
-  const staged = join(dir, STAGED);
-  const db = new DatabaseSync(from);
+export function prepareDatabase(dir, from, { copy = copyFileSync } = {}) {
+  const source = join(dir, from);
+  const store = storeDir(dir);
+  if (existsSync(join(store, STORE_DB))) throw new Error(`${join(store, STORE_DB)} already exists next to ${from}: nothing was moved; keep the one you need and remove the other`);
+  const db = new DatabaseSync(source);
   db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   db.close();
   const backup = backupPath(dir);
   mkdirSync(dirname(backup), { recursive: true });
-  copyFileSync(from, backup);
-  const before = countRows(from);
-  copy(from, staged);
+  copyFileSync(source, backup);
+  const before = countRows(source);
+  mkdirSync(store, { recursive: true });
+  const staged = join(store, STAGED);
+  copy(source, staged);
   let after;
   try {
     after = countRows(staged);
   } catch {
     after = null;
   }
+  // Reading the copy leaves SQLite's -wal and -shm files next to it, empty: they go, and the copy too if it differs.
+  for (const suffix of ['-wal', '-shm']) rmSync(`${staged}${suffix}`, { force: true });
   if (!after || JSON.stringify(after) !== JSON.stringify(before)) {
     rmSync(staged, { force: true });
-    throw new Error(`the copied database does not match the original (${JSON.stringify(before)} against ${JSON.stringify(after)}): nothing was moved, the original is still at ${LEGACY.db}, a backup is at ${backup}`);
+    throw new Error(`the copied database does not match the original (${JSON.stringify(before)} against ${JSON.stringify(after)}): nothing was moved, the original is still at ${from}, a backup is at ${backup}`);
   }
-  return { backup, rows: before };
+  return { backup, rows: before, path: join(store, STORE_DB) };
 }
 
-export function finishDatabase(dir) {
-  renameSync(join(dir, STAGED), join(dir, DB_FILE));
-  for (const suffix of ['', '-wal', '-shm']) rmSync(join(dir, `${LEGACY.db}${suffix}`), { force: true });
+export function finishDatabase(dir, from) {
+  const store = storeDir(dir);
+  renameSync(join(store, STAGED), join(store, STORE_DB));
+  writeRecord(dir, store);
+  for (const suffix of ['', '-wal', '-shm']) rmSync(join(dir, `${from}${suffix}`), { force: true });
+}
+
+// A database still in .jerome/ (D87-D92) goes to the store (D93), with the same checks.
+export function moveTreeDatabase(dir, options = {}) {
+  const moved = prepareDatabase(dir, TREE_DB, options);
+  finishDatabase(dir, TREE_DB);
+  return moved;
 }

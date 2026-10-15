@@ -9,7 +9,7 @@ import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { MARKER, readMarker } from './template.js';
-import { openDb, DB_FILE } from './db.js';
+import { openDb, dbPath } from './db.js';
 import { isTrusted } from './limits.js';
 import { isProvisional } from './brief.js';
 import { runDoctor } from './doctor.js';
@@ -43,8 +43,14 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date() } 
     notify(env, basename(dir), 'Heartbeat not started: run `jerome update` to move the project to .jerome/');
     return 1;
   }
-  if (!existsSync(join(dir, MARKER)) || !existsSync(join(dir, DB_FILE))) {
-    log(`not started: ${dir} is not a Jérôme project with a database`);
+  if (!existsSync(join(dir, MARKER))) {
+    log(`not started: ${dir} is not a Jérôme project`);
+    return 1;
+  }
+  if (!existsSync(dbPath(dir))) {
+    // A project that moved finds no database at its new path (D93): doctor relinks it, with a person's choice.
+    log('not started: the project has no database; run `jerome doctor` (it relinks the database of a project that moved)');
+    notify(env, basename(dir), 'Heartbeat not started: run `jerome doctor`');
     return 1;
   }
   const settings = readMarker(dir).heartbeat ?? {};

@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sandbox } from './sandbox.js';
+import { sandbox, sandboxDb } from './sandbox.js';
 import { openDb, applyMigrations, schemaVersion, prune, migrations, LATEST } from '../src/db.js';
 import { ingestTranscript, parseCall } from '../src/usage.js';
 import { recordWindows, readAccount } from '../src/account.js';
@@ -31,14 +31,14 @@ test('a new project gets the database from doctor, kept out of git; doctor --che
   const { root, run } = sandbox();
   assert.equal(run('new', 'demo').status, 0);
   const dir = join(root, 'demo');
-  assert.ok(existsSync(join(dir, '.jerome', 'jerome.db')));
+  // Outside the working tree (D93); the .gitignore line stays, for a Jérôme from before it.
+  assert.ok(existsSync(sandboxDb(root, dir)));
+  assert.ok(!existsSync(join(dir, '.jerome', 'jerome.db')));
   assert.match(readFileSync(join(dir, '.gitignore'), 'utf8'), /^\.jerome\/jerome\.db\*$/m);
-  const ignored = spawnSync('git', ['check-ignore', '.jerome/jerome.db', '.jerome/jerome.db-wal'], { cwd: dir });
-  assert.equal(ignored.status, 0);
   const r = run('doctor', 'demo', '--check', '--json');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.equal(JSON.parse(r.stdout).checks.find((c) => c.id === 'db').detail, `schema ${LATEST}`);
-  assert.ok(!existsSync(join(dir, '.jerome', 'jerome.db-shm')), '--check must not open the database');
+  assert.ok(!existsSync(`${sandboxDb(root, dir)}-shm`), '--check must not open the database');
   // The SQLite experimental warning never reaches the output.
   assert.doesNotMatch(r.stderr, /ExperimentalWarning/);
 });
@@ -47,11 +47,11 @@ test('doctor --check fails without the database, and doctor creates it', () => {
   const { root, run } = sandbox();
   assert.equal(run('new', 'demo').status, 0);
   const dir = join(root, 'demo');
-  for (const f of ['jerome.db', 'jerome.db-wal', 'jerome.db-shm']) if (existsSync(join(dir, '.jerome', f))) spawnSync('rm', [join(dir, '.jerome', f)]);
+  for (const f of ['', '-wal', '-shm']) spawnSync('rm', ['-f', `${sandboxDb(root, dir)}${f}`]);
   const check = run('doctor', 'demo', '--check');
   assert.equal(check.status, 1);
-  assert.match(check.stdout, /✗ Project database — \.jerome\/jerome\.db is missing/);
-  assert.match(run('doctor', 'demo').stdout, /✓ Project database — \.jerome\/jerome\.db created \(schema 1\)/);
+  assert.match(check.stdout, /✗ Project database — missing: run `jerome doctor` to create it/);
+  assert.match(run('doctor', 'demo').stdout, /✓ Project database — created in .*\/\.local\/share\/jerome\/projects\/demo-[0-9a-f]{12}\/jerome\.db \(schema \d+\)/);
 });
 
 test('a new migration keeps the existing data, and a newer database is refused', () => {
@@ -170,7 +170,7 @@ test('jerome state on a project without the database says how to create it', () 
   writeFileSync(join(root, 'p', '.jerome', 'project.json'), '');
   const r = run('state', 'p');
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /\.jerome\/jerome\.db is missing: run `jerome doctor`/);
+  assert.match(r.stderr, /The project database is missing: run `jerome doctor`/);
   assert.equal(run('state', 'p', '--runs', 'x').status, 2);
 });
 

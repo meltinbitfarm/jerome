@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { basename, join, resolve } from 'node:path';
 import { MARKER } from './template.js';
 import { STATE } from './paths.js';
-import { openDb, DB_FILE } from './db.js';
+import { openDb } from './db.js';
 import { n, dollars } from './state.js';
 import { callPrice, TIER_SQL } from './models.js';
 import { notProjectMessage } from './paths.js';
@@ -50,7 +50,7 @@ export function formatDigest(dir, from, days) {
     } finally {
       db.close();
     }
-  } else out.push(`(${DB_FILE} missing: no figures)`);
+  } else out.push("(no project database: no figures)");
   try {
     const commits = execFileSync('git', ['log', 'main', '--first-parent', '--oneline', `--since=${from.toISOString()}`], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
       .split('\n').filter(Boolean).length;

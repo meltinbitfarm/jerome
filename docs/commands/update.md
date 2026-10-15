@@ -52,7 +52,7 @@ This project keeps Jérôme's files at its root. Jérôme 0.1.0 keeps them in .j
   move        PROJECT.md → .jerome/PROJECT.md
   …
   move        docs/_pending.md → .jerome/docs-queue.md
-  move        .jerome.db → .jerome/jerome.db
+  move        .jerome.db → /Users/you/.local/share/jerome/projects/my-project-3f2a9c1b7d04/jerome.db (outside the working tree)
   remove      CLAUDE.md (the template's, replaced by .claude/rules/jerome.md)
   paths       .claude/agents/developer.md (docs/_pending.md → .jerome/docs-queue.md, notes/ → .jerome/notes/)
   .gitignore  .jerome.db* → .jerome/jerome.db*
@@ -61,11 +61,23 @@ This project keeps Jérôme's files at its root. Jérôme 0.1.0 keeps them in .j
 - Tracked files move with `git mv`, so their history follows them: review the moves and commit them.
 - The root `CLAUDE.md` is removed only if it is still the template's, as its recorded hash shows. If it was changed in the project, it stays as the project's own, and `update` says to check that it does not repeat or contradict `jerome.md`.
 - In the agents of `.claude/agents/`, which are the project's files, only the two moved paths are rewritten.
-- The database never goes through git, which ignores it. Before anything else moves, it is copied to a backup outside the repository (`~/.cache/jerome/backups/`), checkpointed, and copied next to the original; only if every table has the same number of rows in the copy does the move go on, and the original is deleted only once the copy is in `.jerome/`. Otherwise nothing moves. If a session or a heartbeat is running in the project, nothing moves either: run it again once they are done.
-- **Move on the branch you keep working on, and commit there.** Branches and commits from before the move still have `.jerome` as a file: checking one out deletes `.jerome/jerome.db`, because git removes ignored files that stand where it must put a tracked one. Merge or delete those branches, and keep the backup until then. This is how a real project lost its database: moved on a side branch, then `git switch main`.
+- The database never goes through git, which ignores it, and goes out of the working tree (see [database.md](../database.md#where-it-lives)). Before anything else moves, it is copied to a backup (`~/.cache/jerome/backups/`), checkpointed, and copied to its new place; only if every table has the same number of rows in the copy does the move go on, and the original is deleted only once the copy is in place. Otherwise nothing moves. If a session or a heartbeat is running in the project, nothing moves either: run it again once they are done.
+- **Move on the branch you keep working on, and commit there**, then merge or delete the branches from before the move, where `.jerome` is still a file.
 - `--check` shows the moves without making them.
 
 Until a project is moved, `jerome doctor` fails with the command to run, its hooks record nothing, and heartbeats do not start.
+
+## Moving the database out of `.jerome/`
+
+Projects moved to `.jerome/` before the database left the working tree have it in `.jerome/jerome.db`, where a checkout of a branch from before the move, or `git clean -X`, can delete it. A real project lost its database this way: moved on a side branch, then `git switch main`. `jerome update` moves it out, after asking (`--yes` skips the question, `--check` only shows it), with the same backup and row count:
+
+```
+The project database is in the working tree, where a checkout or `git clean -X` can delete it. Jérôme 0.1.0 keeps it outside:
+  move        .jerome/jerome.db → /Users/you/.local/share/jerome/projects/my-project-3f2a9c1b7d04/jerome.db
+✓ Database moved to …/jerome.db: 23 runs, 218 usage, 0 usage_daily, 31 transcript_reads, 14 events, 2 requests, copied and checked; a backup is in …
+```
+
+Until then the database is still used where it is, and `jerome doctor` fails with the command to run.
 
 ## The `.jerome/project.json` file
 

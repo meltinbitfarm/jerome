@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks } from './checks.js';
-import { notProjectMessage, isLegacy, LEAD_FILE, STATE, DB_IGNORE, LEGACY, PROJECT_FILE } from './paths.js';
+import { notProjectMessage, isLegacy, LEAD_FILE, STATE, DB_IGNORE, LEGACY, PROJECT_FILE, TREE_DB } from './paths.js';
 import { startProgress } from './progress.js';
 import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './template.js';
 import { isProvisional, misplacedSections } from './brief.js';
@@ -11,7 +11,9 @@ import { planHooks, applyHooks } from './hookconfig.js';
 import { latestSession, toolProblems } from './session-shape.js';
 import { projectLimitSettings } from './budget.js';
 import { heartbeatProblems, rescheduleCommand } from './schedule.js';
-import { openDb, dbPath, schemaVersion, peekVersion, applyMigrations, LATEST, DB_FILE } from './db.js';
+import { openDb, dbPath, treeDb, schemaVersion, peekVersion, applyMigrations, LATEST } from './db.js';
+import { candidates, relink, stores, describeStore, storeSummary } from './store.js';
+import { createInterface } from 'node:readline/promises';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
   splitProfileKeys, ensureGitignored, inspectContext, findLeaks, overrideFor, parseTokens,
@@ -26,8 +28,9 @@ export const DOCTOR_SCHEMA = 'jerome.doctor/v1';
 // Keyed by file name: jerome.md is the lead agent's instructions (D87), CLAUDE.md before it.
 export const BUDGETS = { 'jerome.md': 680, 'PROJECT.md': 800 };
 
-export async function doctor(dirArg, { json = false, check = false } = {}) {
-  const report = await runDoctor(resolve(dirArg), { fix: !check });
+export async function doctor(dirArg, { json = false, check = false, yes = false, relink: relinkKey = null, newDb = false } = {}) {
+  const ask = !json && process.stdin.isTTY ? askChoice : null;
+  const report = await runDoctor(resolve(dirArg), { fix: !check, db: { yes, relinkKey, newDb, ask } });
   if (json) console.log(JSON.stringify(report, null, 2));
   else printReport(report);
   return report.ok ? 0 : 1;
@@ -36,7 +39,7 @@ export async function doctor(dirArg, { json = false, check = false } = {}) {
 // Runs every check and returns the report that both the human and the JSON output are built from.
 // With setup: false the setup checks are skipped (jerome new has already run them).
 // With fix: false (`--check`) nothing is written: needed changes are reported as pending and make the profile check fail.
-export async function runDoctor(dir, { setup = true, fix = true } = {}) {
+export async function runDoctor(dir, { setup = true, fix = true, db: dbOptions = {} } = {}) {
   const report = {
     schema: DOCTOR_SCHEMA, ok: false, jerome: VERSION, mode: fix ? 'fix' : 'check', project: dir,
     checks: [], limits: null, hooks: null, db: null, profile: null, context: null, warnings: [],
@@ -63,9 +66,11 @@ export async function runDoctor(dir, { setup = true, fix = true } = {}) {
   }
   const beat = heartbeatCheck(dir);
   if (beat) report.checks.push(beat);
-  const db = dbCheck(dir, { fix });
+  const db = await dbCheck(dir, { fix, ...dbOptions });
   report.db = db.db;
   report.checks.push(db.check);
+  const orphans = orphanWarning(db.offered ?? []);
+  if (orphans) report.warnings.push(orphans);
 
   if (setup) {
     const results = setupChecks();
@@ -256,20 +261,42 @@ function heartbeatCheck(dir) {
     : { id: 'heartbeat', ok: true, label: 'Heartbeat job', detail: 'scheduled and loaded' };
 }
 
-// The project database (D51, D54): created and brought to the latest schema with fix, and kept out of git.
-// With --check a missing or outdated database fails the check; a database newer than this Jérôme always does.
-function dbCheck(dir, { fix }) {
+// The project database (D51, D54, D93): created and brought to the latest schema with fix; it lives outside the
+// working tree. With --check a missing or outdated database fails the check; a database newer than this Jérôme
+// always does. When it is missing and orphan databases of the same repository exist, the project may have moved:
+// one is relinked only with a person's choice, or with --yes when it is the only one; nothing is created meanwhile.
+async function dbCheck(dir, { fix, yes = false, relinkKey = null, newDb = false, ask = null }) {
   const label = 'Project database';
-  const fail = (detail, db = null) => ({ db, check: { id: 'db', ok: false, label, detail } });
+  const fail = (detail, db = null, offered = []) => ({ db, offered, check: { id: 'db', ok: false, label, detail } });
   try {
+    // Kept in .gitignore, so a Jérôme from before D93 never puts a database it creates in .jerome/ into git.
     const ignored = !ensureGitignored(dir, { write: fix, entry: DB_IGNORE });
+    if (treeDb(dir)) return fail(`still in the working tree (${TREE_DB}), where a checkout or \`git clean -X\` can delete it: run \`jerome update\` to move it out`);
+    let relinked = null;
+    if (!existsSync(dbPath(dir)) && !newDb) {
+      const found = relinkKey ? stores().filter((s) => s.key === relinkKey && s.orphan) : candidates(dir);
+      if (relinkKey && !found.length) return fail(`${relinkKey} is not a database left by a project that moved`);
+      if (found.length) {
+        const list = found.map((s) => `${describeStore(s)}, ${storeSummary(s)}`).join('; ');
+        if (!fix) return fail(`missing, and ${found.length === 1 ? 'a database' : `${found.length} databases`} of this repository left by a folder that no longer holds the project: ${list}. Run \`jerome doctor\` to relink`, null, found);
+        let chosen = null;
+        if (relinkKey || (yes && found.length === 1)) chosen = found[0];
+        else if (!yes && ask) chosen = await ask(found);
+        if (!chosen) {
+          const how = found.length === 1 && !yes ? `\`jerome doctor --yes\` relinks it` : `choose with \`jerome doctor --relink <key>\``;
+          return fail(`missing, and not relinked: ${list}. ${how}, or \`jerome doctor --new-db\` starts an empty one instead. Nothing was created`, null, found);
+        }
+        relink(dir, chosen);
+        relinked = { key: chosen.key, from: chosen.record?.path ?? null };
+      }
+    }
     if (!fix) {
-      if (!existsSync(dbPath(dir))) return fail(`${DB_FILE} is missing: run \`jerome doctor\` to create it`);
+      if (!existsSync(dbPath(dir))) return fail('missing: run `jerome doctor` to create it');
       const version = peekVersion(dir);
-      if (version > LATEST) return fail(`${DB_FILE} has schema version ${version}, this Jérôme knows up to ${LATEST}: update Jérôme`);
-      const info = { version, latest: LATEST, applied: [] };
-      if (version < LATEST) return fail(`${DB_FILE} is at schema ${version} of ${LATEST}: run \`jerome doctor\` to migrate it`, info);
-      if (!ignored) return fail(`${DB_FILE} is not in .gitignore: run \`jerome doctor\``, info);
+      if (version > LATEST) return fail(`schema version ${version}, this Jérôme knows up to ${LATEST}: update Jérôme`);
+      const info = { version, latest: LATEST, applied: [], path: dbPath(dir) };
+      if (version < LATEST) return fail(`at schema ${version} of ${LATEST}: run \`jerome doctor\` to migrate it`, info);
+      if (!ignored) return fail(`${DB_IGNORE} is not in .gitignore: run \`jerome doctor\``, info);
       return { db: info, check: { id: 'db', ok: true, label, detail: `schema ${version}` } };
     }
     const existed = existsSync(dbPath(dir));
@@ -277,11 +304,45 @@ function dbCheck(dir, { fix }) {
     const applied = applyMigrations(db);
     const version = schemaVersion(db);
     db.close();
-    const detail = !existed ? `${DB_FILE} created (schema ${version})` : applied.length ? `migrated to schema ${version}` : `schema ${version}`;
-    return { db: { version, latest: LATEST, applied }, check: { id: 'db', ok: true, label, detail } };
+    const detail = relinked ? `relinked from ${relinked.from} (schema ${version})` : !existed ? `created in ${dbPath(dir)} (schema ${version})` : applied.length ? `migrated to schema ${version}` : `schema ${version}`;
+    return { db: { version, latest: LATEST, applied, path: dbPath(dir), relinked }, check: { id: 'db', ok: true, label, detail } };
   } catch (err) {
     return fail(err.message);
   }
+}
+
+// Asks which of the candidates to relink: yes or no for one, a number for several.
+async function askChoice(found) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    if (found.length === 1) {
+      const answer = await rl.question(`\nThe project database is missing. ${describeStore(found[0])}, ${storeSummary(found[0])}, belongs to this repository and its folder no longer holds the project. Relink it? [y/N] `);
+      return /^(y|yes)$/i.test(answer.trim()) ? found[0] : null;
+    }
+    console.log('\nThe project database is missing. These databases belong to this repository, and their folders no longer hold the project:');
+    found.forEach((s, i) => console.log(`  ${i + 1}. ${describeStore(s)}, ${storeSummary(s)}`));
+    const n = Number((await rl.question('Relink which one? (number, empty for none) ')).trim());
+    return Number.isInteger(n) && n >= 1 && n <= found.length ? found[n - 1] : null;
+  } finally {
+    rl.close();
+  }
+}
+
+// The databases whose project is gone (D93): reported, never deleted; `jerome forget` removes one after a backup.
+// Those already offered for relinking in the check are left out.
+function orphanWarning(offered) {
+  let list;
+  try {
+    list = stores().filter((s) => s.orphan && !offered.some((o) => o.key === s.key));
+  } catch {
+    return null;
+  }
+  if (!list.length) return null;
+  return {
+    id: 'orphan-databases',
+    databases: list.map((s) => ({ key: s.key, path: s.record?.path ?? null })),
+    message: `${list.length === 1 ? 'A database belongs' : `${list.length} databases belong`} to a folder that no longer holds a Jérôme project: ${list.map((s) => `${describeStore(s)}, ${storeSummary(s)}`).join('; ')}. If the project moved, run \`jerome doctor\` in its new folder to relink it; if it is gone, \`jerome forget <key>\` removes the database after a backup.`,
+  };
 }
 
 // Warnings about the project's own files, which need neither the setup nor Claude Code:

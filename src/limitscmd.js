@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { MARKER, updateMarker } from './template.js';
 import { notProjectMessage } from './paths.js';
 import { readAccount, writeAccount, accountPath } from './account.js';
-import { openDb, DB_FILE } from './db.js';
+import { openDb, dbPath } from './db.js';
 import { globalLimits, projectStatus, projectLimitSettings, money, tokensText, limitText, DEFAULT_PROJECT_LIMITS } from './budget.js';
 
 const GLOBAL = { 'five-hour': 'five_hour', 'seven-day': 'seven_day' };
@@ -80,7 +80,7 @@ export function show(dir, now = new Date()) {
   lines.push(`        in ${accountPath()}`);
   if (existsSync(join(dir, MARKER))) {
     const { problems } = projectLimitSettings(dir);
-    const db = existsSync(join(dir, DB_FILE)) ? openDb(dir, { readOnly: true, migrate: false }) : null;
+    const db = existsSync(dbPath(dir)) ? openDb(dir, { readOnly: true, migrate: false }) : null;
     if (db) {
       try {
         const s = projectStatus(dir, db, now);
@@ -91,7 +91,7 @@ export function show(dir, now = new Date()) {
       } finally {
         db.close();
       }
-    } else lines.push(`project (${DB_FILE} missing: run \`jerome doctor\`)`);
+    } else lines.push("project (no database: run `jerome doctor`)");
     lines.push(...problems.map((p) => `! ${p}`));
   }
   return lines.join('\n');
