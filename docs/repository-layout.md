@@ -7,6 +7,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 ├── bin/, src/           the jerome CLI (Node.js, no dependencies)
 ├── test/                tests, run with `npm test`
 ├── migrations/          the project database's schema, applied by the CLI
+├── viewer/              the page served by `jerome view`
 ├── template/            what ends up in every project
 │   ├── MANIFEST         the paths copied into projects and kept in sync (not copied itself)
 │   ├── CLAUDE.md        the lead agent's instructions
@@ -34,4 +35,4 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 
 ## The package
 
-The npm package contains only `bin/`, `src/` and `template/`, as listed in `files` in `package.json`.
+The npm package contains only `bin/`, `src/`, `template/`, `migrations/` and `viewer/`, as listed in `files` in `package.json`.

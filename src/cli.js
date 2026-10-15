@@ -7,6 +7,7 @@ import { docs } from './docs.js';
 import { state } from './state.js';
 import { hook, HOOK_EVENTS } from './hooks.js';
 import { statusline } from './statusline.js';
+import { view } from './view.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -24,6 +25,9 @@ const USAGE = `Usage:
     --agent <name>        only one agent's usage
     --json                print a machine-readable report (schema jerome.state/v1)
     --replies             subagents' reply lengths over the last 7 days, per agent
+  jerome view [dir]       open the read-only viewer in the browser (local server, stopped with Ctrl+C)
+    --port <n>            port to listen on (default: any free port)
+    --no-open             print the address without opening the browser
   jerome hook <event>     run by Claude Code's hooks: ${HOOK_EVENTS.join(', ')}
   jerome statusline       run by Claude Code's status line`;
 
@@ -36,10 +40,12 @@ const OPTIONS = {
   runs: { type: 'string' },
   agent: { type: 'string' },
   replies: { type: 'boolean' },
+  port: { type: 'string' },
+  'no-open': { type: 'boolean' },
 };
 
 // The options each command accepts; any other option is a usage error.
-const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [] };
+const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'] };
 
 export async function main(argv) {
   let parsed;
@@ -76,6 +82,12 @@ export async function main(argv) {
       const runs = parsed.values.runs === undefined ? 3 : Number(parsed.values.runs);
       if (!Number.isInteger(runs) || runs < 0) return usageError('--runs takes a whole number.');
       return state(rest[0] ?? '.', { json: parsed.values.json, runs, agent: parsed.values.agent ?? null, replies: parsed.values.replies });
+    }
+    case 'view': {
+      if (rest.length > 1) return usageError('jerome view takes at most one folder.');
+      const port = parsed.values.port === undefined ? 0 : Number(parsed.values.port);
+      if (!Number.isInteger(port) || port < 0 || port > 65535) return usageError('--port takes a port number.');
+      return view(rest[0] ?? '.', { port, open: !parsed.values['no-open'] });
     }
     case 'hook':
       // Hooks never fail a session: even a wrong event name exits with 0.

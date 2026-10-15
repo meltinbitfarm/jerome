@@ -27,7 +27,7 @@ Tokens count input, output and cache reads and writes. **Dollar amounts are API 
 | `--runs <n>` | how many recent runs to list (default 3) |
 | `--agent <name>` | only that agent's usage |
 | `--replies` | adds a `replies` line: per agent, over 7 days, the average and longest reply in words and how many went over 150 (see [hooks.md](../hooks.md#reply-lengths)) |
-| `--json` | the same data as one JSON object, schema `jerome.state/v1` |
+| `--json` | everything `jerome state` knows as one JSON object, schema `jerome.state/v1`: besides the lines above, the latest runs with duration and API equivalent, usage per agent and model for today, 7 and 30 days (`byModel`), reply lengths (`replies`), the team (`team`) and `projectLimits` (null until per-project limits exist). It is what [`jerome view`](view.md) shows. |
 
 `jerome state` is allowed by the project's permission rules, so the lead agent runs it without asking. See [database.md](../database.md) for where the data comes from.
 

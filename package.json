@@ -10,6 +10,7 @@
     "bin/",
     "src/",
     "template/",
+    "viewer/",
     "migrations/",
     "README.md",
     "LICENSE"

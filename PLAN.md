@@ -183,11 +183,14 @@ Two more uses of the hooks:
 
 ## Phase 7 — Read-only viewer
 
-Local viewer separate from execution (D11): agent structure, messages, logs, reports, tokens and the API-equivalent cost, always labelled as such ("≈$3.40 API", D57). It also shows the latest subscription % read (D20, D23), with its date.
+Local viewer separate from execution (D11): `jerome view` starts a local server with `node:http`, reachable only from localhost with a per-run token, and serves one page in plain HTML and JavaScript, with no framework or dependency (D64). It never writes anything (D65), and reads the same data as `jerome state --json` (D66): the team of the lead agent and its subagents, the runs with status, duration and usage, usage per agent and model with the cost as an API equivalent, the subscription % with its reading time and global thresholds (D70), the open decision requests and the reply lengths. Opening a run reads the tasks and replies between agents from the transcripts at that moment, without copying them (D67). Light refresh (D68), light and dark theme (D69).
 **Testable result:** Fabio opens the viewer on a project with a few runs and sees the agents and their usage. Shutting the viewer down during a run, the run carries on without errors.
 **Done when:** the viewer only reads from the DB and the files, never writes, and starts with `jerome view`.
-**Questions to settle first:**
-- Q5, viewer part (interface stack; the command is `jerome view`).
+**Questions to settle first:** none (Q5 closed by D64).
+**Status: done (2026-10-15).**
+- `jerome view`, `viewer/index.html`, `src/view.js`, `src/delegations.js`, and `readState` extended within `jerome.state/v1`; 93 tests with `npm test`, including access (no token, another host, POST), the 304, the delegations read from transcripts, and the database unchanged byte for byte.
+- claude-watch: the API returned the team (lead agent on Opus 5.5, analyst on Sonnet, developer on Opus, documentarist on Haiku), 10 runs, and for the interactive run of phase 6 the background delegation to the analyst with its task and reply, and the refused `git branch + git branch` chain; a request without the token got 403; the database was unchanged. Screenshots in Chrome headless, dark and light theme and in a 390-pixel frame: the page fits, tables scroll inside their panels, and with test thresholds `5h 32% / 35%` showed red and `7d 20% / 70%` green. The server stopped cleanly on SIGTERM.
+- Not tested: shutting the viewer down while a run is in progress. The viewer shares nothing with runs but read access to the database, which in WAL mode lets readers and writers work at the same time.
 
 ## Phase 8 — Heartbeat
 
@@ -245,7 +248,7 @@ Checks to do before announcing Jérôme or publishing it on npm:
 |---|---|
 | Q5 (CLI part) | resolved by D19 |
 | Q4 | closed by D58 |
-| Q5 (viewer part) | 7 |
+| Q5 (viewer part) | closed by D64 |
 | Q3 | 8 |
 | Q2 | 9 |
 

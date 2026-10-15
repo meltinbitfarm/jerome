@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Jérôme viewer</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --line: #e3e3e0; --accent: #3a5bd9;
+    --ok: #1f8a4c; --warn: #b26b00; --high: #c62828; --chip: #efeff1; --bar: #3a5bd9; --bar-over: #c62828;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --panel: #1d1d20; --text: #ececee; --muted: #9a9aa2; --line: #2e2e33; --accent: #8aa2ff;
+      --ok: #4cc27f; --warn: #e3a33a; --high: #ff6b6b; --chip: #2a2a2f; --bar: #8aa2ff; --bar-over: #ff6b6b;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141416; --panel: #1d1d20; --text: #ececee; --muted: #9a9aa2; --line: #2e2e33; --accent: #8aa2ff;
+    --ok: #4cc27f; --warn: #e3a33a; --high: #ff6b6b; --chip: #2a2a2f; --bar: #8aa2ff; --bar-over: #ff6b6b;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+  .small { font-size: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card .big { font-size: 22px; font-weight: 600; }
+  .windows { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .window { padding: 3px 9px; border-radius: 999px; background: var(--chip); font-variant-numeric: tabular-nums; }
+  .window.ok { color: var(--ok); } .window.warn { color: var(--warn); } .window.high, .window.over { color: var(--high); font-weight: 600; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  select, button { font: inherit; color: var(--text); background: var(--chip); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
+  button { cursor: pointer; }
+  button.on { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num, th.num { text-align: right; }
+  tr.run { cursor: pointer; }
+  tr.run:hover td { background: var(--chip); }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 12px; background: var(--chip); }
+  .badge.running { color: var(--accent); } .badge.done { color: var(--ok); } .badge.failed, .badge.blocked, .badge.stopped { color: var(--high); }
+  .detail td { white-space: normal; background: var(--bg); }
+  .delegation { border-left: 3px solid var(--line); padding: 4px 0 4px 10px; margin: 8px 0; }
+  details { margin: 4px 0; }
+  summary { cursor: pointer; color: var(--muted); }
+  pre { white-space: pre-wrap; word-break: break-word; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 6px 0; font-size: 12.5px; max-height: 420px; overflow: auto; }
+  .tree { list-style: none; margin: 0; padding: 0; }
+  .tree li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .tree li:last-child { border-bottom: 0; }
+  .tree .sub { padding-left: 28px; position: relative; }
+  .tree .sub::before { content: "└"; position: absolute; left: 8px; color: var(--muted); }
+  .tools { color: var(--muted); font-size: 12px; }
+  .bars .row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center; margin: 6px 0; }
+  .track { position: relative; height: 10px; background: var(--chip); border-radius: 5px; }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--bar); }
+  .fill.over { background: var(--bar-over); }
+  .limit { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .5; }
+  .error { color: var(--high); }
+  footer { font-size: 12px; color: var(--muted); padding: 4px 2px 24px; }
+  @media (max-width: 600px) { .bars .row { grid-template-columns: 90px 1fr; } .bars .row .muted { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1 id="project">Jérôme</h1>
+      <div class="small muted" id="updated">loading…</div>
+    </div>
+    <div class="windows" id="windows"></div>
+    <div class="controls">
+      <label class="small muted" for="theme">Theme</label>
+      <select id="theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select>
+    </div>
+  </header>
+  <div id="error" class="panel error" hidden></div>
+  <section class="cards" id="cards"></section>
+  <section class="panel" id="requests"></section>
+  <section class="panel" id="team"></section>
+  <section class="panel" id="runs"></section>
+  <section class="panel" id="usage"></section>
+  <section class="panel" id="replies"></section>
+  <footer id="footer"></footer>
+</main>
+<script>
+'use strict';
+const token = new URLSearchParams(location.search).get('t') || '';
+const api = (path) => `${path}?t=${encodeURIComponent(token)}`;
+const REPLY_LIMIT = 150;
+const state = { data: null, open: new Set(), details: new Map(), period: 'week', kind: 'all' };
+
+// Elements are built with textContent only: transcripts can hold anything, and none of it is ever read as HTML.
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') node.className = v;
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return node;
+}
+const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat());
+
+function n(v) {
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  if (v >= 1e3) return `${Math.round(v / 1e3)}k`;
+  return String(v ?? 0);
+}
+const usd = (t) => `≈$${(t.apiUsd ?? 0).toFixed(2)}${t.unpriced ? '+?' : ''} API`;
+const pad = (x) => String(x).padStart(2, '0');
+function when(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const today = new Date().toDateString() === d.toDateString();
+  return `${today ? '' : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} `}${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function duration(ms) {
+  if (ms === null || ms === undefined) return '—';
+  const s = Math.round(ms / 1000);
+  return s >= 3600 ? `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}` : `${Math.floor(s / 60)}:${pad(s % 60)}`;
+}
+
+// Theme: the system's, or the one picked here, remembered in this browser only.
+const themeSelect = document.getElementById('theme');
+function applyTheme(value) {
+  if (value === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', value);
+}
+try { themeSelect.value = localStorage.getItem('jerome-theme') || 'auto'; } catch { themeSelect.value = 'auto'; }
+applyTheme(themeSelect.value);
+themeSelect.addEventListener('change', () => {
+  applyTheme(themeSelect.value);
+  try { localStorage.setItem('jerome-theme', themeSelect.value); } catch { /* not remembered */ }
+});
+
+// A window's level against its threshold: ok below 75%, warn up to 90%, high from 90%, over beyond 100%.
+function level(used, limit) {
+  if (typeof limit !== 'number') return '';
+  const r = used / limit;
+  return r >= 1 ? 'over' : r >= 0.9 ? 'high' : r >= 0.75 ? 'warn' : 'ok';
+}
+
+function renderHeader(d) {
+  document.title = `${d.project} · Jérôme`;
+  fill('project', d.project);
+  fill('updated', `data as of ${when(d.at)} · checked every 10 s while this tab is visible`);
+  const names = { five_hour: '5h', seven_day: '7d' };
+  const chips = [];
+  const latest = Object.values(d.windows).sort((a, b) => b.readAt.localeCompare(a.readAt))[0];
+  for (const [name, w] of Object.entries(d.windows)) {
+    const limit = d.limits?.[name];
+    chips.push(el('span', { class: `window ${level(w.used, limit)}`, title: limit ? `global limit ${limit}%` : 'no global limit set' },
+      `${names[name]} ${w.used}%${typeof limit === 'number' ? ` / ${limit}%` : ''}`));
+  }
+  if (!chips.length) chips.push(el('span', { class: 'muted small' }, 'subscription: no reading yet'));
+  else chips.push(el('span', { class: 'muted small' }, `read ${when(latest.readAt)} (${latest.source})`));
+  // Room for the per-project limits of phase 9.
+  chips.push(el('span', { class: 'muted small', title: 'per-project limits come with phase 9' },
+    d.projectLimits ? `project: ${Object.entries(d.projectLimits).map(([k, v]) => `${k} ${v}`).join(' · ')}` : 'project limits: not set'));
+  fill('windows', chips);
+}
+
+function renderCards(d) {
+  const card = (label, t) => el('div', { class: 'card' }, el('div', { class: 'small muted' }, label), el('div', { class: 'big' }, `${n(t.tokens)} tokens`), el('div', {}, usd(t)));
+  fill('cards',
+    card('Today', d.usage.today), card('7 days', d.usage.week), card('30 days', d.usage.month),
+    el('div', { class: 'card' }, el('div', { class: 'small muted' }, 'Open decision requests'), el('div', { class: 'big' }, String(d.requests.length))));
+}
+
+function renderRequests(d) {
+  const items = d.requests.map((r) => el('div', { class: 'delegation' },
+    el('div', {}, el('strong', {}, `R${r.id} `), r.question),
+    r.options ? el('div', { class: 'small' }, `Options: ${r.options}`) : null,
+    r.recommendation ? el('div', { class: 'small' }, `Recommendation: ${r.recommendation}`) : null,
+    el('div', { class: 'small muted' }, `opened ${when(r.openedAt)}`, r.runId ? [' · ', el('a', { href: `#run-${r.runId}` }, 'see the run')] : null)));
+  fill('requests', el('h2', {}, 'Decision requests'), items.length ? items : el('div', { class: 'muted' }, 'None open.'));
+}
+
+function renderTeam(d) {
+  const week = new Map(d.agents.map((a) => [a.agent, a]));
+  const replies = new Map((d.replies ?? []).map((r) => [r.agent, r]));
+  const usageOf = (name) => { const a = week.get(name); return a ? `${n(a.tokens)} · ${usd(a)}` : 'no usage in 7 days'; };
+  const lead = el('li', {}, el('strong', {}, 'Lead agent'), ' (main) ',
+    el('span', { class: 'muted' }, d.team.lead.models.join(', ') || 'session model'), ' · ', usageOf('main'));
+  const subs = d.team.subagents.map((a) => {
+    const r = replies.get(a.agent);
+    return el('li', { class: 'sub' },
+      el('strong', {}, a.agent), ' ',
+      el('span', { class: 'badge' }, a.source === 'built-in' ? 'built-in' : (a.model ?? 'no model')), ' · ', usageOf(a.agent),
+      a.tools.length ? el('div', { class: 'tools' }, a.tools.join(' · ')) : null,
+      r ? el('div', { class: 'small muted' }, `replies: avg ${r.average} words · max ${r.max} · ${r.over}/${r.replies} over ${REPLY_LIMIT}`) : null);
+  });
+  fill('team', el('h2', {}, 'Team (usage over 7 days)'), el('ul', { class: 'tree' }, lead, subs));
+}
+
+function renderRuns(d) {
+  const kinds = ['all', ...new Set(d.runs.map((r) => r.kind))];
+  const filter = el('select', { onchange: (e) => { state.kind = e.target.value; renderRuns(state.data); } },
+    kinds.map((k) => el('option', { value: k, selected: k === state.kind }, k)));
+  const rows = [];
+  for (const r of d.runs.filter((x) => state.kind === 'all' || x.kind === state.kind)) {
+    const open = state.open.has(r.id);
+    rows.push(el('tr', { class: 'run', id: `run-${r.id}`, onclick: () => toggleRun(r) },
+      el('td', {}, `${open ? '▾' : '▸'} ${when(r.startedAt)}`),
+      el('td', {}, r.kind),
+      el('td', {}, el('span', { class: `badge ${r.status}` }, r.status), r.reason && r.status !== 'done' ? ` ${r.reason}` : ''),
+      el('td', { class: 'num' }, duration(r.durationMs)),
+      el('td', { class: 'num' }, n(r.tokens)),
+      el('td', { class: 'num' }, usd(r)),
+      el('td', {}, r.agents.join(', '))));
+    if (open) rows.push(el('tr', { class: 'detail' }, el('td', { colspan: 7 }, runDetail(r))));
+  }
+  fill('runs', el('h2', {}, 'Runs ', filter),
+    el('div', { class: 'scroll' }, el('table', {},
+      el('thead', {}, el('tr', {}, ['Start', 'Kind', 'Status', 'Duration', 'Tokens', 'API equivalent', 'Agents'].map((h, i) => el('th', { class: i >= 3 && i <= 5 ? 'num' : null }, h)))),
+      el('tbody', {}, rows.length ? rows : el('tr', {}, el('td', { colspan: 7, class: 'muted' }, 'No runs yet.'))))));
+}
+
+async function toggleRun(r) {
+  if (state.open.has(r.id)) state.open.delete(r.id);
+  else {
+    state.open.add(r.id);
+    if (!state.details.has(r.id)) await loadRun(r.id);
+  }
+  renderRuns(state.data);
+}
+
+async function loadRun(id) {
+  try {
+    const res = await fetch(api(`/api/runs/${id}`), { cache: 'no-store' });
+    state.details.set(id, await res.json());
+  } catch (err) {
+    state.details.set(id, { error: String(err) });
+  }
+}
+
+function runDetail(r) {
+  const x = state.details.get(r.id);
+  if (!x) return el('div', { class: 'muted' }, 'loading…');
+  if (x.error) return el('div', { class: 'error' }, x.error);
+  const parts = [];
+  parts.push(el('div', {}, el('strong', {}, 'Usage: '), x.usage.length ? x.usage.map((u) => `${u.agent} (${u.model}) ${u.calls} calls ${n(u.tokens)}`).join(' · ') : 'none recorded'));
+  for (const e of x.events) {
+    parts.push(el('div', { class: e.kind === 'error' ? 'error' : '' }, `${when(e.at)} ${e.kind === 'blocked' ? `refused chain (D49): ${(e.data?.subcommands ?? []).join(' + ')}` : `hook error: ${e.data?.message ?? ''}`}${e.agent && e.agent !== 'main' ? ` · ${e.agent}` : ''}`));
+  }
+  if (x.transcript === 'unavailable') parts.push(el('div', { class: 'muted' }, r.kind === 'service' ? 'Service run: no transcript.' : 'Transcript not available: only usage is shown.'));
+  else if (!x.delegations.length) parts.push(el('div', { class: 'muted' }, 'No delegations in this run.'));
+  for (const g of x.delegations) {
+    parts.push(el('div', { class: 'delegation' },
+      el('div', {}, el('strong', {}, g.agentType ?? 'subagent'), g.description ? ` · ${g.description}` : '', g.background ? el('span', { class: 'muted' }, ' · in the background') : '', el('span', { class: 'muted' }, ` · ${when(g.at)}`)),
+      el('details', {}, el('summary', {}, 'Task'), el('pre', {}, g.task || '(empty)')),
+      el('details', {}, el('summary', {}, `Reply · ${g.replyWords} words${g.replyWords > REPLY_LIMIT ? ` (over ${REPLY_LIMIT})` : ''}`), el('pre', {}, g.reply || '(no reply recorded)'))));
+  }
+  parts.push(el('div', { class: 'small muted' }, 'Tasks and replies are read now from Claude Code\'s transcripts and are not stored by Jérôme.'));
+  return parts;
+}
+
+function renderUsage(d) {
+  const labels = { today: 'Today', week: '7 days', month: '30 days' };
+  const tabs = Object.entries(labels).map(([k, v]) => el('button', { class: k === state.period ? 'on' : '', onclick: () => { state.period = k; renderUsage(state.data); } }, v));
+  const rows = (d.byModel[state.period] ?? []).map((u) => el('tr', {},
+    el('td', {}, u.agent), el('td', {}, u.model), el('td', { class: 'num' }, String(u.calls)), el('td', { class: 'num' }, n(u.input)),
+    el('td', { class: 'num' }, n(u.output)), el('td', { class: 'num' }, n(u.cache)), el('td', { class: 'num' }, usd(u))));
+  fill('usage', el('h2', {}, 'Usage by agent and model ', ...tabs),
+    el('div', { class: 'scroll' }, el('table', {},
+      el('thead', {}, el('tr', {}, ['Agent', 'Model', 'Calls', 'Input', 'Output', 'Cache', 'API equivalent'].map((h, i) => el('th', { class: i >= 2 ? 'num' : null }, h)))),
+      el('tbody', {}, rows.length ? rows : el('tr', {}, el('td', { colspan: 7, class: 'muted' }, 'No usage in this period.'))))));
+}
+
+function renderReplies(d) {
+  const list = d.replies ?? [];
+  const scale = Math.max(REPLY_LIMIT * 1.5, ...list.map((r) => r.max));
+  const rows = list.map((r) => el('div', { class: 'row' },
+    el('span', {}, r.agent),
+    el('div', { class: 'track', title: `average ${r.average}, longest ${r.max}` },
+      el('div', { class: `fill ${r.average > REPLY_LIMIT ? 'over' : ''}`, style: `width:${Math.min(100, (r.average / scale) * 100)}%` }),
+      el('div', { class: 'limit', style: `left:${(REPLY_LIMIT / scale) * 100}%`, title: `limit ${REPLY_LIMIT} words` })),
+    el('span', { class: 'muted small' }, `avg ${r.average} · max ${r.max} · ${r.over}/${r.replies} over`)));
+  fill('replies', el('h2', {}, `Reply lengths (7 days, limit ${REPLY_LIMIT} words)`),
+    rows.length ? el('div', { class: 'bars' }, rows) : el('div', { class: 'muted' }, 'No subagent replies recorded yet.'));
+}
+
+function render(d) {
+  renderHeader(d); renderCards(d); renderRequests(d); renderTeam(d); renderRuns(d); renderUsage(d); renderReplies(d);
+  fill('footer', `Dollar amounts are API equivalents at the list prices of ${d.pricesDate}: a subscription is not billed per token. Read-only: the viewer never writes anything.`);
+}
+
+let last = '';
+async function refresh() {
+  try {
+    const res = await fetch(api('/api/state'), { cache: 'no-cache' });
+    const text = await res.text();
+    const data = JSON.parse(text);
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    document.getElementById('error').hidden = true;
+    // A running run's detail is refreshed with the state; finished runs keep theirs.
+    for (const id of state.open) if (data.runs.find((r) => r.id === id)?.status === 'running') await loadRun(id);
+    if (text !== last || [...state.open].some((id) => data.runs.find((r) => r.id === id)?.status === 'running')) {
+      last = text;
+      state.data = data;
+      render(data);
+    }
+  } catch (err) {
+    const box = document.getElementById('error');
+    box.textContent = `Cannot read the project state: ${err.message}`;
+    box.hidden = false;
+  }
+}
+
+// #run-<id> opens that run, e.g. from a decision request.
+async function openFromHash() {
+  const id = Number((location.hash.match(/^#run-(\d+)$/) || [])[1]);
+  if (!id || !state.data || !state.data.runs.some((r) => r.id === id)) return;
+  if (!state.open.has(id)) {
+    state.open.add(id);
+    await loadRun(id);
+    renderRuns(state.data);
+  }
+  document.getElementById(`run-${id}`)?.scrollIntoView({ block: 'start' });
+}
+window.addEventListener('hashchange', openFromHash);
+
+refresh().then(openFromHash);
+setInterval(() => { if (!document.hidden) refresh(); }, 10_000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>

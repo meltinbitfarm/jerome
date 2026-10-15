@@ -50,6 +50,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report |
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
 | [`jerome state [dir] [--json]`](docs/commands/state.md) | Shows a project's usage, runs and open decision requests in a few lines, with dollars as API equivalents |
+| [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, runs, usage, subscription windows and the messages between agents |
 | [`jerome docs [dir]`](docs/commands/docs.md) | Brings the documentation queue into the project's docs, with the documentarist on Haiku |
 
 ## The lean profile
@@ -78,7 +79,7 @@ Every project starts from a brief in the `brief/v2` format. You can run the brie
 4. Rules for creating subagents, including a documentation agent (`jerome docs`)
 5. ~~A SQLite database per project, read with `jerome state`~~
 6. ~~Usage tracking through hooks and the status line~~
-7. Read-only local viewer (`jerome view`)
+7. ~~Read-only local viewer (`jerome view`)~~
 8. Scheduled headless runs, with a lock and a budget per run
 9. Daily and weekly limits with automatic pause
 

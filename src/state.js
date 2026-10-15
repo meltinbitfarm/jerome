@@ -4,7 +4,8 @@
 import { existsSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { MARKER } from './template.js';
-import { openDb, DbTooNewError, DB_FILE } from './db.js';
+import { openDb, schemaVersion, DbTooNewError, DB_FILE, LATEST } from './db.js';
+import { projectAgents } from './agents.js';
 import { callPrice } from './models.js';
 import { readAccount, WINDOWS } from './account.js';
 
@@ -18,7 +19,7 @@ export async function state(dirArg, { json = false, runs = 3, agent = null, repl
   }
   let report;
   try {
-    report = readState(dir, { runs, agent, replies });
+    report = readState(dir, { runs, agent });
   } catch (err) {
     console.error(err instanceof DbTooNewError ? err.message : `Cannot read the project state: ${err.message}`);
     return 1;
@@ -27,50 +28,89 @@ export async function state(dirArg, { json = false, runs = 3, agent = null, repl
     console.error(`${DB_FILE} is missing: run \`jerome doctor\` to create it.`);
     return 1;
   }
-  console.log(json ? JSON.stringify(report, null, 2) : formatState(report));
+  console.log(json ? JSON.stringify(report, null, 2) : formatState(report, { replies }));
   return 0;
 }
 
-export function readState(dir, { runs = 3, agent = null, replies = false, now = new Date(), account = readAccount() } = {}) {
-  const db = openDb(dir);
+const SUMS = `sum(input) input, sum(output) output, sum(cache_read) cache_read,
+  sum(cache_write_5m) cache_write_5m, sum(cache_write_1h) cache_write_1h, count(*) calls`;
+
+// Everything `jerome state` knows about a project. The text output shows a compact part; `--json` and the viewer
+// (D66) get all of it. With readOnly the database is opened without migrations and never written (D65).
+export function readState(dir, { runs = 3, agent = null, readOnly = false, now = new Date(), account = readAccount() } = {}) {
+  const db = openDb(dir, readOnly ? { readOnly: true, migrate: false } : {});
   if (!db) return null;
   try {
-    const today = startOfLocalDay(now).toISOString();
-    const week = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+    if (readOnly && schemaVersion(db) < LATEST) throw new Error(`${DB_FILE} is at schema ${schemaVersion(db)} of ${LATEST}: run \`jerome doctor\``);
+    const since = {
+      today: startOfLocalDay(now).toISOString(),
+      week: new Date(now.getTime() - 7 * 86_400_000).toISOString(),
+      month: new Date(now.getTime() - 30 * 86_400_000).toISOString(),
+    };
     const filter = agent ? ' AND agent = ?' : '';
-    const args = (since) => (agent ? [since, agent] : [since]);
-    const rows = (since) => db.prepare(`SELECT model, agent, sum(input) input, sum(output) output, sum(cache_read) cache_read,
-      sum(cache_write_5m) cache_write_5m, sum(cache_write_1h) cache_write_1h, count(*) calls
-      FROM usage WHERE at >= ?${filter} GROUP BY model, agent`).all(...args(since));
+    const args = (from) => (agent ? [from, agent] : [from]);
+    const rows = (from) => db.prepare(`SELECT model, agent, ${SUMS} FROM usage WHERE at >= ?${filter} GROUP BY model, agent`).all(...args(from));
 
-    const weekRows = rows(week);
+    const periods = Object.fromEntries(Object.entries(since).map(([name, from]) => [name, rows(from)]));
     const agents = new Map();
-    for (const r of weekRows) {
-      const a = agents.get(r.agent) ?? total([]);
-      agents.set(r.agent, total([a, totals([r])]));
-    }
-    const recent = db.prepare(`SELECT r.id, r.kind, r.status, r.started_at, r.reason,
-      (SELECT coalesce(sum(input + output + cache_read + cache_write_5m + cache_write_1h), 0) FROM usage u WHERE u.run_id = r.id) tokens
-      FROM runs r ORDER BY r.started_at DESC LIMIT ?`).all(runs);
-    const requests = db.prepare(`SELECT id, question, opened_at FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
+    for (const r of periods.week) agents.set(r.agent, total([agents.get(r.agent) ?? total([]), totals([r])]));
 
-    const report = {
+    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
+    const perRun = db.prepare(`SELECT agent, model, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model`);
+    const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
+
+    return {
       schema: STATE_SCHEMA,
       project: basename(dir),
       at: now.toISOString(),
       agent,
-      usage: { today: totals(rows(today)), week: totals(weekRows) },
+      usage: { today: totals(periods.today), week: totals(periods.week), month: totals(periods.month) },
+      // Usage per agent and model, for each period.
+      byModel: Object.fromEntries(Object.entries(periods).map(([name, list]) => [name, list
+        .map((r) => ({ agent: r.agent, model: r.model, ...totals([r]) }))
+        .sort((a, b) => b.tokens - a.tokens)])),
       agents: [...agents].map(([name, t]) => ({ agent: name, ...t })).sort((a, b) => b.tokens - a.tokens),
+      team: team(dir, periods.month),
       windows: Object.fromEntries(WINDOWS.filter((w) => account.windows[w]).map((w) => [w, account.windows[w]])),
       limits: account.limits,
-      runs: recent.map((r) => ({ id: r.id, kind: r.kind, status: r.status, startedAt: r.started_at, reason: r.reason, tokens: r.tokens })),
-      requests: requests.map((r) => ({ id: r.id, question: r.question, openedAt: r.opened_at })),
+      // Per-project limits arrive with phase 9; the field is there so readers can already expect it.
+      projectLimits: null,
+      runs: recent.map((r) => {
+        const usage = perRun.all(r.id);
+        const t = totals(usage);
+        return {
+          id: r.id, sessionId: r.session_id, kind: r.kind, status: r.status, startedAt: r.started_at, endedAt: r.ended_at,
+          durationMs: r.ended_at ? Date.parse(r.ended_at) - Date.parse(r.started_at) : null, reason: r.reason,
+          tokens: t.tokens, calls: t.calls, apiUsd: t.apiUsd, unpriced: t.unpriced, agents: [...new Set(usage.map((u) => u.agent))],
+        };
+      }),
+      requests: requests.map((r) => ({ id: r.id, runId: r.run_id, question: r.question, options: r.options, recommendation: r.recommendation, openedAt: r.opened_at })),
+      replies: replyStats(db, since.week, agent),
     };
-    if (replies) report.replies = replyStats(db, week, agent);
-    return report;
   } finally {
     db.close();
   }
+}
+
+// The lead agent and its subagents (D66): the agents declared in .claude/agents/, and the ones that appear in the
+// usage of the last 30 days without a file (built-in agents such as general-purpose).
+function team(dir, monthRows) {
+  const models = new Map();
+  for (const r of monthRows) models.set(r.agent, [...new Set([...(models.get(r.agent) ?? []), r.model])]);
+  const declared = projectAgents(dir).map((a) => ({
+    agent: a.meta.name || a.file.replace(/\.md$/, ''),
+    model: a.meta.model ?? null,
+    tools: (a.meta.tools ?? '').split(',').map((t) => t.trim()).filter(Boolean),
+    description: a.meta.description ?? null,
+    source: 'project',
+  }));
+  const names = new Set(declared.map((a) => a.agent));
+  const seen = [...models.keys()].filter((name) => name !== 'main' && !names.has(name)).sort()
+    .map((name) => ({ agent: name, model: null, tools: [], description: null, source: 'built-in' }));
+  return {
+    lead: { agent: 'main', models: models.get('main') ?? [] },
+    subagents: [...declared, ...seen].map((a) => ({ ...a, models: models.get(a.agent) ?? [] })),
+  };
 }
 
 // Reply lengths of the subagents over the period (D62), from the subagent-stop events, per agent.
@@ -127,7 +167,7 @@ function total(parts) {
   return t;
 }
 
-export function formatState(s) {
+export function formatState(s, { replies = false } = {}) {
   const now = new Date(s.at);
   const lines = [`${s.project}${s.agent ? ` · agent ${s.agent}` : ''} · state at ${when(s.at, now, true)}`];
   const { today, week } = s.usage;
@@ -141,7 +181,7 @@ export function formatState(s) {
   } else lines.push('window  no reading yet');
   if (!s.agent) lines.push(`agents  7d: ${s.agents.length ? s.agents.map((a) => `${a.agent} ${n(a.tokens)}`).join(' · ') : 'none'}`);
   lines.push(`runs    ${s.runs.length ? `last ${s.runs.length}: ${s.runs.map((r) => `${when(r.startedAt, now)} ${r.kind} ${r.status}${r.reason && r.status !== 'done' ? ` (${r.reason})` : ''} ${n(r.tokens)}`).join(' · ')}` : 'none'}`);
-  if (s.replies) {
+  if (replies) {
     lines.push(`replies 7d: ${s.replies.length ? s.replies.map((r) => `${r.agent} avg ${r.average}w max ${r.max} (${r.over}/${r.replies} over ${REPLY_LIMIT})`).join(' · ') : 'none recorded'}`);
   }
   lines.push(`open    ${s.requests.length ? s.requests.map((r) => `R${r.id} ${r.question} (${when(r.openedAt, now)})`).join(' · ') : 'no decision requests'}`);
