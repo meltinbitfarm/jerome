@@ -14,7 +14,7 @@ Outside the project's folder, in `~/.local/share/jerome/projects/<name>-<hash>/j
 
 ## Who writes it
 
-Only the CLI and the hooks. The model never runs SQL and never touches the file: tracking costs no tokens. The one exception is planned for scheduled runs: the lead agent will open and close decision requests with `jerome request`, where the CLI writes and the model only passes the text. Hooks never make a session fail: on an error they exit quietly and record an `error` event if they can.
+Only the CLI and the hooks. The model never runs SQL and never touches the file: tracking costs no tokens. The one exception is decision requests: the lead agent opens and closes them with [`jerome request`](commands/request.md), where the CLI writes and the model only passes the text. Hooks never make a session fail: on an error they exit quietly and record an `error` event if they can.
 
 The hooks that write it are described in [hooks.md](hooks.md). The lead agent reads the database with [`jerome state`](commands/state.md).
 

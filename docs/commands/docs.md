@@ -24,7 +24,7 @@ The documentarist reads each entry, updates the page it belongs to (or creates o
 1. If the queue has no entries, it says so and stops, without calling Claude Code.
 2. It takes the project's documentarist, `.claude/agents/documentarist.md`, so a model you changed is respected; without one, the catalog's.
 3. It runs it headless as a service call:
-   - from a fixed folder outside the project, under `~/.cache/jerome/service/` (or `$XDG_CACHE_HOME`), emptied before and after the call, so the lead agent's `CLAUDE.md` and `PROJECT.md` are not loaded;
+   - from a fixed folder outside the project, under `~/.cache/jerome/service/` (or `$XDG_CACHE_HOME`), emptied before and after the call, so the lead agent's `jerome.md` and `PROJECT.md` are not loaded;
    - with `--settings` pointing to the project's `.claude/settings.local.json`, so the lean profile applies;
    - with `--no-session-persistence`, so it leaves no transcript;
    - with `--add-dir` for the project, and write access only to the project's `docs/`.
@@ -36,7 +36,7 @@ The project's `.claude/settings.local.json` must exist: run [`jerome doctor`](do
 
 ## Progress
 
-On a terminal, a line on standard error shows a spinner, the elapsed time and what the documentarist is doing, read from its stream (`reading docs/_pending.md`, `editing docs/index.md`), and disappears at the end. Nothing is drawn when standard error is not a terminal.
+On a terminal, a line on standard error shows a spinner, the elapsed time and what the documentarist is doing, read from its stream (`reading .jerome/docs-queue.md`, `editing docs/index.md`), and disappears at the end. Nothing is drawn when standard error is not a terminal.
 
 ## Exit codes
 

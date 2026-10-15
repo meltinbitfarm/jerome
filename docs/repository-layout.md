@@ -27,7 +27,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 - Project-specific rules for the lead agent go in `PROJECT.md` under `## Project rules`, never in template files, so updates never conflict with them (see [lead-agent.md](lead-agent.md#project-rules)).
 - The project's own paths are never in the MANIFEST either, even when they start from Jérôme: the agents in `.claude/agents/`, created from the catalog with your approval, `.claude/settings.json`, `docs/`, and the project's own `CLAUDE.md` and `.claude/CLAUDE.md` (see [agents.md](agents.md) and [project-layout.md](project-layout.md)).
 - Three files are not in the template because the CLI creates them in each project:
-  - `.jerome/project.json`, a JSON file that records the Jérôme version and the template files the project was last reconciled with (see [update.md](commands/update.md#the-jerome-file));
+  - `.jerome/project.json`, a JSON file that records the Jérôme version and the template files the project was last reconciled with (see [update.md](commands/update.md#the-jeromeprojectjson-file));
   - `.claude/settings.local.json`, with the lean profile, which depends on the machine and is kept out of git (see [lean-profile.md](lean-profile.md));
   - `.claude/settings.json`, versioned, with the permission rules that make the default limits binding (see [agents.md](agents.md#binding-limits)).
 - The root `.claude/skills/` holds symlinks to the template's skills. Developing Jérôme and using Jérôme share one version of each.

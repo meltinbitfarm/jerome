@@ -33,7 +33,7 @@ const USAGE = `Usage:
   jerome update [dir]     bring the project's template files up to the installed version
     --check               only show what would change: write nothing
     --yes                 apply without asking; files changed in the project are left as they are
-  jerome docs [dir]       bring the entries of docs/_pending.md into the documentation, with the documentarist
+  jerome docs [dir]       bring the entries of .jerome/docs-queue.md into the documentation, with the documentarist
   jerome state [dir]      show usage, runs and open decision requests, compactly (what the lead agent reads)
     --runs <n>            how many recent runs to list (default 3)
     --agent <name>        only one agent's usage
@@ -59,7 +59,7 @@ const USAGE = `Usage:
   jerome limits [dir]     show the usage limits, global and of the project, with the current usage
     --five-hour <n|off>   global limit on the 5-hour window, in % (account.json)
     --seven-day <n|off>   global limit on the 7-day window, in %
-    --daily <usd|off|default>   project limit per calendar day, in API-equivalent dollars (.jerome; default 5)
+    --daily <usd|off|default>   project limit per calendar day, in API-equivalent dollars (.jerome/project.json; default 5)
     --weekly <usd|off|default>  project limit per calendar week, from Monday (default 20)
   jerome deps             what Jérôme depends on in Claude Code
     --json                machine-readable (schema jerome.deps/v1), for tools that watch Claude Code releases

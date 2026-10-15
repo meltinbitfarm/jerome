@@ -23,7 +23,7 @@ The schedule and the caps are saved in the project's `.jerome/project.json`. Rai
 
 ## How it is started
 
-Heartbeats run on macOS through launchd: `jerome schedule` writes a job to `~/Library/LaunchAgents/` and loads it. launchd loads no shell profile, so a `node` installed with nvm would not be found: the job holds the absolute paths of `node`, `jerome` and `claude` found when you scheduled it, and a `PATH` built from their folders. These paths stay in the job, on your machine; `.jerome` only holds the schedule. If you switch Node version or move Claude Code, `jerome doctor` reports the broken path with the command to schedule again. A heartbeat missed while the Mac slept runs once when it wakes. Each run writes one line to `~/.cache/jerome/logs/<project>.log`.
+Heartbeats run on macOS through launchd: `jerome schedule` writes a job to `~/Library/LaunchAgents/` and loads it. launchd loads no shell profile, so a `node` installed with nvm would not be found: the job holds the absolute paths of `node`, `jerome` and `claude` found when you scheduled it, and a `PATH` built from their folders. These paths stay in the job, on your machine; `.jerome/project.json` only holds the schedule. If you switch Node version or move Claude Code, `jerome doctor` reports the broken path with the command to schedule again. A heartbeat missed while the Mac slept runs once when it wakes. Each run writes one line to `~/.cache/jerome/logs/<project>.log`.
 
 ## What a heartbeat does
 

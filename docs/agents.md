@@ -21,7 +21,7 @@ Every agent:
 
 - declares its `model` and only the `tools` it needs;
 - sets `omitClaudeMd: true`, so it loads neither `CLAUDE.md` nor `PROJECT.md`: a subagent call costs about 1.1k input tokens instead of 2.5k (see [lead-agent.md](lead-agent.md#subagents)). The lead agent passes it file paths, not contents;
-- replies in **at most 150 words**, in short lines without nested lists: the outcome, the files it wrote, and what the lead agent must decide. Details go in the files it writes, or in `notes/YYYY-MM-DD-<agent>-<topic>.md`. The limit holds even when the task asks for more, and `CLAUDE.md` tells the lead agent not to ask for more;
+- replies in **at most 150 words**, in short lines without nested lists: the outcome, the files it wrote, and what the lead agent must decide. Details go in the files it writes, or in `.jerome/notes/YYYY-MM-DD-<agent>-<topic>.md`. The limit holds even when the task asks for more, and `jerome.md` tells the lead agent not to ask for more;
 - appends one line to `.jerome/docs-queue.md` when it changes something relevant, for the documentarist (see [`jerome docs`](commands/docs.md)). The researcher and the analyst change nothing, so they never do;
 - holds the default limits and a `## Project limits` section in its own file.
 

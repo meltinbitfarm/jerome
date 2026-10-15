@@ -17,7 +17,7 @@ The name is a nod to Saint Jerome, patron saint of translators: the lead agent t
 
 If Node.js comes from a version manager such as nvm, `node` and `jerome` live in a folder like `~/.nvm/versions/node/<version>/bin/`, which only your interactive shell knows about. Jobs started by launchd or cron do not load your shell profile, so they would not find `node`, `jerome` or `claude`.
 
-Scheduled runs (planned) will deal with this: when a run is scheduled, Jérôme records the absolute paths of `node`, `jerome` and `claude` found at that moment, and `jerome doctor` will warn you if one of them no longer exists. If you switch Node version with nvm, or reinstall jerome under a different version, run `jerome doctor` and reschedule the runs it reports.
+Heartbeats deal with this: when you run `jerome schedule`, Jérôme records the absolute paths of `node`, `jerome` and `claude` found at that moment, and `jerome doctor` warns you if one of them no longer exists. If you switch Node version with nvm, or reinstall jerome under a different version, run `jerome doctor` and reschedule with the command it gives.
 
 ## Install
 
@@ -62,6 +62,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome limits [dir]`](docs/commands/limits.md) | Shows and sets the usage limits that pause heartbeats: global in % of the subscription windows, per project in API-equivalent dollars |
 | [`jerome deps [--json]`](docs/commands/deps.md) | Lists what Jérôme depends on in Claude Code, for tools that watch Claude Code releases |
 | [`jerome docs [dir]`](docs/commands/docs.md) | Brings the documentation queue into the project's docs, with the documentarist on Haiku |
+| [`jerome hook <event>`](docs/commands/hook.md), [`jerome statusline`](docs/commands/statusline.md) | Run by Claude Code, not by you: they record usage and show the status line |
 
 ## The lean profile
 
@@ -71,7 +72,23 @@ Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes fr
 
 ## Project layout
 
-Jérôme keeps its state in `.jerome/` and the lead agent's instructions in `.claude/rules/jerome.md`, so the project's root, its own `CLAUDE.md` and its `docs/` stay the project's. See [docs/project-layout.md](docs/project-layout.md).
+Jérôme keeps its state in `.jerome/` and the lead agent's instructions in `.claude/rules/jerome.md`, so the project's root, its own `CLAUDE.md` and its `docs/` stay the project's:
+
+```
+my-project/
+├── .jerome/
+│   ├── project.json     Jérôme's record: version, template files, limits, schedule
+│   ├── PROJECT.md       loaded at every turn: goal, constraints, agent limits
+│   ├── scope.md, decisions.md, open.md, archive.md, brief.md, digest.md
+│   ├── docs-queue.md    documentation changes waiting for the documentarist
+│   └── notes/           the agents' detailed reports
+└── .claude/
+    ├── rules/jerome.md  the lead agent's instructions
+    ├── skills/, agents/ the template's skills and the project's team
+    └── settings.json    permission rules, hooks, status line
+```
+
+The project database is not in the folder: it lives in `~/.local/share/jerome/projects/`, where no checkout or `git clean` reaches it, one per clone. See [docs/project-layout.md](docs/project-layout.md) and [docs/database.md](docs/database.md#where-it-lives).
 
 ## The lead agent
 
@@ -91,15 +108,17 @@ Every project starts from a brief in the `brief/v2` format. You can run the brie
 
 ## Roadmap
 
-1. ~~Project creation and setup checks~~ (`jerome new`, `jerome doctor`)
-2. ~~Lead agent instructions, now in `.claude/rules/jerome.md`~~
-3. ~~Briefing anywhere and import of a brief (`jerome prompt`, `jerome new --from-file`), template updates (`jerome update`)~~
-4. Rules for creating subagents, including a documentation agent (`jerome docs`)
-5. ~~A SQLite database per project, read with `jerome state`~~
-6. ~~Usage tracking through hooks and the status line~~
-7. ~~Read-only local viewer (`jerome view`)~~
-8. ~~Scheduled headless runs, with a lock and a budget per run~~
-9. ~~Daily and weekly limits with automatic pause~~
+1. ✓ Project creation and setup checks (`jerome new`, `jerome init`, `jerome doctor`)
+2. ✓ Lead agent instructions, now in `.claude/rules/jerome.md`
+3. ✓ Briefing anywhere and import of a brief (`jerome prompt`, `jerome new --from-file`), template updates (`jerome update`)
+4. ✓ Rules for creating subagents, including a documentation agent (`jerome docs`)
+5. ✓ A SQLite database per project, outside the working tree, read with `jerome state` and `jerome digest`
+6. ✓ Usage tracking through hooks and the status line (`jerome hook`, `jerome statusline`)
+7. ✓ Read-only local viewer (`jerome view`)
+8. ✓ Scheduled headless runs, with a lock and a cap per run (`jerome schedule`, `jerome heartbeat`, `jerome request`)
+9. ✓ Daily and weekly limits with automatic pause (`jerome limits`)
+
+Along the way: `jerome deps` lists what Jérôme depends on in Claude Code, and `jerome forget` removes the database of a project that is gone.
 
 ## Repository layout
 

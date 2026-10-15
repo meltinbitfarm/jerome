@@ -57,7 +57,7 @@ When `jerome new --from-file` gets a text that is not a valid brief, it saves th
 2. lists the decisions it found and asks you to confirm them in one block, because the text may come from another chat and hold proposals you never confirmed;
 3. writes `PROJECT.md`, `scope.md`, `decisions.md` and `open.md`, replacing the provisional file, and leaves `brief.md` as the original text.
 
-The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and scheduled runs (planned) will not start on it.
+The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and [heartbeats](heartbeat.md) do not start on it.
 
 ## What goes in `jerome.md`
 
@@ -70,7 +70,7 @@ The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens
 | `jerome.md` | 680 tokens | 678 |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
-`jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome`:
+`jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome/project.json`:
 
 ```json
 {
@@ -81,9 +81,9 @@ The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens
 
 Only `jerome.md` and `PROJECT.md` have budgets. A project's own `CLAUDE.md` has none, since it is not Jérôme's to trim, but `jerome doctor` shows its weight next to `jerome.md`. Invalid entries are reported by `jerome doctor` and the defaults apply. `jerome update` keeps the field.
 
-Measured in phase 2 on a project created with `jerome new`, with a 614-token `PROJECT.md` and a 496-token `CLAUDE.md`:
+Measured in phase 2 on a project created with `jerome new`, with a 614-token `PROJECT.md` and the lead agent's instructions, then in a root `CLAUDE.md`, at 496 tokens. Moving them to `.claude/rules/jerome.md` later cost the same (D87):
 
-| | Without `CLAUDE.md` | With `CLAUDE.md` and `PROJECT.md` |
+| | Without the instructions | With the instructions and `PROJECT.md` |
 |---|---:|---:|
 | Estimated startup context (`/context`) | 10.4k | 11.5k |
 | Input tokens of one real call | 12,348 | 13,735 |
@@ -92,10 +92,10 @@ So the lead agent's instructions and the project summary add about 1.4k tokens t
 
 ## Subagents
 
-Claude Code also loads `CLAUDE.md` and rules files, with what they import, into subagents. In the same test project a trivial subagent call cost 2,518 input tokens with it and 1,142 without. For this reason:
+Claude Code also loads `CLAUDE.md` and rules files such as `jerome.md`, with what they import, into subagents. In the same test project a trivial subagent call cost 2,518 input tokens with it and 1,142 without. For this reason:
 
 - the agents of Jérôme's catalog set `omitClaudeMd: true`, which keeps out `CLAUDE.md` and `.claude/rules/` alike (measured: 2,209 tokens with the instructions in rules, 2,189 with them in `.claude/CLAUDE.md`); the project's limits are copied into each agent's own file instead (see [agents.md](agents.md));
-- built-in subagents still load it, and its second line tells them to ignore it.
+- built-in subagents still load it, and its opening line tells them to ignore it.
 
 `jerome.md` only says to delegate to the agents in `.claude/agents/` and to create or change them with the `project-team` skill after you confirm. How to pick the team and models lives in the skill, read only when needed.
 

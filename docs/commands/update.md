@@ -9,9 +9,9 @@ jerome update                                # in the project folder
 
 ## What it touches
 
-Only the paths listed in the template's `MANIFEST`: today `.claude/rules/jerome.md` and the `project-brief`, `project-team` and `docs` skills. The `MANIFEST` itself stays in the installed package; projects created before this rule received a copy at their root, which `jerome update` removes if it is unchanged. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome` and `.claude/settings.local.json`. The same holds for the paths that belong to the project even when they started from Jérôme: the agents in `.claude/agents/`, created from the catalog (see [agents.md](../agents.md)), `.claude/settings.json` with its deny rules, which [`jerome doctor`](doctor.md) maintains, `docs/` and `notes/`.
+Only the paths listed in the template's `MANIFEST`: today `.claude/rules/jerome.md` and the `project-brief`, `project-team` and `docs` skills. The `MANIFEST` itself stays in the installed package; projects created before this rule received a copy at their root, which `jerome update` removes if it is unchanged. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome/project.json` and `.claude/settings.local.json`. The same holds for the paths that belong to the project even when they started from Jérôme: the agents in `.claude/agents/`, created from the catalog (see [agents.md](../agents.md)), `.claude/settings.json` with its deny rules, which [`jerome doctor`](doctor.md) maintains, `docs/` and `notes/`.
 
-Rules that belong to one project go in `PROJECT.md` under `## Project rules`, never in `CLAUDE.md` or other template files (see [lead-agent.md](../lead-agent.md#project-rules)). That way updates never conflict with them.
+Rules that belong to one project go in `PROJECT.md` under `## Project rules`, never in `jerome.md` or other template files (see [lead-agent.md](../lead-agent.md#project-rules)). That way updates never conflict with them.
 
 ## How it decides
 

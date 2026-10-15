@@ -145,7 +145,7 @@ The catalog includes the documentation agent on Haiku (D25). It is launched with
 **Testable result:** on a test project the lead agent proposes a team, Fabio approves it, and a subagent runs a task. The lead agent receives a few lines of summary, the details are in files and the queue has one more line. After `jerome docs`, the documentation contains the change and the queue is empty.
 **Done when:** the agents created have their model declared, none uses the large model without reason, the returned summary stays within a limit set in the rules, the documentation agent runs on Haiku, and `doctor` warns above 20 lines without blocking.
 **Questions to settle first:** none.
-**Status: implemented (2026-10-15), waiting for Fabio's check.**
+**Status: done (2026-10-15).** Fabio checked it in an interactive session on claude-watch: delegation to the project's agents, the documentarist, and the merge of a task's branch.
 - The project-team skill with the catalog (developer, writer, researcher, analyst, clerk, documentarist), the `/docs` skill, `jerome docs`, the deny rules written by `jerome doctor`, and the `limits` check and `agents`/`docs-queue` warnings of `doctor`; 64 tests with `npm test`. CLAUDE.md 635 tokens (budget 650); startup context of a new project 11.2k.
 - Deny rules tested on Claude Code 2.1.300: they block the main session, built-in and custom subagents, headless runs, compound commands and env prefixes, even with `--dangerously-skip-permissions`; `git -C . push` needed its own rule (D46).
 - claude-watch: `jerome update` and `doctor` added the two skills and 28 deny rules. "proponi il team di agenti dal brief" → developer (opus), analyst (sonnet), documentarist (haiku), with the other three left out for a reason each, and a decision request. After confirmation the lead agent copied L1 into each agent and recorded the team (claude-watch D25) only once the files existed. Claude Code protects `.claude/`, so headless writes there needed `--dangerously-skip-permissions`; in a session the user approves each file. The agents were listed in the next session.
@@ -224,10 +224,10 @@ A scheduler launches headless `claude -p` with preconfigured permissions, an ove
 
 **Done when:** all ten tests pass, and a heartbeat never performs actions forbidden by L1.
 **Questions to settle first:** none (Q3 closed by D71).
-**Status: implemented (2026-10-15), waiting for Fabio's check** (the first scheduled heartbeat of claude-watch).
+**Status: done (2026-10-15).** Verified for real: the scheduled runs, the lock, the decision requests and the triage. Covered by tests only: the token and turn caps, and a merge refused for failing tests (see Before the public release).
 - `jerome schedule` (launchd, D71, D72), `jerome heartbeat` (D73), `jerome request` and the SessionStart context for open requests (D74), `jerome digest` (D75), the `heartbeat` check of `doctor`; the viewer fixes (D76); 104 tests with `npm test`, among them every check, both caps, the lock and the requests, with a fake `claude` and `launchctl`.
 - On claude-watch, for real: a dirty tree blocked in 0.2 s with a request; after a commit, the triage chose a task and the lead agent (164,000 tokens, one minute) found it depended on open question Q1, wrote its notes on a branch, opened a decision request instead of deciding, merged, added its digest line and ended on main; a concurrent heartbeat stopped on the lock; the next found no work because of the open request; the one after stopped at zero tokens. A 15% test threshold blocked. An untrusted copy opened its request. launchd started the job twice with the nvm paths: the first was blocked because `jerome schedule` had changed `.jerome`, now ignored by the clean-tree check; the second ran the triage. A broken `node` path in the job was reported by doctor with the command to reschedule.
-- Not tried for real: the token and turn caps and a merge refused for failing tests, since claude-watch had no task needing them; the fake `claude` covers them. The schedule was removed after the test: Fabio decides when to turn it on.
+- Not tried for real: the token and turn caps and a merge refused for failing tests, since claude-watch had no task needing them; the fake `claude` covers them. The schedule was removed after the test; Fabio then scheduled claude-watch every day at 9:00.
 
 ## Phase 9 — Limits, pause and subscription %
 
@@ -256,6 +256,7 @@ Checks to do before announcing Jérôme or publishing it on npm:
 - installing from GitHub and running `jerome new` on a clean machine (a new macOS user or a virtual machine), without the plugins, skills or connectors of Fabio's account;
 - README and docs/ aligned with all closed phases (D24);
 - no personal data in the versioned files or in the git history.
+- a real heartbeat stopped by its caps, for example with a low `--max-tokens` on claude-watch, and a merge refused for failing tests (phase 8 covers them with tests only).
 
 ## Open questions by phase
 

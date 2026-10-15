@@ -10,7 +10,7 @@ Jérôme records what happens in a project through Claude Code's hooks, so the m
 | `SessionEnd` | synchronously, up to 10 seconds | reads whatever is left in the session's and subagents' transcripts, and closes the run with its reason |
 | `PreToolUse` on Bash | synchronously | refuses chained commands that change the repository (below) |
 
-Each hook runs `jerome hook <event>`. Hooks never make a session fail: they always exit with code 0, and an error is recorded as an `error` event in the [database](database.md). Each event records how long its hook took: on a real project, 18 to 24 milliseconds.
+Each hook runs [`jerome hook <event>`](commands/hook.md). Hooks never make a session fail: they always exit with code 0, and an error is recorded as an `error` event in the [database](database.md). Each event records how long its hook took: on a real project, 18 to 24 milliseconds.
 
 `Stop` and `SubagentStop` run in the background, so they never slow the session down. Two things can make them miss calls: `claude -p` cancels background hooks still running when it exits, and at `Stop` the transcript may not hold the final message yet. `SessionEnd` reads whatever they missed, and since every transcript is read from where the last read stopped, nothing is counted twice. On a real project, the usage the hooks recorded matched an independent count of the transcripts exactly, in an interactive session and in a `claude -p` run.
 
@@ -26,7 +26,7 @@ When a global or project limit is at 90% or more, `SessionStart` shows you a war
 
 ## Chained commands
 
-The lead agent runs commands that change the repository one at a time, checking each result before the next. `CLAUDE.md` says so, and the `PreToolUse` hook enforces it: a Bash command that chains a git command changing the repository with anything else is refused, with a reason that lists the parts to run separately:
+The lead agent runs commands that change the repository one at a time, checking each result before the next. `jerome.md` says so, and the `PreToolUse` hook enforces it: a Bash command that chains a git command changing the repository with anything else is refused, with a reason that lists the parts to run separately:
 
 ```
 Run commands that change the repository one per Bash call, and check each result before the next (Jérôme D49). Split this into separate calls:
@@ -52,7 +52,7 @@ replies 7d: analyst avg 1w max 1 (0/2 over 150)
 
 ## Status line
 
-If the project has no status line of its own, `jerome doctor` sets `jerome statusline`. It:
+If the project has no status line of its own, `jerome doctor` sets [`jerome statusline`](commands/statusline.md). It:
 
 1. records the subscription's 5-hour and 7-day windows in `~/.config/jerome/account.json`, only when they change;
 2. runs your own status line, from your user settings, with the same input;
@@ -63,6 +63,8 @@ If the project has no status line of its own, `jerome doctor` sets `jerome statu
 ```
 
 Each figure is shown against its limit and coloured by how close it is: green, yellow from 75%, red from 90%, bold red beyond the limit.
+
+When the project has no database, for example after its folder moved, Jérôme's part reads `no database: run jerome doctor`.
 
 `today` is the project's usage since midnight at API prices: a subscription is not billed per token. Claude Code sends the windows only after the first response of a session.
 
