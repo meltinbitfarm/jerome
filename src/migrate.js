@@ -100,6 +100,10 @@ export function migrateLayout(dir, plan) {
   move(dir, temp, PROJECT_FILE);
   for (const m of plan.moves.slice(1)) move(dir, m.from, m.to);
 
+  // An empty marker (from before the record existed) becomes a record with its schema, so it can be read.
+  marker.schema ??= 'jerome.project/v1';
+  marker.jerome ??= null;
+  marker.files ??= {};
   // The record: the root CLAUDE.md is no longer a template file; the budget that applied to it now applies to jerome.md.
   delete marker.files?.[LEGACY.lead];
   if (marker.budgets && LEGACY.lead in marker.budgets) {

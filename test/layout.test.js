@@ -152,3 +152,15 @@ test('a heartbeat on an old project does not start and asks for jerome update', 
   assert.equal(r.status, 1);
   assert.match(r.stdout, /not started: this project uses the layout from before \.jerome\/; run `jerome update`/);
 });
+
+test('an old project with an empty marker gets a readable record', () => {
+  const { root, run } = sandbox();
+  const dir = legacyProject(root);
+  writeFileSync(join(dir, '.jerome'), '');
+  git(dir, 'commit', '-q', '-am', 'empty marker');
+  const r = run('update', 'old', '--yes');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const marker = JSON.parse(readFileSync(join(dir, '.jerome', 'project.json'), 'utf8'));
+  assert.equal(marker.schema, 'jerome.project/v1');
+  assert.equal(JSON.parse(run('doctor', 'old', '--check', '--json').stdout).checks.find((c) => c.id === 'project').ok, true);
+});
