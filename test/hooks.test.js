@@ -197,10 +197,12 @@ test('the status line records the windows only when they change and appends to t
   writeFileSync(join(transcripts, 's1.jsonl'), line('m1'));
   hookCall('stop', { transcript_path: join(transcripts, 's1.jsonl') });
   writeFileSync(join(root, 'claude-config', 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: 'echo personal' } }));
-  const input = JSON.stringify({ cwd: dir, rate_limits: { five_hour: { used_percentage: 43, resets_at: 1 }, seven_day: { used_percentage: 10, resets_at: 2 } } });
+  const input = JSON.stringify({ cwd: dir, rate_limits: { five_hour: { used_percentage: 43, resets_at: 4102444800 }, seven_day: { used_percentage: 10, resets_at: 4102444800 } } });
   const r = runWithInput({ CLAUDE_PROJECT_DIR: dir }, input, 'statusline');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^personal · 5h 43% · 7d 10% · today <\$0\.01 API\n$/);
+  // Colours mark how close each figure is to its limit; the text without them:
+  assert.match(r.stdout.replace(/\x1b\[[\d;]*m/g, ''), /^personal · 5h 43% · 7d 10% · today <\$0\.01\/\$5 API\n$/);
+  assert.match(r.stdout, /\x1b\[32mtoday <\$0\.01\/\$5 API\x1b\[0m/);
   const account = join(root, '.config', 'jerome', 'account.json');
   const first = readFileSync(account, 'utf8');
   runWithInput({ CLAUDE_PROJECT_DIR: dir }, input, 'statusline');

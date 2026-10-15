@@ -8,6 +8,7 @@ import { RULE_COUNT, missingRules, addRules, isTrusted } from './limits.js';
 import { agentWarnings, queueWarning } from './agents.js';
 import { planHooks, applyHooks } from './hookconfig.js';
 import { latestSession, toolProblems } from './session-shape.js';
+import { projectLimitSettings } from './budget.js';
 import { heartbeatProblems, rescheduleCommand } from './schedule.js';
 import { openDb, dbPath, schemaVersion, peekVersion, applyMigrations, LATEST, DB_FILE } from './db.js';
 import {
@@ -304,6 +305,7 @@ export function projectWarnings(dir) {
     }
   }
   warnings.push(...agentWarnings(dir));
+  for (const message of projectLimitSettings(dir).problems) warnings.push({ id: 'limits-config', message });
   const queue = queueWarning(dir);
   if (queue) warnings.push(queue);
   if (isJeromeRepo(dir)) return warnings;

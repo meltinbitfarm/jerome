@@ -20,6 +20,10 @@ The run's kind is `interactive` for any session you start, `claude -p` included.
 
 When scheduled runs left decision requests open, `SessionStart` gives the lead agent each one in full: the question, the options, the recommendation, and the content of the project files they cite, such as a note the heartbeat wrote. A cited file over 6,000 characters, or beyond 12,000 characters in all, is only named. The lead agent can then put the requests to you in its first reply, without exploring: on a real project the first reply after "ciao" went from 4 calls and 131,000 tokens to one call and 32,600 tokens, and it asked before closing a request that later decisions had made moot.
 
+## Limits at session start
+
+When a global or project limit is at 90% or more, `SessionStart` shows you a warning, with `systemMessage`, so the model pays nothing for it. The session is not blocked. See [limits.md](limits.md).
+
 ## Chained commands
 
 The lead agent runs commands that change the repository one at a time, checking each result before the next. `CLAUDE.md` says so, and the `PreToolUse` hook enforces it: a Bash command that chains a git command changing the repository with anything else is refused, with a reason that lists the parts to run separately:
@@ -55,8 +59,10 @@ If the project has no status line of its own, `jerome doctor` sets `jerome statu
 3. prints it with Jérôme's part appended, or Jérôme's part alone:
 
 ```
-5h 32% · 7d 20% · today ≈$2.41 API
+5h 57%/70% · 7d 22%/75% · today ≈$3.36/$5 API
 ```
+
+Each figure is shown against its limit and coloured by how close it is: green, yellow from 75%, red from 90%, bold red beyond the limit.
 
 `today` is the project's usage since midnight at API prices: a subscription is not billed per token. Claude Code sends the windows only after the first response of a session.
 

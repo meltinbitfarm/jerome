@@ -16,7 +16,7 @@ Read-only. Press Ctrl+C to stop.
 
 ## What the page shows
 
-- **Header:** the subscription's 5-hour and 7-day windows with the time and source of the reading, each next to its global threshold from `~/.config/jerome/account.json` (`7d 20% / 70%`): green below 75% of the threshold, amber from 75%, red from 90%, red and bold beyond it. A slot for per-project limits shows "not set" until they exist.
+- **Header:** the subscription's 5-hour and 7-day windows with the time and source of the reading, each next to its global threshold from `~/.config/jerome/account.json` (`7d 20% / 70%`): green below 75% of the threshold, amber from 75%, red from 90%, red and bold beyond it. Next to them, the project's spend today and this week against its limits, with the same colours.
 - **Totals** for today, 7 and 30 days, in tokens and API equivalent, and the number of open decision requests.
 - **Decision requests** with their options and recommendation, each linked to its run.
 - **Team:** the lead agent with the models it used, then the project's agents from `.claude/agents/` with their model and tools, then agents that appear in the usage without a file, such as `general-purpose`, marked built-in. Each with its usage over 7 days and its reply lengths.

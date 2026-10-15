@@ -34,7 +34,8 @@ test('every result, status line and subagent meta field the code reads is listed
   for (const f of new Set(all(/\bu\.([a-zA-Z]+Tokens)/g, src('docs.js')))) assert.ok(listed('result', `modelUsage.*.${f}`), `result ${f}`);
   for (const f of new Set(all(/result\.([a-zA-Z_]+)/g, src('docs.js')).filter((f) => f !== 'modelUsage'))) assert.ok(listed('result', f), `result ${f}`);
   const status = src('statusline.js');
-  for (const f of new Set(all(/\bw\.([a-z_]+)/g, status))) {
+  // Fields of the status line input are snake_case; w.used, w.limit and the like are Jérôme's own window records.
+  for (const f of new Set(all(/\bw\.([a-z]+_[a-z_]+)/g, status))) {
     for (const w of ['five_hour', 'seven_day']) assert.ok(listed('statusline-input', `rate_limits.${w}.${f}`), `status line ${w}.${f}`);
   }
   for (const f of ['workspace.project_dir', 'cwd']) assert.ok(listed('statusline-input', f), f);
@@ -61,6 +62,6 @@ test('jerome deps --json prints the versioned list', () => {
   for (const item of report.items) {
     for (const key of ['area', 'path', 'kind', 'presence', 'documented', 'decisions', 'phase', 'code', 'use']) assert.ok(key in item, `${item.path}: ${key}`);
     assert.ok(['always', 'sometimes'].includes(item.presence));
-    assert.ok(Number.isInteger(item.phase) && item.phase >= 1 && item.phase <= 8, `${item.path}: phase`);
+    assert.ok(Number.isInteger(item.phase) && item.phase >= 1 && item.phase <= 9, `${item.path}: phase`);
   }
 });

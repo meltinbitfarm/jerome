@@ -16,6 +16,8 @@ open    no decision requests
 |---|---|
 | `usage` | tokens today (since local midnight), split into input, output, cache reads and cache writes, and over the last 7 days, with their API-equivalent price |
 | `window` | the latest reading of the subscription's 5-hour and 7-day windows, its source and time, and the global limits, from `~/.config/jerome/account.json` |
+| `limits` | the project's spend today and this week against its limits |
+| `paused` | present while heartbeats are paused by a limit, with the reason |
 | `agents` | tokens per agent over the last 7 days; `main` is the lead agent |
 | `runs` | the latest runs: start, kind, status (with the reason when blocked) and tokens |
 | `open` | the open decision requests, followed by how to record an answer (`jerome request answer <id> "<answer>"`) |
@@ -27,7 +29,7 @@ Tokens count input, output and cache reads and writes. **Dollar amounts are API 
 | `--runs <n>` | how many recent runs to list (default 3) |
 | `--agent <name>` | only that agent's usage |
 | `--replies` | adds a `replies` line: per agent, over 7 days, the average and longest reply in words and how many went over 150 (see [hooks.md](../hooks.md#reply-lengths)) |
-| `--json` | everything `jerome state` knows as one JSON object, schema `jerome.state/v1`: besides the lines above, the latest runs with duration and API equivalent, usage per agent and model for today, 7 and 30 days (`byModel`), reply lengths (`replies`), the team (`team`) and `projectLimits` (null until per-project limits exist). It is what [`jerome view`](view.md) shows. |
+| `--json` | everything `jerome state` knows as one JSON object, schema `jerome.state/v1`: besides the lines above, the latest runs with duration and API equivalent, usage per agent and model for today, 7 and 30 days (`byModel`), reply lengths (`replies`), the team (`team`) and `projectLimits`: for `daily` and `weekly`, the `limit`, the spend in `usd` and `tokens`, `since`, `resetsAt` and the `level` (`ok`, `warn`, `high`, `over`). It is what [`jerome view`](view.md) shows. |
 
 `jerome state` is allowed by the project's permission rules, so the lead agent runs it without asking. See [database.md](../database.md) for where the data comes from.
 

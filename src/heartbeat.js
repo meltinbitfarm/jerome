@@ -13,7 +13,10 @@ import { openDb, DB_FILE } from './db.js';
 import { isTrusted } from './limits.js';
 import { isProvisional } from './brief.js';
 import { runDoctor } from './doctor.js';
-import { readAccount, recordWindows, WINDOWS } from './account.js';
+import { recordWindows, WINDOWS } from './account.js';
+import { globalLimits, projectStatus, projectOver } from './budget.js';
+
+export { globalLimits };
 import { DEFAULT_CAPS, jobLabel } from './schedule.js';
 import { openRequest } from './request.js';
 import { closeSession } from './hooks.js';
@@ -24,7 +27,6 @@ import { settingsPath } from './profile.js';
 import { serviceFolder, recordResultUsage } from './docs.js';
 import { DIGEST } from './digest.js';
 
-const STALE_READING_HOURS = 3;
 const INTERACTIVE_HOURS = 12;
 
 function cacheDir(...parts) {
@@ -54,8 +56,25 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date() } 
     const blocked = await checks(dir, now);
     if (blocked) return finish('blocked', blocked.reason, blocked.request);
 
+    // Limits (D84): a window at or over its limit pauses heartbeats, at zero tokens, until it resets. The user is
+    // notified once per pause, not at every heartbeat (D85).
     const limits = globalLimits(now);
-    if (limits.over) return finish('blocked', limits.over);
+    if (limits.over) {
+      const w = Object.entries(limits.windows).find(([, x]) => x.level === 'over');
+      notifyOnce(dir, env, `global:${w?.[0]}:${w?.[1].resetsAt}`, `Heartbeats paused: ${limits.over}`);
+      return finish('blocked', limits.over);
+    }
+    const db = openDb(dir);
+    let project;
+    try {
+      project = projectOver(projectStatus(dir, db, now));
+    } finally {
+      db.close();
+    }
+    if (project) {
+      notifyOnce(dir, env, project.key, `Heartbeats paused: ${project.reason}`);
+      return finish('blocked', project.reason);
+    }
     const note = limits.note ? ` (${limits.note})` : '';
 
     const fingerprint = projectFingerprint(dir);
@@ -204,24 +223,6 @@ function uncommitted(dir) {
   } catch {
     return null;
   }
-}
-
-// The global thresholds of account.json (D52, D73): a window at or over its limit skips the heartbeat. A reading
-// whose window has reset since says nothing about now and is ignored; an old one is mentioned in the reason.
-export function globalLimits(now, account = readAccount()) {
-  const names = { five_hour: '5h', seven_day: '7d' };
-  let note = null;
-  for (const w of WINDOWS) {
-    const reading = account.windows?.[w];
-    const limit = account.limits?.[w];
-    if (!reading || typeof limit !== 'number') continue;
-    if (reading.resetsAt && reading.resetsAt * 1000 < now.getTime()) continue;
-    const hours = Math.floor((now.getTime() - Date.parse(reading.readAt)) / 3_600_000);
-    const age = hours >= STALE_READING_HOURS ? `reading from ${hours} h ago` : null;
-    if (reading.used >= limit) return { over: `global limit: ${names[w]} ${reading.used}% ≥ ${limit}%${age ? ` (${age})` : ''}` };
-    if (age) note = `limits checked on a ${age}`;
-  }
-  return { over: null, note };
 }
 
 // What the triage looks at: when none of it changed since a "no work" verdict, there is nothing new to do.
@@ -410,8 +411,28 @@ function recordRateLimit(info) {
   }
 }
 
-// A local macOS notification when the user is needed (D74). No external channel.
+// A notification for a pause, once per limit and window: the key names both, and the last one sent is kept.
+function notifyOnce(dir, env, key, message) {
+  const path = cacheDir('notified', `${jobLabel(dir)}.json`);
+  let last = null;
+  try {
+    last = JSON.parse(readFileSync(path, 'utf8')).key;
+  } catch {
+    // Never notified.
+  }
+  if (last === key) return;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify({ key, at: new Date().toISOString() })}\n`);
+  notify(env, basename(dir), message);
+}
+
+// A local macOS notification when the user is needed (D74). No external channel. JEROME_NOTIFY_LOG writes the
+// notifications to a file instead, for tests.
 function notify(env, project, message) {
+  if (env.JEROME_NOTIFY_LOG) {
+    writeFileSync(env.JEROME_NOTIFY_LOG, `${project}: ${message}\n`, { flag: 'a' });
+    return;
+  }
   if (env.JEROME_NOTIFY === 'off' || process.platform !== 'darwin') return;
   const quote = (s) => `"${String(s).replace(/["\\]/g, '\\$&')}"`;
   spawnSync('osascript', ['-e', `display notification ${quote(message)} with title ${quote(`Jérôme · ${project}`)}`], { stdio: 'ignore', timeout: 5000 });

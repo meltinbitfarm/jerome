@@ -14,11 +14,17 @@ const PRICES = {
 };
 const HAIKU_LONG_PROMPT = 100_000;
 
-// The API-equivalent price of one call in dollars, or null for a model not in the table.
+// Haiku 5.5's tier depends on the prompt of each call, so sums must be grouped by it before pricing: summing calls
+// first would put many short prompts in the long tier. Add `TIER_SQL AS long_prompt` to the SELECT and GROUP BY it.
+export const TIER_SQL = `(model LIKE 'claude-haiku-5-5%' AND input + cache_read + cache_write_5m + cache_write_1h > ${HAIKU_LONG_PROMPT})`;
+
+// The API-equivalent price of one call, or of calls summed within one tier (u.long_prompt from TIER_SQL), in
+// dollars, or null for a model not in the table.
 export function callPrice(model, u) {
   const base = model.replace(/\[.*\]$/, '');
   const prompt = u.input + u.cache_read + u.cache_write_5m + u.cache_write_1h;
-  const p = base === 'claude-haiku-5-5' && prompt > HAIKU_LONG_PROMPT ? PRICES['claude-haiku-5-5@long'] : PRICES[base];
+  const long = u.long_prompt === undefined ? prompt > HAIKU_LONG_PROMPT : Boolean(u.long_prompt);
+  const p = base === 'claude-haiku-5-5' && long ? PRICES['claude-haiku-5-5@long'] : PRICES[base];
   if (!p) return null;
   return (u.input * p.input + u.output * p.output + u.cache_read * p.read + u.cache_write_5m * p.write5m + u.cache_write_1h * p.write1h) / 1e6;
 }

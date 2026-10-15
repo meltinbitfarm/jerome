@@ -6,7 +6,8 @@ import { basename, join, resolve } from 'node:path';
 import { MARKER } from './template.js';
 import { openDb, schemaVersion, DbTooNewError, DB_FILE, LATEST } from './db.js';
 import { projectAgents } from './agents.js';
-import { callPrice } from './models.js';
+import { projectStatus, projectOver, projectSummary, globalLimits } from './budget.js';
+import { callPrice, TIER_SQL } from './models.js';
 import { readAccount, WINDOWS } from './account.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
@@ -49,14 +50,14 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
     };
     const filter = agent ? ' AND agent = ?' : '';
     const args = (from) => (agent ? [from, agent] : [from]);
-    const rows = (from) => db.prepare(`SELECT model, agent, ${SUMS} FROM usage WHERE at >= ?${filter} GROUP BY model, agent`).all(...args(from));
+    const rows = (from) => db.prepare(`SELECT model, agent, ${TIER_SQL} long_prompt, ${SUMS} FROM usage WHERE at >= ?${filter} GROUP BY model, agent, long_prompt`).all(...args(from));
 
     const periods = Object.fromEntries(Object.entries(since).map(([name, from]) => [name, rows(from)]));
     const agents = new Map();
     for (const r of periods.week) agents.set(r.agent, total([agents.get(r.agent) ?? total([]), totals([r])]));
 
     const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
-    const perRun = db.prepare(`SELECT agent, model, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model`);
+    const perRun = db.prepare(`SELECT agent, model, ${TIER_SQL} long_prompt, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model, long_prompt`);
     const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
 
     return {
@@ -73,8 +74,8 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
       team: team(dir, periods.month),
       windows: Object.fromEntries(WINDOWS.filter((w) => account.windows[w]).map((w) => [w, account.windows[w]])),
       limits: account.limits,
-      // Per-project limits arrive with phase 9; the field is there so readers can already expect it.
-      projectLimits: null,
+      // The project's limits and spend in each calendar window (D82, D86).
+      projectLimits: projectStatus(dir, db, now),
       runs: recent.map((r) => {
         const usage = perRun.all(r.id);
         const t = totals(usage);
@@ -185,6 +186,10 @@ export function formatState(s, { replies = false } = {}) {
     const parts = windows.map(([name, w]) => `${name === 'five_hour' ? '5h' : '7d'} ${w.used}%`);
     lines.push(`window  ${parts.join(' · ')} (${latest.source}, ${when(latest.readAt, now)})${limits.length ? ` · global limits ${limits.join(' / ')}` : ''}`);
   } else lines.push('window  no reading yet');
+  if (s.projectLimits) lines.push(`limits  ${projectSummary(s.projectLimits)} API`);
+  // Heartbeats are paused while a limit is reached (D84); they start again when its window resets.
+  const paused = (s.projectLimits && projectOver(s.projectLimits)) || globalLimits(now, { windows: s.windows, limits: s.limits }).over;
+  if (paused) lines.push(`paused  heartbeats: ${typeof paused === 'string' ? paused : paused.reason}`);
   if (!s.agent) lines.push(`agents  7d: ${s.agents.length ? s.agents.map((a) => `${a.agent} ${n(a.tokens)}`).join(' · ') : 'none'}`);
   lines.push(`runs    ${s.runs.length ? `last ${s.runs.length}: ${s.runs.map((r) => `${when(r.startedAt, now)} ${r.kind} ${r.status}${r.reason && r.status !== 'done' ? ` (${r.reason})` : ''} ${n(r.tokens)}`).join(' · ')}` : 'none'}`);
   if (replies) {

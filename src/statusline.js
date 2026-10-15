@@ -6,10 +6,9 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { claudeConfigDir } from './claude.js';
 import { MARKER } from './template.js';
-import { recordWindows, readAccount, WINDOWS } from './account.js';
+import { recordWindows, WINDOWS } from './account.js';
 import { openDb } from './db.js';
-import { callPrice } from './models.js';
-import { dollars } from './state.js';
+import { projectStatus, globalLimits, money, limitText } from './budget.js';
 
 export const STATUSLINE_COMMAND = 'jerome statusline';
 
@@ -28,16 +27,18 @@ export async function statusline({ input = readStdin(), env = process.env } = {}
       if (w && typeof w.used_percentage === 'number') reading[name] = { used: Math.round(w.used_percentage), resetsAt: w.resets_at ?? null };
     }
     if (Object.keys(reading).length) recordWindows(reading, { source: 'statusline' });
-    const account = readAccount();
-    const windows = WINDOWS.filter((w) => account.windows[w]).map((w) => `${w === 'five_hour' ? '5h' : '7d'} ${account.windows[w].used}%`);
-    parts.push(...windows);
+    // Each window with its global limit, coloured by how close it is (D84): "7d 20%/75%".
+    for (const [name, w] of Object.entries(globalLimits().windows)) {
+      if (w.stale) continue;
+      parts.push(paint(`${name === 'five_hour' ? '5h' : '7d'} ${w.used}%${w.limit ? `/${w.limit}%` : ''}`, w.level));
+    }
   } catch {
     // Without account data the line shows the rest.
   }
   const dir = env.CLAUDE_PROJECT_DIR ?? data.workspace?.project_dir ?? data.cwd;
   try {
-    const cost = dir && existsSync(join(dir, MARKER)) ? todayApiUsd(dir) : null;
-    if (cost) parts.push(`today ${cost}`);
+    const status = dir && existsSync(join(dir, MARKER)) ? projectToday(dir) : null;
+    if (status) parts.push(paint(`today ${money(status.usd)}${status.limit ? `/${limitText(status.limit)}` : ''} API`, status.level));
   } catch {
     // Without the database the line shows the rest.
   }
@@ -56,27 +57,22 @@ function readStdin() {
   }
 }
 
-// Today's usage of the project at API prices, labelled as such (D57).
-function todayApiUsd(dir) {
-  const db = openDb(dir, { migrate: false });
+// Today's usage of the project at API prices, labelled as such (D57), against its daily limit (D82).
+function projectToday(dir) {
+  const db = openDb(dir, { readOnly: true, migrate: false });
   if (!db) return null;
   try {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const rows = db.prepare(`SELECT model, sum(input) input, sum(output) output, sum(cache_read) cache_read,
-      sum(cache_write_5m) cache_write_5m, sum(cache_write_1h) cache_write_1h FROM usage WHERE at >= ? GROUP BY model`).all(start.toISOString());
-    if (!rows.length) return null;
-    let usd = 0;
-    let unpriced = false;
-    for (const r of rows) {
-      const p = callPrice(r.model, r);
-      if (p === null) unpriced = true;
-      else usd += p;
-    }
-    return `${dollars(usd)}${unpriced ? '+?' : ''} API`;
+    const daily = projectStatus(dir, db).daily;
+    return daily.tokens ? daily : null;
   } finally {
     db.close();
   }
+}
+
+// ANSI colours by level, as in the viewer: green, yellow from 75%, red from 90%, bold red beyond the limit.
+const COLOURS = { ok: '32', warn: '33', high: '31', over: '1;31' };
+function paint(text, lvl) {
+  return lvl ? `\x1b[${COLOURS[lvl]}m${text}\x1b[0m` : text;
 }
 
 // The user's own status line from their user settings, run with the same input. Jérôme's own command is skipped,

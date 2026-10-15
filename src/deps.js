@@ -116,6 +116,7 @@ export const DEPS = [
   d('hook-input', 'agent_type', 'which agent a refused chain came from', { event: 'PreToolUse', presence: 'sometimes', decisions: ['D61'], phase: 6, code: ['src/hooks.js'], note: 'present for a subagent\'s tool call' }),
   d('hook-output', 'hookSpecificOutput.permissionDecision', '"deny" refuses the call', { event: 'PreToolUse', decisions: ['D61'], phase: 6, code: ['src/hooks.js'] }),
   d('hook-output', 'hookSpecificOutput.permissionDecisionReason', 'shown to the model', { event: 'PreToolUse', decisions: ['D61'], phase: 6, code: ['src/hooks.js'] }),
+  d('hook-output', 'systemMessage', 'a warning shown to the user, not the model, when limits are near or reached', { event: 'SessionStart', decisions: ['D84'], phase: 9, code: ['src/hooks.js'] }),
   d('hook-output', 'hookSpecificOutput.additionalContext', 'open decision requests shown to the model at session start', { event: 'SessionStart', decisions: ['D74'], phase: 8, code: ['src/hooks.js'] }),
 
   // Status line.
@@ -125,6 +126,7 @@ export const DEPS = [
   d('statusline-input', 'rate_limits.seven_day.used_percentage', 'subscription window', { presence: 'sometimes', decisions: ['D23', 'D60'], phase: 6, code: ['src/statusline.js'] }),
   d('statusline-input', 'rate_limits.seven_day.resets_at', 'window reset', { presence: 'sometimes', decisions: ['D23', 'D60'], phase: 6, code: ['src/statusline.js'] }),
   d('statusline-input', 'workspace.project_dir', 'the project', { presence: 'sometimes', decisions: ['D60'], phase: 6, code: ['src/statusline.js'] }),
+  d('statusline-config', 'ANSI colours in the command\'s output', 'limits coloured by how close they are', { kind: 'behaviour', decisions: ['D84'], phase: 9, code: ['src/statusline.js'] }),
   d('statusline-input', 'cwd', 'the project, as a fallback', { decisions: ['D60'], phase: 6, code: ['src/statusline.js'] }),
 
   // /context, read strictly by parseContext.

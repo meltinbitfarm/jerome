@@ -6,7 +6,7 @@ import { basename, join, resolve } from 'node:path';
 import { MARKER } from './template.js';
 import { openDb, DB_FILE } from './db.js';
 import { n, dollars } from './state.js';
-import { callPrice } from './models.js';
+import { callPrice, TIER_SQL } from './models.js';
 
 export const DIGEST = 'digest.md';
 
@@ -36,8 +36,8 @@ export function formatDigest(dir, from, days) {
       out.push(`runs      ${runs.length ? runs.map((r) => `${r.n} ${r.kind} ${r.status}`).join(' · ') : 'none'}`);
       let usd = 0;
       let tokens = 0;
-      for (const r of db.prepare(`SELECT model, sum(input) input, sum(output) output, sum(cache_read) cache_read, sum(cache_write_5m) cache_write_5m,
-        sum(cache_write_1h) cache_write_1h FROM usage WHERE at >= ? GROUP BY model`).all(fromIso)) {
+      for (const r of db.prepare(`SELECT model, ${TIER_SQL} long_prompt, sum(input) input, sum(output) output, sum(cache_read) cache_read, sum(cache_write_5m) cache_write_5m,
+        sum(cache_write_1h) cache_write_1h FROM usage WHERE at >= ? GROUP BY model, long_prompt`).all(fromIso)) {
         tokens += r.input + r.output + r.cache_read + r.cache_write_5m + r.cache_write_1h;
         usd += callPrice(r.model, r) ?? 0;
       }

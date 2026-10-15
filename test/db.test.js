@@ -12,6 +12,7 @@ import { ingestTranscript, parseCall } from '../src/usage.js';
 import { recordWindows, readAccount } from '../src/account.js';
 import { readState, formatState, dollars } from '../src/state.js';
 import { callPrice } from '../src/models.js';
+import { projectStatus } from '../src/budget.js';
 
 const NOW = new Date('2026-10-15T12:00:00Z');
 const temp = () => mkdtempSync(join(tmpdir(), 'jerome-db-'));
@@ -153,13 +154,14 @@ test('state is compact, labels dollars as API equivalents, and lists runs and op
   assert.deepEqual(s.requests.map((r) => r.id), [1]);
   const text = formatState(s);
   assert.match(text, /≈\$\d+\.\d{2}\+\? API/);
-  assert.doesNotMatch(text.replace(/≈\$[\d.]+(\+\?)? API/g, ''), /\$/);
+  assert.doesNotMatch(text.split('\n').filter((l) => !l.startsWith('limits')).join('\n').replace(/≈\$[\d.]+(\+\?)? API/g, ''), /\$/);
   assert.match(text, /^window  5h 43% \(statusline, /m);
   assert.match(text, /global limits 80%/);
   assert.match(text, /heartbeat done 5k/);
   assert.match(text, /^open    R1 merge task\/x: tests fail/m);
   assert.match(text, /record each answer with `jerome request answer <id>/);
-  assert.ok(text.split('\n').length <= 7);
+  assert.match(text, /^limits  today ≈\$\d+\.\d{2}\/\$5 · this week ≈\$\d+\.\d{2}\/\$20 API$/m);
+  assert.ok(text.split('\n').length <= 8);
 });
 
 test('jerome state on a project without the database says how to create it', () => {
@@ -208,4 +210,20 @@ test('the progress line is drawn only on a terminal, and says what the stream is
   assert.equal(describeTool('Bash', { description: 'Run the tests' }), 'running Run the tests');
   assert.equal(describeTool('Agent', { subagent_type: 'analyst' }), 'delegating to analyst');
   assert.equal(actionOf({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } }), 'writing the reply');
+});
+
+test('Haiku 5.5 is priced by the prompt of each call, also when calls are summed', () => {
+  const dir = temp();
+  const db = openDb(dir, { create: true });
+  const add = db.prepare("INSERT INTO usage (request_id, agent, model, input, output, cache_read, at) VALUES (?, ?, 'claude-haiku-5-5', 60000, 0, 0, ?)");
+  add.run('a', 'triage', NOW.toISOString());
+  add.run('b', 'documentarist', NOW.toISOString());
+  db.close();
+  // Two 60k prompts: each in the short tier ($0.10 per MTok), $0.012 in all, whatever the grouping.
+  const s = readState(dir, { now: NOW, account: { windows: {}, limits: {} } });
+  assert.equal(s.usage.week.apiUsd, 0.012);
+  const d2 = openDb(dir);
+  const p = projectStatus(dir, d2, NOW);
+  d2.close();
+  assert.equal(p.daily.usd, 0.012);
 });

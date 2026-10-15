@@ -55,6 +55,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it |
 | [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
 | [`jerome digest [dir]`](docs/commands/digest.md) | What happened recently, at zero tokens |
+| [`jerome limits [dir]`](docs/commands/limits.md) | Shows and sets the usage limits that pause heartbeats: global in % of the subscription windows, per project in API-equivalent dollars |
 | [`jerome deps [--json]`](docs/commands/deps.md) | Lists what Jérôme depends on in Claude Code, for tools that watch Claude Code releases |
 | [`jerome docs [dir]`](docs/commands/docs.md) | Brings the documentation queue into the project's docs, with the documentarist on Haiku |
 
@@ -74,7 +75,7 @@ After the brief, the lead agent proposes a team from Jérôme's catalog (develop
 
 ## Heartbeats
 
-Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work, within a token and turn cap. When it needs you it leaves a decision request instead of asking. See [docs/heartbeat.md](docs/heartbeat.md).
+Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work, within a token and turn cap. When it needs you it leaves a decision request instead of asking. Heartbeats pause when a global or project limit is reached, and start again when it resets. See [docs/heartbeat.md](docs/heartbeat.md) and [docs/limits.md](docs/limits.md).
 
 ## The briefing
 
@@ -90,7 +91,7 @@ Every project starts from a brief in the `brief/v2` format. You can run the brie
 6. ~~Usage tracking through hooks and the status line~~
 7. ~~Read-only local viewer (`jerome view`)~~
 8. ~~Scheduled headless runs, with a lock and a budget per run~~
-9. Daily and weekly limits with automatic pause
+9. ~~Daily and weekly limits with automatic pause~~
 
 ## Repository layout
 

@@ -93,7 +93,8 @@ test('/api/state serves the state with the team, the thresholds and room for pro
   assert.deepEqual(s.team.subagents.map((a) => [a.agent, a.source, a.model]), [['developer', 'project', 'opus'], ['general-purpose', 'built-in', null]]);
   assert.deepEqual(s.limits, { seven_day: 70 });
   assert.equal(s.windows.seven_day.used, 20);
-  assert.equal(s.projectLimits, null);
+  assert.deepEqual([s.projectLimits.daily.limit, s.projectLimits.weekly.limit], [5, 20]);
+  assert.ok(s.projectLimits.daily.usd > 0 && s.projectLimits.daily.tokens > 0);
   assert.deepEqual(Object.keys(s.byModel), ['today', 'week', 'month']);
   assert.equal(s.runs.length, 2);
   assert.deepEqual(s.replies.map((x) => [x.agent, x.max, x.over]), [['developer', 175, 1]]);

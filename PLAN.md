@@ -238,7 +238,12 @@ Daily and weekly limits per project and global; the global ones are in % of the 
 - the viewer shows the % and the date of the latest reading.
 
 **Done when:** the tests pass, the pause is lifted explicitly, and per-project usage is visible and under control (Success 3).
-**Questions to settle first:** Q2, narrowed by D20 to per-project limits only.
+**Questions to settle first:** none (Q2 closed by D82).
+**Status: done (2026-10-15).** The pause is lifted by the window's reset rather than explicitly (D84): no state to clear, and `jerome limits` raises or removes a limit at once.
+- `jerome limits` (D83), project limits in API-equivalent dollars per calendar day and week (D82), the pause in heartbeats with one notification (D84, D85), the warning at session start and the coloured status line (D84), `projectLimits` in state and in the viewer (D86); 118 tests with `npm test`, among them the calendar windows across midnight and Monday and a global limit pausing two projects.
+- Global limits set to 70% (5 hours) and 75% (7 days).
+- On claude-watch with a $0.10 daily limit: two heartbeats paused with the reason, one notification; `jerome state` showed `paused`; an interactive session started with the warning and replied normally; the status line showed the 5-hour window in yellow (57% of 70%), the 7-day one in green and the day in bold red; the viewer showed the day's limit in red. Back at the default, the next heartbeat went through and did real work (433,000 tokens): the hook payload rupture check reading `jerome deps`, merged with its tests. A 50% global limit paused claude-watch's heartbeat too; the second project of the test exists only in the test suite, since no other trusted project was at hand.
+- Found along the way: Haiku's two price tiers were applied to summed calls, which gave different amounts depending on the grouping ($3.35 and $3.39 for the same day); the tier is now decided per call.
 
 ## Before the public release
 
@@ -255,6 +260,6 @@ Checks to do before announcing Jérôme or publishing it on npm:
 | Q4 | closed by D58 |
 | Q5 (viewer part) | closed by D64 |
 | Q3 | closed by D71 |
-| Q2 | 9 |
+| Q2 | closed by D82 |
 
 P1 and P2 (parked) and the Out of scope section of PROJECT.md stay outside the plan.

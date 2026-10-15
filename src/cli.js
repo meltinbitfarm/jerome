@@ -13,6 +13,7 @@ import { heartbeat } from './heartbeat.js';
 import { request } from './request.js';
 import { digest } from './digest.js';
 import { deps } from './deps.js';
+import { limits } from './limitscmd.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -47,6 +48,11 @@ const USAGE = `Usage:
                           open or close a decision request
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
+  jerome limits [dir]     show the usage limits, global and of the project, with the current usage
+    --five-hour <n|off>   global limit on the 5-hour window, in % (account.json)
+    --seven-day <n|off>   global limit on the 7-day window, in %
+    --daily <usd|off|default>   project limit per calendar day, in API-equivalent dollars (.jerome; default 5)
+    --weekly <usd|off|default>  project limit per calendar week, from Monday (default 20)
   jerome deps             what Jérôme depends on in Claude Code
     --json                machine-readable (schema jerome.deps/v1), for tools that watch Claude Code releases
   jerome hook <event>     run by Claude Code's hooks: ${HOOK_EVENTS.join(', ')}
@@ -72,12 +78,16 @@ const OPTIONS = {
   options: { type: 'string' },
   recommendation: { type: 'string' },
   since: { type: 'string' },
+  'five-hour': { type: 'string' },
+  'seven-day': { type: 'string' },
+  daily: { type: 'string' },
+  weekly: { type: 'string' },
   'no-open': { type: 'boolean' },
 };
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation'], digest: ['since'], deps: ['json'] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
 
 export async function main(argv) {
   let parsed;
@@ -141,6 +151,9 @@ export async function main(argv) {
     case 'digest':
       if (rest.length > 1) return usageError('jerome digest takes at most one folder.');
       return digest(rest[0] ?? '.', { since: parsed.values.since ?? '7d' });
+    case 'limits':
+      if (rest.length > 1) return usageError('jerome limits takes at most one folder.');
+      return limits(rest[0] ?? '.', parsed.values);
     case 'deps':
       if (rest.length) return usageError('jerome deps takes no arguments.');
       return deps({ json: parsed.values.json });

@@ -175,9 +175,14 @@ function renderHeader(d) {
   }
   if (!chips.length) chips.push(el('span', { class: 'muted small' }, 'subscription: no reading yet'));
   else chips.push(el('span', { class: 'muted small' }, `read ${when(latest.readAt)} (${latest.source})`));
-  // Room for the per-project limits of phase 9.
-  chips.push(el('span', { class: 'muted small', title: 'per-project limits come with phase 9' },
-    d.projectLimits ? `project: ${Object.entries(d.projectLimits).map(([k, v]) => `${k} ${v}`).join(' · ')}` : 'project limits: not set'));
+  // The project's limits, in API-equivalent dollars per calendar day and week, with the same colours (D86).
+  for (const [name, label] of [['daily', 'today'], ['weekly', 'week']]) {
+    const p = d.projectLimits?.[name];
+    if (!p) continue;
+    const amount = usd({ apiUsd: p.usd }).replace(/ API$/, '');
+    chips.push(el('span', { class: `window ${p.level ?? ''}`, title: `${n(p.tokens)} tokens · resets ${when(p.resetsAt)}${p.limit ? '' : ' · no limit'}` },
+      `${label} ${amount}${p.limit ? ` / $${Number.isInteger(p.limit) ? p.limit : p.limit.toFixed(2)}` : ''}`));
+  }
   fill('windows', chips);
 }
 

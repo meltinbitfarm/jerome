@@ -54,4 +54,4 @@ The subscription is one, shared by every project, so its data is not in any proj
 }
 ```
 
-The status line and the scheduled runs write it, only when a value changes, through a temporary file and a rename, so a reader never sees half a file. Per-project limits will live in the project's `.jerome`, next to its token budgets.
+The status line and the scheduled runs write it, only when a value changes, through a temporary file and a rename, so a reader never sees half a file. Global limits are set with [`jerome limits`](commands/limits.md); per-project limits live in the project's `.jerome`, see [limits.md](limits.md).

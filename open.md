@@ -2,7 +2,6 @@
 
 ## Open questions
 - Q1: (superseded, see D16) Name of the tool.
-- Q2: (narrowed by D20) Global limits are in % of the subscription windows; still to decide: which unit to use for per-project limits, and their default values.
 - Q6: (resolved by D32) (from D30) Where project customizations of the lead agent's instructions live: a section of PROJECT.md, or a dedicated file imported by the template's CLAUDE.md with `@`.
 
 ## Parked

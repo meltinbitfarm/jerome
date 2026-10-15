@@ -7,6 +7,7 @@ import { MARKER } from './template.js';
 import { openDb, prune } from './db.js';
 import { ingestTranscript } from './usage.js';
 import { checkChain } from './chain.js';
+import { projectStatus, projectSummary, globalLimits } from './budget.js';
 
 export const HOOK_EVENTS = ['session-start', 'subagent-stop', 'stop', 'session-end', 'pre-tool-use'];
 const RUN_KINDS = ['heartbeat', 'service'];
@@ -36,15 +37,18 @@ export async function hook(event, { input = readStdin(), env = process.env } = {
     return 0;
   }
 
-  let context = null;
+  let start = null;
   record(dir, (db) => {
-    if (event === 'session-start') context = sessionStart(db, payload, env);
+    if (event === 'session-start') start = sessionStart(db, payload, env, dir);
     else if (event === 'subagent-stop') subagentStop(db, payload);
     else if (event === 'stop') stop(db, payload);
     else if (event === 'session-end') sessionEnd(db, payload);
   });
-  if (context) {
-    process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } })}\n`);
+  if (start?.context || start?.message) {
+    process.stdout.write(`${JSON.stringify({
+      ...(start.message ? { systemMessage: start.message } : {}),
+      ...(start.context ? { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: start.context } } : {}),
+    })}\n`);
   }
   return 0;
 }
@@ -109,7 +113,7 @@ function ensureRun(db, sessionId, kind = 'interactive') {
   return runOf(db, sessionId);
 }
 
-function sessionStart(db, payload, env) {
+function sessionStart(db, payload, env, dir) {
   const kind = RUN_KINDS.includes(env.JEROME_RUN_KIND) ? env.JEROME_RUN_KIND : 'interactive';
   const runId = payload.session_id ? ensureRun(db, payload.session_id, kind) : null;
   const pruned = prune(db);
@@ -118,8 +122,25 @@ function sessionStart(db, payload, env) {
   // A heartbeat is told what to do by its own prompt.
   if (kind !== 'interactive' || payload.source === 'compact') return null;
   const open = db.prepare("SELECT id, question, options, recommendation FROM requests WHERE status = 'open' ORDER BY id").all();
-  if (!open.length) return null;
-  return requestsContext(projectDir(payload, env), open);
+  return { context: open.length ? requestsContext(projectDir(payload, env), open) : null, message: limitsWarning(db, dir) };
+}
+
+// A warning for the user, not the model, when a limit is at 90% or more (D84): interactive sessions are never
+// blocked, but should not run into a limit unawares. Shown with systemMessage, which costs the model nothing.
+function limitsWarning(db, dir) {
+  const parts = [];
+  try {
+    const status = projectStatus(dir, db);
+    if (['daily', 'weekly'].some((n) => ['high', 'over'].includes(status[n].level))) parts.push(`project ${projectSummary(status)} API`);
+    const g = globalLimits();
+    for (const [name, w] of Object.entries(g.windows)) {
+      if (['high', 'over'].includes(w.level)) parts.push(`${name === 'five_hour' ? '5h' : '7d'} window ${w.used}% / ${w.limit}%`);
+    }
+  } catch {
+    return null;
+  }
+  if (!parts.length) return null;
+  return `Jérôme: usage near or over its limits: ${parts.join('; ')}. Heartbeats pause at a limit; this session is not blocked.`;
 }
 
 // The full open requests (D78): question, options, recommendation, and the project files they cite, so the lead

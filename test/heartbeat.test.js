@@ -103,9 +103,9 @@ test('a window over its global limit skips the heartbeat at no cost, and an old 
   const now = new Date('2026-10-15T12:00:00Z');
   const future = Date.parse('2026-10-20T00:00:00Z') / 1000;
   const reading = (used, readAt) => ({ windows: { seven_day: { used, resetsAt: future, readAt, source: 'statusline' } }, limits: { seven_day: 70 } });
-  assert.deepEqual(globalLimits(now, reading(72, '2026-10-15T11:30:00Z')), { over: 'global limit: 7d 72% ≥ 70%' });
+  assert.equal(globalLimits(now, reading(72, '2026-10-15T11:30:00Z')).over, 'global limit: 7d 72% ≥ 70%');
   assert.equal(globalLimits(now, reading(72, '2026-10-15T06:00:00Z')).over, 'global limit: 7d 72% ≥ 70% (reading from 6 h ago)');
-  assert.deepEqual(globalLimits(now, reading(40, '2026-10-15T06:00:00Z')), { over: null, note: 'limits checked on a reading from 6 h ago' });
+  assert.deepEqual([globalLimits(now, reading(40, '2026-10-15T06:00:00Z')).over, globalLimits(now, reading(40, '2026-10-15T06:00:00Z')).note], [null, 'limits checked on a reading from 6 h ago']);
   // A reading whose window has reset since says nothing about now.
   assert.equal(globalLimits(now, { windows: { seven_day: { used: 99, resetsAt: 1, readAt: '2026-10-01T00:00:00Z' } }, limits: { seven_day: 70 } }).over, null);
 
@@ -221,4 +221,88 @@ test('jerome schedule writes a launchd job with absolute paths, keeps them out o
   assert.equal(JSON.parse(readFileSync(join(p.dir, '.jerome'), 'utf8')).heartbeat, undefined);
   assert.equal(p.run('schedule', 'demo', 'monthly').status, 2);
   assert.equal(p.run('schedule', 'demo', 'hourly', '--at', '75').status, 2);
+});
+
+test('calendar windows start at local midnight and on Monday, and a project limit stops counting when they reset', async () => {
+  const { calendarWindows, projectStatus, projectOver } = await import('../src/budget.js');
+  const sunday = new Date(2026, 9, 18, 23, 30);
+  const w = calendarWindows(sunday);
+  assert.equal(w.daily.from.getTime(), new Date(2026, 9, 18).getTime());
+  assert.equal(w.daily.resetsAt.getTime(), new Date(2026, 9, 19).getTime());
+  assert.equal(w.weekly.from.getTime(), new Date(2026, 9, 12).getTime(), 'the week of a Sunday started on Monday the 12th');
+  assert.equal(w.weekly.resetsAt.getTime(), new Date(2026, 9, 19).getTime());
+
+  const p = project();
+  writeFileSync(join(p.dir, '.jerome'), readFileSync(join(p.dir, '.jerome'), 'utf8').replace('"files"', '"limits": { "daily": 0.01, "weekly": null },\n  "files"'));
+  const d = new DatabaseSync(join(p.dir, '.jerome.db'));
+  d.prepare("INSERT INTO usage (request_id, agent, model, input, output, cache_read, at) VALUES ('r1', 'main', 'claude-opus-5-5', 1000, 1000, 10000, ?)").run(new Date(2026, 9, 18, 10).toISOString());
+  const over = projectOver(projectStatus(p.dir, d, sunday));
+  assert.match(over.reason, /^project limit: today ≈\$0\.03 \/ \$0\.01 API \(12k tokens\), resets at midnight$/);
+  // Past midnight the day starts again, and the weekly limit is off: nothing stops the heartbeats.
+  assert.equal(projectOver(projectStatus(p.dir, d, new Date(2026, 9, 19, 0, 5))), null);
+  d.close();
+});
+
+test('a project over its limit pauses heartbeats with one notification, and they start again under the limit', () => {
+  const p = project({ JEROME_NOTIFY: '', FAKE_TRIAGE: '{"work": false, "reason": "nothing"}' });
+  const log = join(p.root, 'notifications.log');
+  const d = new DatabaseSync(join(p.dir, '.jerome.db'));
+  d.prepare("INSERT INTO usage (request_id, agent, model, input, output, cache_read, at) VALUES ('r1', 'main', 'claude-opus-5-5', 1000, 1000, 10000, ?)").run(new Date().toISOString());
+  d.close();
+  assert.equal(p.run('limits', 'demo', '--daily', '0.01').status, 0);
+  for (let i = 0; i < 3; i += 1) p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  assert.equal(p.lastRun().status, 'blocked');
+  assert.match(p.lastRun().reason, /^project limit: today ≈\$0\.03 \/ \$0\.01 API/);
+  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1, 'one notification for the pause');
+  assert.match(p.run('state', 'demo').stdout, /^paused  heartbeats: project limit: today/m);
+
+  // An interactive session is not blocked, but the user is warned at its start.
+  const start = p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'warned', source: 'startup' }), 'hook', 'session-start');
+  assert.match(JSON.parse(start.stdout).systemMessage, /usage near or over its limits: project today ≈\$0\.03\/\$0\.01/);
+  p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'warned', reason: 'other' }), 'hook', 'session-end');
+
+  assert.equal(p.run('limits', 'demo', '--daily', 'off').status, 0);
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  assert.equal(p.lastRun().status, 'done');
+  assert.doesNotMatch(p.run('state', 'demo').stdout, /^paused/m);
+});
+
+test('jerome limits sets global limits in account.json and project limits in .jerome, and shows them', () => {
+  const p = project();
+  const r = p.run('limits', 'demo', '--five-hour', '70', '--seven-day', '75', '--weekly', '30');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Limits set: global 5h 70%, global 7d 75%, project weekly \$30/);
+  assert.match(r.stdout, /^project week  .* \/ \$30$/m);
+  assert.match(r.stdout, /^project today .* \/ \$5$/m);
+  const account = JSON.parse(readFileSync(join(p.root, '.config', 'jerome', 'account.json'), 'utf8'));
+  assert.deepEqual(account.limits, { five_hour: 70, seven_day: 75 });
+  assert.deepEqual(JSON.parse(readFileSync(join(p.dir, '.jerome'), 'utf8')).limits, { weekly: 30 });
+  assert.equal(p.run('limits', 'demo', '--weekly', 'default').status, 0);
+  assert.equal(JSON.parse(readFileSync(join(p.dir, '.jerome'), 'utf8')).limits, undefined);
+  assert.equal(p.run('limits', 'demo', '--weekly', '30').status, 0);
+  assert.equal(p.run('limits', 'demo', '--five-hour', '170').status, 2);
+  assert.equal(p.run('limits', 'demo', '--daily', '-1').status, 2);
+  writeFileSync(join(p.dir, '.jerome'), readFileSync(join(p.dir, '.jerome'), 'utf8').replace('"weekly": 30', '"weekly": "lots"'));
+  assert.ok(JSON.parse(p.run('doctor', 'demo', '--check', '--json').stdout).warnings.some((w) => w.id === 'limits-config'));
+});
+
+test('a global limit pauses the heartbeats of every project, since account.json is shared', () => {
+  const box = sandbox();
+  const dirs = ['one', 'two'].map((name) => {
+    assert.equal(box.run('new', name).status, 0);
+    const dir = realpathSync(join(box.root, name));
+    for (const args of [['add', '-A'], ['commit', '-q', '-m', 'init']]) execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...args], { cwd: dir, stdio: 'ignore' });
+    return dir;
+  });
+  writeFileSync(join(box.root, 'claude-config', '.claude.json'), JSON.stringify({ projects: Object.fromEntries(dirs.map((d) => [d, { hasTrustDialogAccepted: true }])) }));
+  mkdirSync(join(box.root, '.config', 'jerome'), { recursive: true });
+  writeFileSync(join(box.root, '.config', 'jerome', 'account.json'), JSON.stringify({ schema: 'jerome.account/v1',
+    windows: { five_hour: { used: 59, resetsAt: Math.floor(Date.now() / 1000) + 3600, readAt: new Date().toISOString(), source: 'statusline' } }, limits: {} }));
+  assert.equal(box.run('limits', 'one', '--five-hour', '50').status, 0);
+  for (const name of ['one', 'two']) {
+    box.run('heartbeat', name);
+    const d = new DatabaseSync(join(box.root, name, '.jerome.db'), { readOnly: true });
+    assert.equal(d.prepare('SELECT reason FROM runs ORDER BY id DESC').get().reason, 'global limit: 5h 59% ≥ 50%', name);
+    d.close();
+  }
 });
