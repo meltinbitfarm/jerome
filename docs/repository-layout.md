@@ -6,6 +6,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 .
 ├── bin/, src/           the jerome CLI (Node.js, no dependencies)
 ├── test/                tests, run with `npm test`
+├── migrations/          the project database's schema, applied by the CLI
 ├── template/            what ends up in every project
 │   ├── MANIFEST         the paths copied into projects and kept in sync (not copied itself)
 │   ├── CLAUDE.md        the lead agent's instructions
@@ -22,7 +23,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 
 ## The template
 
-- `jerome new` copies only the paths listed in `template/MANIFEST`, and [`jerome update`](commands/update.md) touches only those paths, so a project's own state is never overwritten: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome`, the local settings and the database. A MANIFEST that listed one of them would be refused.
+- `jerome new` copies only the paths listed in `template/MANIFEST`, and [`jerome update`](commands/update.md) touches only those paths, so a project's own state is never overwritten: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome`, the local settings and `.jerome.db`. A MANIFEST that listed one of them would be refused.
 - Project-specific rules for the lead agent go in `PROJECT.md` under `## Project rules`, never in template files, so updates never conflict with them (see [lead-agent.md](lead-agent.md#project-rules)).
 - The project's own paths are never in the MANIFEST either, even when they start from Jérôme: the agents in `.claude/agents/`, created from the catalog with your approval, `.claude/settings.json`, `docs/` and `notes/` (see [agents.md](agents.md)).
 - Three files are not in the template because the CLI creates them in each project:

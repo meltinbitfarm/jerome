@@ -67,7 +67,7 @@ The instruction lives in `PROJECT.md` and not in `CLAUDE.md`, so it costs tokens
 
 | File | Budget | Current |
 |---|---:|---:|
-| `CLAUDE.md` | 680 tokens | 676 |
+| `CLAUDE.md` | 680 tokens | 679 |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
 `jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome`:

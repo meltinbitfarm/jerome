@@ -5,6 +5,7 @@ import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './templ
 import { isProvisional, misplacedSections } from './brief.js';
 import { RULE_COUNT, missingRules, addRules, isTrusted } from './limits.js';
 import { agentWarnings, queueWarning } from './agents.js';
+import { openDb, dbPath, schemaVersion, peekVersion, applyMigrations, LATEST, DB_FILE } from './db.js';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
   splitProfileKeys, ensureGitignored, inspectContext, findLeaks, overrideFor, parseTokens,
@@ -31,7 +32,7 @@ export async function doctor(dirArg, { json = false, check = false } = {}) {
 export function runDoctor(dir, { setup = true, fix = true } = {}) {
   const report = {
     schema: DOCTOR_SCHEMA, ok: false, jerome: VERSION, mode: fix ? 'fix' : 'check', project: dir,
-    checks: [], limits: null, profile: null, context: null, warnings: [],
+    checks: [], limits: null, db: null, profile: null, context: null, warnings: [],
   };
   const done = () => {
     report.ok = report.checks.every((c) => c.ok);
@@ -47,6 +48,9 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
     report.limits = { added: limits.added, missing: limits.missing };
     report.checks.push(limits.check);
   }
+  const db = dbCheck(dir, { fix });
+  report.db = db.db;
+  report.checks.push(db.check);
 
   if (setup) {
     const results = setupChecks();
@@ -143,6 +147,34 @@ function limitsCheck(dir, { fix }) {
     return { added: [], missing, check: { id: 'limits', ok: missing.length === 0, label, detail } };
   } catch (err) {
     return { added: [], missing: [], check: { id: 'limits', ok: false, label, detail: err.message } };
+  }
+}
+
+// The project database (D51, D54): created and brought to the latest schema with fix, and kept out of git.
+// With --check a missing or outdated database fails the check; a database newer than this Jérôme always does.
+function dbCheck(dir, { fix }) {
+  const label = 'Project database';
+  const fail = (detail, db = null) => ({ db, check: { id: 'db', ok: false, label, detail } });
+  try {
+    const ignored = !ensureGitignored(dir, { write: fix, entry: `${DB_FILE}*` });
+    if (!fix) {
+      if (!existsSync(dbPath(dir))) return fail(`${DB_FILE} is missing: run \`jerome doctor\` to create it`);
+      const version = peekVersion(dir);
+      if (version > LATEST) return fail(`${DB_FILE} has schema version ${version}, this Jérôme knows up to ${LATEST}: update Jérôme`);
+      const info = { version, latest: LATEST, applied: [] };
+      if (version < LATEST) return fail(`${DB_FILE} is at schema ${version} of ${LATEST}: run \`jerome doctor\` to migrate it`, info);
+      if (!ignored) return fail(`${DB_FILE} is not in .gitignore: run \`jerome doctor\``, info);
+      return { db: info, check: { id: 'db', ok: true, label, detail: `schema ${version}` } };
+    }
+    const existed = existsSync(dbPath(dir));
+    const db = openDb(dir, { create: true, migrate: false });
+    const applied = applyMigrations(db);
+    const version = schemaVersion(db);
+    db.close();
+    const detail = !existed ? `${DB_FILE} created (schema ${version})` : applied.length ? `migrated to schema ${version}` : `schema ${version}`;
+    return { db: { version, latest: LATEST, applied }, check: { id: 'db', ok: true, label, detail } };
+  } catch (err) {
+    return fail(err.message);
   }
 }
 

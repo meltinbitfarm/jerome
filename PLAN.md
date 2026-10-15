@@ -151,23 +151,24 @@ The catalog includes the documentation agent on Haiku (D25). It is launched with
 - The developer implemented claude-watch's D9 with 4 tests and queued one line; the analyst reviewed it. Replies first ran to 190–250 words, with the lead agent asking for 8 lines and details in /tmp: the rules now say 150 words, no nested lists, details in `notes/`, and the lead agent must not ask for more. With the final wording (150 words, confirmed by Fabio), a Sonnet review replied in 137 words with details in `notes/`; the developer (Opus), rerun on a small fix with the lead agent itself asking for 150 words, replied in 175 words with a nested list, still over the limit. The rule alone does not hold for every agent: phase 6 hooks should measure each reply's length per agent.
 - `jerome docs` on claude-watch: the project's documentarist (haiku) created `docs/version-check.md` in 23 seconds and emptied the queue.
 
-## Phase 5 — SQLite databases and migrations
+## Phase 5 — The project database
 
-Numbered SQL migrations in the package, applied by the CLI with `node:sqlite` (D19). `jerome new` creates the project DB in WAL mode and the global DB in ~/.config/jerome/ (D9, D12). The seed contains only reference data: states, event types, default budgets and the model table (D10).
+One SQLite database per project, `.jerome.db`, kept out of git, and no global database: the account data (latest subscription %, global limits) lives in `~/.config/jerome/account.json` (D51, D52). Schema v1 holds only what phases 6-9 need: runs, usage per call, daily sums, transcript offsets, hook events and decision requests (D53). Numbered migrations in the package, schema version in `user_version`, WAL, node:sqlite with its experimental warning dropped (D54). A retention policy keeps it small (D55). Only the CLI and the hooks write it (D56); the lead agent reads it with `jerome state` (D57).
 **Testable result:** a new project has the DB created by `jerome new`. Adding a migration and applying it with the CLI keeps the existing data. The .db file does not show up in git.
-**Done when:** all three tests pass for both the project DB and the global DB.
-**Questions to settle first:**
-- ~~outcome of phase 0.5~~ resolved by D20: usage per agent and per run (model, input, output, cache read and cache write) in the project DB, subscription readings in the global DB;
-- Q4: if the Company → project → agents hierarchy stays, the global schema must allow for it from the start;
-- Q2 and Q3 do not block, because the defaults are seed rows that can be changed later.
+**Done when:** the three tests pass, and `jerome state` shows a real project's usage.
+**Questions to settle first:** none (Q4 closed by D58).
+**Status: done (2026-10-15).**
+- `migrations/001-init.sql`, `src/db.js` (migrations, retention), `src/usage.js` (transcript reader with offsets), `src/account.js`, `src/models.js` (API list prices of 2026-10-15), `jerome state`, and the `db` check of `doctor`; 75 tests with `npm test`.
+- claude-watch: `doctor` created the DB and added `.jerome.db*` to `.gitignore`. Its 13 existing transcripts, loaded with the reader the hooks will use, gave 134 calls and 4,310,921 tokens, exactly as an independent count. The first load was 7k tokens short: a response's lines repeat the `requestId` with a growing `output_tokens`, so each field now keeps its largest value (D53).
+- Asked "Quanto abbiamo consumato finora su questo progetto?", the lead agent ran `jerome state` and answered "circa 4,3M token, pari a circa 3,21 $ a prezzi API". Its first try chained `jerome state` with `head` and `--help`, which the permissions refused; it then ran `jerome state` alone.
 
 ## Phase 6 — Tracking with hooks
 
-The template configures Claude Code's hooks to call `jerome hook <event>` (D19), which writes events, runs and token usage per agent to the DB. The model queries them through bash (D8); this phase decides whether through scripts or a CLI command. The experimental warning of `node:sqlite` must be suppressed so it does not end up in the hooks' output. The model spends no tokens writing logs.
-The project's versioned `.claude/settings.json`, owned by the template, also configures the status line, which calls `jerome statusline` (D23). The command stores the % of the subscription windows in the global DB, but only if it changed since the last reading. It does not replace the personal status line: if one is configured, it calls it with the same input and appends its own part. With heartbeats storing the % from the `rate_limit_event` (D20), interactive sessions become the second source.
+The template configures Claude Code's hooks to call `jerome hook <event>` (D19), which writes events, runs and token usage per agent to the project DB with the transcript reader of phase 5 (D53), and prunes old rows at `SessionStart` (D55). The model reads them with `jerome state` (D57). Hooks never fail a session (D56). The model spends no tokens writing logs.
+The project's versioned `.claude/settings.json`, owned by the template, also configures the status line, which calls `jerome statusline` (D23). The command stores the % of the subscription windows in `account.json`, but only if it changed since the last reading (D52). It does not replace the personal status line: if one is configured, it calls it with the same input and appends its own part. With heartbeats storing the % from the `rate_limit_event` (D20), interactive sessions become the second source.
 **Testable result:**
 - after a session with a subagent, a script shows the events and tokens per agent and per run, and the figures roughly match what Claude Code reports;
-- after an interactive session, the global DB has a new % reading only if the value changed;
+- after an interactive session, `account.json` has a new % reading only if the value changed;
 - with a personal status line configured, Jérôme projects show both the personal line and Jérôme's part.
 Two more uses of the hooks:
 - a `PreToolUse` hook refuses Bash commands that chain operations changing the repository (`git commit … && git merge …`), as a second protection behind the CLAUDE.md rule (D49);
@@ -177,12 +178,11 @@ Two more uses of the hooks:
 
 ## Phase 7 — Read-only viewer
 
-Local viewer separate from execution (D11): agent structure, messages, logs, reports, tokens and estimated cost. It also shows the latest subscription % read (D20, D23), with its date.
+Local viewer separate from execution (D11): agent structure, messages, logs, reports, tokens and the API-equivalent cost, always labelled as such ("≈$3.40 API", D57). It also shows the latest subscription % read (D20, D23), with its date.
 **Testable result:** Fabio opens the viewer on a project with a few runs and sees the agents and their usage. Shutting the viewer down during a run, the run carries on without errors.
 **Done when:** the viewer only reads from the DB and the files, never writes, and starts with `jerome view`.
 **Questions to settle first:**
-- Q5, viewer part (interface stack; the command is `jerome view`);
-- Q4 (whether the drag-and-drop graph belongs to the viewer or to a later phase).
+- Q5, viewer part (interface stack; the command is `jerome view`).
 
 ## Phase 8 — Heartbeat
 
@@ -218,7 +218,7 @@ A scheduler launches headless `claude -p` with preconfigured permissions, an ove
 
 ## Phase 9 — Limits, pause and subscription %
 
-Daily and weekly limits per project and global; the global ones are in % of the 5-hour and 7-day windows (D20). Above a limit, heartbeats pause automatically (V4, D12). The viewer shows the subscription % read from Claude Code (D20).
+Daily and weekly limits per project and global; the global ones are in % of the 5-hour and 7-day windows (D20), read from `account.json` with the thresholds stored there (D52); the per-project ones are in `.jerome` and checked against `usage` and `usage_daily`. Above a limit, heartbeats pause automatically (V4, D12). The viewer shows the subscription % read from Claude Code (D20).
 **Testable result:**
 - with a low project limit, the next heartbeat does not start and the paused state is visible;
 - with a low global limit, the pause applies to two different projects;
@@ -239,7 +239,7 @@ Checks to do before announcing Jérôme or publishing it on npm:
 | Question | To settle before phase |
 |---|---|
 | Q5 (CLI part) | resolved by D19 |
-| Q4 | 5 (schema) and 7 (viewer) |
+| Q4 | closed by D58 |
 | Q5 (viewer part) | 7 |
 | Q3 | 8 |
 | Q2 | 9 |

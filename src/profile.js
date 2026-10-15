@@ -109,8 +109,7 @@ export function writeSettings(dir, settings, file = LOCAL_SETTINGS) {
 
 // Makes sure the local settings never end up in git. Returns true if .gitignore needed the entry;
 // with write: false it only reports that, without touching the file.
-export function ensureGitignored(dir, { write = true } = {}) {
-  const entry = `.claude/${LOCAL_SETTINGS}`;
+export function ensureGitignored(dir, { write = true, entry = `.claude/${LOCAL_SETTINGS}` } = {}) {
   const path = join(dir, '.gitignore');
   const current = existsSync(path) ? readFileSync(path, 'utf8') : '';
   if (current.split('\n').some((line) => line.trim() === entry)) return false;

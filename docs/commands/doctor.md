@@ -25,16 +25,17 @@ Run it whenever you install a plugin, sync new skills from claude.ai, or move th
    - the documentation queue, `docs/_pending.md`, holds more than 20 entries: run [`jerome docs`](docs.md) or `/docs`;
    - template files are behind the installed Jérôme version: run [`jerome update`](update.md) to see the changes. This check is skipped in Jérôme's own repository, which holds the template in `template/` rather than a copy: a warning that is always expected would only teach you to ignore warnings.
 2. **Makes the default limits binding**: adds to `.claude/settings.json` the permission rules that are missing, keeping every other setting and rule: deny for pushing, publishing, deploying and sending email, allow for the safe local git operations and the tests, ask for the forms that discard work (see [agents.md](../agents.md#binding-limits)). It also warns when Claude Code has not been told to trust the folder, since until then the allow rules are ignored. With `--check` a missing rule fails the `limits` check. Skipped in Jérôme's own repository.
-3. **Runs the same setup checks as `jerome new`**: Node.js, git, Claude Code and subscription login.
-4. **Rebuilds the lean profile from what is installed now.**
+3. **Creates or migrates the project database**, `.jerome.db`, and adds `.jerome.db*` to `.gitignore` (see [database.md](../database.md)). With `--check` it only reads the schema version from the file header, without opening the database, and fails if the database is missing, behind, newer than this Jérôme, or not ignored by git.
+4. **Runs the same setup checks as `jerome new`**: Node.js, git, Claude Code and subscription login.
+5. **Rebuilds the lean profile from what is installed now.**
    - It reads the installed plugins from `claude plugin list --json`.
    - It reads the skills synced from claude.ai from the Claude Code config folder.
    - It writes the result into the project's `.claude/settings.local.json`, and makes sure `.gitignore` excludes that file.
    - Profile entries left in `.claude/settings.json` by earlier versions are moved to the local file.
-5. **Verifies what Claude Code actually loads** by running `claude -p "/context"` in the project. This is a local command: it makes no API call, uses no tokens and saves no session.
+6. **Verifies what Claude Code actually loads** by running `claude -p "/context"` in the project. This is a local command: it makes no API call, uses no tokens and saves no session.
    - Any skill that is not a project skill, and any MCP tool without a project `.mcp.json`, counts as a leak.
    - Leaked skills that can be turned off are added to `skillOverrides`, and the check runs once more.
-6. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` 680 tokens and `PROJECT.md` 800 by default, or the project's own budgets from `.jerome`. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
+7. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` 680 tokens and `PROJECT.md` 800 by default, or the project's own budgets from `.jerome`. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
 
 ## What it changes
 
@@ -56,7 +57,7 @@ See [lean-profile.md](../lean-profile.md) for what each key does.
 | Code | Meaning |
 |---|---|
 | 0 | Setup fine, lean profile verified |
-| 1 | A deny rule is missing with `--check`, a setup check failed, the folder is not a Jérôme project, `/context` output was not recognized, or something is still loaded that should not be |
+| 1 | A permission rule is missing or the database is missing or behind with `--check`, the database is newer than this Jérôme, a setup check failed, the folder is not a Jérôme project, `/context` output was not recognized, or something is still loaded that should not be |
 | 2 | Wrong usage |
 
 Warnings, such as a file over its token budget, a provisional `PROJECT.md`, an agent without a model, a long documentation queue or template files behind the installed version, never change the exit code.
@@ -86,7 +87,8 @@ Warnings, such as a file over its token budget, a provisional `PROJECT.md`, an a
   "project": "/Users/you/my-project",
   "checks": [
     { "id": "project", "ok": true, "label": "Jérôme project", "detail": "/Users/you/my-project" },
-    { "id": "limits", "ok": true, "label": "Default limits", "detail": "57 permission rules in place" },
+    { "id": "limits", "ok": true, "label": "Default limits", "detail": "58 permission rules in place" },
+    { "id": "db", "ok": true, "label": "Project database", "detail": "schema 1" },
     { "id": "node", "ok": true, "label": "Node ≥ 24", "detail": "24.13.0" },
     { "id": "git", "ok": true, "label": "git installed", "detail": "git version 2.54.0" },
     { "id": "claude-code", "ok": true, "label": "Claude Code installed", "detail": "2.1.299 (Claude Code)" },
@@ -96,6 +98,7 @@ Warnings, such as a file over its token budget, a provisional `PROJECT.md`, an a
     { "id": "startup-context", "ok": true, "label": "Startup context", "detail": "10.9k estimated tokens, project skills: project-brief" }
   ],
   "limits": { "added": [], "missing": [] },
+  "db": { "version": 1, "latest": 1, "applied": [] },
   "profile": { "changes": [], "pending": [] },
   "context": {
     "totalTokens": 10900,
@@ -122,10 +125,11 @@ Warnings, such as a file over its token budget, a provisional `PROJECT.md`, an a
 | `project` | Absolute path of the folder that was checked. |
 | `checks` | Checks in the order they ran. `id` is stable; `label` and `detail` are for humans and may change. Checking stops at the first failure that makes the next ones pointless, so a failed report can have fewer checks. A failed `context-format` check also has `problems`, a list of strings. |
 | `limits` | `added`: the rules this run added to `.claude/settings.json`; `missing`: those missing with `--check`. Each is `{ list, rule }`, with `list` one of `deny`, `ask`, `allow`. `null` in Jérôme's own repository or outside a project. |
+| `db` | `version`: the database's schema version; `latest`: the newest this Jérôme knows; `applied`: the migrations this run applied. `null` if the check failed before reading the version. |
 | `profile` | `changes`: what this run changed in the profile; `pending`: what it would change but did not, because of `--check`. One of the two is always empty. `null` if the profile check did not run. With `--check`, a non-empty `pending` makes the `profile` check, and `ok`, false. |
 | `context` | `null` if `/context` was not read. If its format was not recognized, only `sections` is present. Otherwise: `totalTokens` (estimated startup context), `sections` (`found` and `rows` for each section `doctor` depends on), `counts`, `projectSkills`, `memoryFiles` (with `file` as a base name), and `leaks` (skills and MCP tool groups that should not be loaded). |
 | `warnings` | Things worth fixing that do not make `ok` false. Each has an `id`, a `message`, and fields specific to its `id`. `budget`: `file`, `tokens` and `budget`. `provisional-project`: no extra fields. `project-layout`: `sections`, the sections to move to `scope.md`. `budgets-config`: no extra fields, for an invalid `budgets` entry in `.jerome`. `agents`: `file` and `problems`, a list of strings. `docs-queue`: `lines`, the number of entries. `trust`: no extra fields. `template`: `files`, a list of `{ path, status }` where `status` is `new`, `update` (unchanged in the project, safe to replace) or `modified` (changed in the project); it is empty when the files cannot be compared, and the message says why. |
 
-Check `id`s in v1: `project`, `limits`, `node`, `git`, `claude-code`, `login`, `profile`, `context-format`, `startup-context`.
+Check `id`s in v1: `project`, `limits`, `db`, `node`, `git`, `claude-code`, `login`, `profile`, `context-format`, `startup-context`.
 
 Without `--check`, `doctor --json` applies fixes like the plain command: it may update the profile and `.gitignore`, and lists what it changed in `profile.changes`. With `--check`, `/context` reports what Claude Code loads with the files as they are, so `context.leaks` may list skills that a fix would turn off.

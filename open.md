@@ -4,7 +4,6 @@
 - Q1: (superseded, see D16) Name of the tool.
 - Q2: (narrowed by D20) Global limits are in % of the subscription windows; still to decide: which unit to use for per-project limits, and their default values.
 - Q3: Default heartbeat frequency and budget per run.
-- Q4: Is the earlier design (drag-and-drop graph, Company hierarchy) dropped, or is it a later phase?
 - Q5: Stack for the minimal CLI and the viewer. CLI part superseded (see D19); the viewer part is still open.
 - Q6: (resolved by D32) (from D30) Where project customizations of the lead agent's instructions live: a section of PROJECT.md, or a dedicated file imported by the template's CLAUDE.md with `@`.
 

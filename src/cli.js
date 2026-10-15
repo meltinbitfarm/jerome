@@ -4,6 +4,7 @@ import { doctor } from './doctor.js';
 import { update } from './update.js';
 import { prompt } from './prompt.js';
 import { docs } from './docs.js';
+import { state } from './state.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -15,7 +16,11 @@ const USAGE = `Usage:
   jerome update [dir]     bring the project's template files up to the installed version
     --check               only show what would change: write nothing
     --yes                 apply without asking; files changed in the project are left as they are
-  jerome docs [dir]       bring the entries of docs/_pending.md into the documentation, with the documentarist`;
+  jerome docs [dir]       bring the entries of docs/_pending.md into the documentation, with the documentarist
+  jerome state [dir]      show usage, runs and open decision requests, compactly (what the lead agent reads)
+    --runs <n>            how many recent runs to list (default 3)
+    --agent <name>        only one agent's usage
+    --json                print a machine-readable report (schema jerome.state/v1)`;
 
 const OPTIONS = {
   help: { type: 'boolean', short: 'h' },
@@ -23,10 +28,12 @@ const OPTIONS = {
   check: { type: 'boolean' },
   yes: { type: 'boolean' },
   'from-file': { type: 'string' },
+  runs: { type: 'string' },
+  agent: { type: 'string' },
 };
 
 // The options each command accepts; any other option is a usage error.
-const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [] };
+const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent'] };
 
 export async function main(argv) {
   let parsed;
@@ -58,6 +65,12 @@ export async function main(argv) {
     case 'update':
       if (rest.length > 1) return usageError('jerome update takes at most one folder.');
       return update(rest[0] ?? '.', { check: parsed.values.check, yes: parsed.values.yes });
+    case 'state': {
+      if (rest.length > 1) return usageError('jerome state takes at most one folder.');
+      const runs = parsed.values.runs === undefined ? 3 : Number(parsed.values.runs);
+      if (!Number.isInteger(runs) || runs < 0) return usageError('--runs takes a whole number.');
+      return state(rest[0] ?? '.', { json: parsed.values.json, runs, agent: parsed.values.agent ?? null });
+    }
     case 'docs':
       if (rest.length > 1) return usageError('jerome docs takes at most one folder.');
       return docs(rest[0] ?? '.');

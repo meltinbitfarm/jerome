@@ -12,7 +12,8 @@ export const MARKER_SCHEMA = 'jerome.project/v1';
 export const MARKER = '.jerome';
 
 // Project state: never copied or overwritten from the template, even if a MANIFEST listed it (D30).
-export const STATE_FILES = ['PROJECT.md', 'scope.md', 'decisions.md', 'open.md', 'archive.md', 'brief.md', MARKER, '.claude/settings.local.json'];
+export const STATE_FILES = ['PROJECT.md', 'scope.md', 'decisions.md', 'open.md', 'archive.md', 'brief.md', MARKER, '.claude/settings.local.json',
+  '.jerome.db', '.jerome.db-wal', '.jerome.db-shm'];
 // Other paths that belong to the project, even when they started from the template: the agents created from
 // the catalog (D42), the settings with the deny rules (D46), the documentation and its queue, the agents' notes.
 export const PROJECT_PATHS = ['.claude/agents', '.claude/settings.json', 'docs', 'notes'];

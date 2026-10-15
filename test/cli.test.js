@@ -173,7 +173,8 @@ test('doctor --json: schema, checks, sections, counts and warnings, with a match
   assert.equal(report.mode, 'fix');
   assert.equal(report.ok, true);
   assert.deepEqual(report.checks.map((c) => c.id),
-    ['project', 'limits', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
+    ['project', 'limits', 'db', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
+  assert.deepEqual(report.db, { version: 1, latest: 1, applied: [] });
   assert.ok(report.checks.every((c) => c.ok));
   assert.deepEqual(report.context.sections, {
     'Estimated usage by category': { found: true, rows: 1 },
