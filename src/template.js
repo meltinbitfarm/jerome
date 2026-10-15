@@ -94,7 +94,9 @@ export function writeMarker(dir, files) {
 //   update    the project file is unchanged since its base, and the template has changed: safe to replace
 //   modified  the project file was changed in the project, and the template has changed since: replace only on request
 //   kept      the project file was changed in the project, and the user already chose to keep it against this template
-// `dropped` lists project files that the installed template no longer has: they are reported, never deleted.
+//   remove    the template no longer has the file, and it is unchanged since its base: safe to delete (D38)
+// `dropped` lists project files that the template no longer has but that were changed in the project, or have
+// no record: they are reported, never deleted.
 export function templatePlan(dir, templateDir = TEMPLATE_DIR) {
   const marker = readMarker(dir);
   const entries = readManifest(templateDir);
@@ -112,20 +114,23 @@ export function templatePlan(dir, templateDir = TEMPLATE_DIR) {
     return { path, status, template, base };
   });
 
+  // Files the template no longer has: those recorded in `.jerome`, the root MANIFEST that projects received
+  // before D38, and anything else inside the folders the template still lists.
   const known = new Set(files.map((f) => f.path));
-  let oldEntries = [];
-  try {
-    oldEntries = readManifest(dir);
-  } catch {
-    // A project without its MANIFEST copy, or with an unreadable one: only the folders listed now are scanned.
+  const candidates = new Set([...Object.keys(marker.files), 'MANIFEST', ...manifestFiles(dir, entries)]);
+  const dropped = [];
+  for (const path of [...candidates].sort()) {
+    if (known.has(path) || isState(path) || !existsSync(join(dir, path))) continue;
+    const base = marker.files[path] ?? null;
+    if (base && hashFile(join(dir, path)) === base) files.push({ path, status: 'remove', template: null, base });
+    else dropped.push(path);
   }
-  const dropped = manifestFiles(dir, [...new Set([...oldEntries, ...entries])]).filter((p) => !known.has(p) && !isState(p));
   return { marker, files, dropped };
 }
 
 // Files that need attention: what `jerome doctor` warns about and `jerome update` offers.
 export function behind(plan) {
-  return plan.files.filter((f) => f.status === 'new' || f.status === 'update' || f.status === 'modified');
+  return plan.files.filter((f) => ['new', 'update', 'modified', 'remove'].includes(f.status));
 }
 
 // The record written after a copy or an update: every file that now equals the template, or that the user
@@ -135,6 +140,10 @@ export function reconciled(dir, plan, kept = []) {
   for (const f of plan.files) {
     const target = join(dir, f.path);
     const now = existsSync(target) ? hashFile(target) : null;
+    if (f.status === 'remove') {
+      if (now) files[f.path] = f.base;
+      continue;
+    }
     if (now === f.template || kept.includes(f.path) || f.status === 'kept') files[f.path] = f.template;
     else if (f.base) files[f.path] = f.base;
   }

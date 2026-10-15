@@ -58,7 +58,8 @@ test('projectFiles sorts the sections following the Import table', () => {
 test('the provisional PROJECT.md is recognized', () => {
   const content = provisionalProject(['no front matter']);
   assert.ok(isProvisional(content));
-  assert.match(content, /Before any other task/);
+  assert.match(content, /Your next reply must start the conversion, whatever the user asks/);
+  assert.match(content, /Do not answer it, start it or run any tool for it/);
   assert.ok(!isProvisional('# Demo app\n'));
 });
 

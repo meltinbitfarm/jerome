@@ -177,18 +177,48 @@ test('update gives an old project its record, treats differences as changes and 
 
   let r = run('update', 'demo', '--yes');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /storage-old\.md is no longer in the template: left in place/);
+  assert.match(r.stdout, /storage-old\.md is no longer in the template, but it was changed in this project or has no record: left in place/);
   assert.match(r.stdout, /CLAUDE\.md was changed in this project: left as it is/);
   assert.ok(existsSync(stale));
   const m = marker(dir);
   assert.equal(m.schema, 'jerome.project/v1');
   assert.ok(!('CLAUDE.md' in m.files));
-  assert.ok('MANIFEST' in m.files);
+  assert.ok('.claude/skills/project-brief/SKILL.md' in m.files);
 
   mkdirSync(join(root, 'plain'));
   r = run('update', 'plain');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /not a Jérôme project/);
+});
+
+test('update removes the root MANIFEST of older projects when unchanged, and keeps it when changed', () => {
+  const { root, run } = sandbox();
+  run('new', 'demo');
+  run('new', 'other');
+  for (const [name, content] of [['demo', 'CLAUDE.md\nMANIFEST\n'], ['other', 'CLAUDE.md\nMANIFEST\n']]) {
+    const dir = join(root, name);
+    writeFileSync(join(dir, 'MANIFEST'), content);
+    const m = marker(dir);
+    m.files.MANIFEST = sha(content);
+    writeFileSync(join(dir, '.jerome'), JSON.stringify(m));
+  }
+  writeFileSync(join(root, 'other', 'MANIFEST'), 'my notes\n');
+
+  const warned = JSON.parse(run('doctor', 'demo', '--check', '--json').stdout).warnings.find((w) => w.id === 'template');
+  assert.deepEqual(warned.files, [{ path: 'MANIFEST', status: 'remove' }]);
+  let r = run('update', 'demo', '--check');
+  assert.match(r.stdout, /remove +MANIFEST/);
+  assert.ok(existsSync(join(root, 'demo', 'MANIFEST')));
+  r = run('update', 'demo', '--yes');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /0 files updated, 1 removed/);
+  assert.ok(!existsSync(join(root, 'demo', 'MANIFEST')));
+  assert.ok(!('MANIFEST' in marker(join(root, 'demo')).files));
+  assert.match(run('update', 'demo').stdout, /up to date/);
+
+  r = run('update', 'other', '--yes');
+  assert.match(r.stdout, /MANIFEST is no longer in the template, but it was changed in this project/);
+  assert.equal(readFileSync(join(root, 'other', 'MANIFEST'), 'utf8'), 'my notes\n');
 });
 
 test('options of other commands are refused', () => {

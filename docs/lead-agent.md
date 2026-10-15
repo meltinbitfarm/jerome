@@ -50,7 +50,7 @@ Projects created before `scope.md` existed have all the brief's sections in `PRO
 
 ## A project started from free text
 
-When `jerome new --from-file` gets a text that is not a valid brief, it saves the text in `brief.md` and writes a provisional `PROJECT.md` whose only content is an instruction for the lead agent (see [new.md](commands/new.md#importing-a-brief)). Since `PROJECT.md` is loaded at startup, the lead agent sees it in the first session and, before any other task:
+When `jerome new --from-file` gets a text that is not a valid brief, it saves the text in `brief.md` and writes a provisional `PROJECT.md` whose only content is an instruction for the lead agent (see [new.md](commands/new.md#importing-a-brief)). Since `PROJECT.md` is loaded at startup, the lead agent sees it in the first session and, before any other task. If your first message asks for something else, it acknowledges it in one line ("I'll get to it right after") and starts the conversion, without answering it or doing anything for it first:
 
 1. converts `brief.md` with the `project-brief` skill;
 2. lists the decisions it found and asks you to confirm them in one block, because the text may come from another chat and hold proposals you never confirmed;

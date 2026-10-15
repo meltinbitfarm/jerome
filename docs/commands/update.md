@@ -9,7 +9,7 @@ jerome update                                # in the project folder
 
 ## What it touches
 
-Only the paths listed in the template's `MANIFEST`: today `CLAUDE.md`, the `project-brief` skill and the `MANIFEST` itself. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome` and `.claude/settings.local.json`.
+Only the paths listed in the template's `MANIFEST`: today `CLAUDE.md` and the `project-brief` skill. The `MANIFEST` itself stays in the installed package; projects created before this rule received a copy at their root, which `jerome update` removes if it is unchanged. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome` and `.claude/settings.local.json`.
 
 Rules that belong to one project go in `PROJECT.md` under `## Project rules`, never in `CLAUDE.md` or other template files (see [lead-agent.md](../lead-agent.md#project-rules)). That way updates never conflict with them.
 
@@ -22,20 +22,21 @@ Each template file in the project falls into one of these cases:
 | `update` | Unchanged since it was copied, and the template has changed | Replaced, after one confirmation for all such files |
 | `new` | Added to the template since the project was created | Copied, with the same confirmation |
 | `changed here` | Changed in the project, and the template has changed too | Replaced only if you confirm that file on its own |
+| `remove` | No longer in the template, and unchanged since it was copied | Deleted, with the same confirmation as `update` |
 | up to date | Same as the template, or changed here and already kept against this template version | Nothing |
 
 Before asking, it prints the list and a diff of each file, from the project's version (`project/…`) to the template's (`template/…`).
 
 If you keep a file you changed, the choice is remembered: it is not offered again until the template changes that file once more.
 
-Files under a template path that the template no longer has are reported and left in place, never deleted. Delete them yourself if you don't need them.
+Files the template no longer has, but that were changed in the project or have no record in `.jerome`, are reported and left in place, never deleted. Delete them yourself if you don't need them.
 
 In Jérôme's own repository, recognized by its `package.json` and `template/MANIFEST`, the command refuses to run: the template there is the source, not a copy.
 
 ## Options
 
 - `--check` shows the list and the diffs and writes nothing. It exits with 1 when something is behind, so scripts can use it.
-- `--yes` applies the `update` and `new` files without asking. Files changed in the project are left as they are and reported: run `jerome update` in a terminal to choose for them.
+- `--yes` applies the `update`, `new` and `remove` files without asking. Files changed in the project are left as they are and reported: run `jerome update` in a terminal to choose for them.
 
 Without `--yes` and outside a terminal, nothing is written.
 

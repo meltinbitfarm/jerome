@@ -14,7 +14,8 @@ test('new creates the project with template, marker, git and lean profile', () =
   assert.ok(existsSync(join(dir, '.jerome')));
   assert.ok(existsSync(join(dir, '.git')));
   assert.ok(existsSync(join(dir, '.claude', 'skills', 'project-brief', 'SKILL.md')));
-  assert.ok(existsSync(join(dir, 'MANIFEST')));
+  // The MANIFEST stays in the package: projects don't need it (D38).
+  assert.ok(!existsSync(join(dir, 'MANIFEST')));
   assert.ok(existsSync(join(dir, 'CLAUDE.md')));
   assert.doesNotMatch(r.stdout, /budget/);
   for (const devFile of ['PROJECT.md', 'decisions.md', 'open.md', 'PLAN.md', 'package.json']) {

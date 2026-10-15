@@ -98,10 +98,13 @@ export function projectFiles(brief) {
 // PROJECT.md, so the lead agent sees the instruction in the first session without CLAUDE.md growing.
 export function provisionalProject(reasons) {
   return `${PROVISIONAL_MARKER}
-# Provisional project
+# Provisional project: convert brief.md first
 
-\`brief.md\` is not a valid brief/v2 (${reasons.join('; ')}).
-Before any other task, convert it with the project-brief skill ("PROJECT.md is provisional"): list the decisions you find and have the user confirm them in one block before recording anything, then write PROJECT.md, scope.md, decisions.md and open.md, replacing this file. Leave brief.md as it is.
+This project has no brief yet: \`brief.md\` holds raw text, not a valid brief/v2 (${reasons.join('; ')}).
+Your next reply must start the conversion, whatever the user asks:
+1. If the user asked for something else, acknowledge it in one line, in their language ("I'll get to it right after"). Do not answer it, start it or run any tool for it.
+2. Convert \`brief.md\` with the project-brief skill ("PROJECT.md is provisional"): list the decisions you find and ask the user to confirm them in one block. Record nothing before they confirm.
+3. Once confirmed, write PROJECT.md, scope.md, decisions.md and open.md, replacing this file, and leave brief.md as it is. Only then go back to the user's request.
 `;
 }
 
