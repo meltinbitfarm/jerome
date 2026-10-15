@@ -18,7 +18,8 @@ import { DEFAULT_CAPS, jobLabel } from './schedule.js';
 import { openRequest } from './request.js';
 import { closeSession } from './hooks.js';
 import { findTranscript } from './delegations.js';
-import { runClaude } from './claude.js';
+import { runClaudeAsync } from './claude.js';
+import { startProgress, actionOf } from './progress.js';
 import { settingsPath } from './profile.js';
 import { serviceFolder, recordResultUsage } from './docs.js';
 import { DIGEST } from './digest.js';
@@ -50,7 +51,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date() } 
   const lock = acquireLock(dir);
   if (!lock) return finish('blocked', 'locked: another heartbeat of this project is running');
   try {
-    const blocked = checks(dir, now);
+    const blocked = await checks(dir, now);
     if (blocked) return finish('blocked', blocked.reason, blocked.request);
 
     const limits = globalLimits(now);
@@ -61,7 +62,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date() } 
     const last = readLast(dir);
     if (last?.fingerprint === fingerprint && last.verdict === 'no work') return finish('done', `no changes since the last heartbeat${note}`);
 
-    const triage = runTriage(dir, run, env);
+    const triage = await runTriage(dir, run, env);
     if (triage.error) return finish('failed', `triage: ${triage.error}${note}`);
     if (!triage.work) {
       writeLast(dir, { fingerprint, verdict: 'no work', at: now.toISOString() });
@@ -152,7 +153,7 @@ function releaseLock(path) {
 }
 
 // The checks that cost nothing, in order. Each failure has a reason and, when the user must act, a decision request.
-function checks(dir, now) {
+async function checks(dir, now) {
   const db = openDb(dir);
   try {
     const since = new Date(now.getTime() - INTERACTIVE_HOURS * 3_600_000).toISOString();
@@ -182,7 +183,7 @@ function checks(dir, now) {
       request: { question: `Commit or discard the uncommitted changes in ${dir}: heartbeats start from a clean tree.`, recommendation: 'Commit them, or ask the lead agent to.' },
     };
   }
-  const report = runDoctor(dir, { setup: true, fix: true });
+  const report = await runDoctor(dir, { setup: true, fix: true });
   if (!report.ok) {
     const failed = report.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`);
     return {
@@ -267,7 +268,7 @@ function section(text, heading) {
 
 // The triage (D73): a service call on Haiku with no tools, given the little it needs in the prompt. It answers
 // whether there is one task the lead agent can do now without the user.
-function runTriage(dir, run, env) {
+async function runTriage(dir, run, env) {
   const read = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '');
   let gitLog = '';
   try {
@@ -303,11 +304,14 @@ ${requests.map((r) => `R${r.id} [${r.status}] ${r.question}${r.answer ? ` → ${
 ${digestLines.join('\n') || 'none'}`;
   const settings = settingsPath(dir);
   let out;
+  const progress = startProgress('triage on Haiku: is there work to do?');
   try {
-    out = runClaude(['-p', prompt, '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json',
+    out = await runClaudeAsync(['-p', prompt, '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json',
       ...(existsSync(settings) ? ['--settings', settings] : [])], { cwd: serviceFolder(dir), timeout: 180_000, env: { JEROME_HOOKS: 'off' } });
   } catch (err) {
     return { error: err.message };
+  } finally {
+    progress.stop();
   }
   let result;
   try {
@@ -351,6 +355,7 @@ function runLead(dir, run, task, caps, model, env) {
     });
     const usage = new Map();
     const state = { tokens: 0, capped: false, subtype: null, error: null };
+    const progress = startProgress(`lead agent: ${task}`);
     let stderr = '';
     child.stderr.on('data', (c) => { stderr = (stderr + c).slice(-2000); });
     createInterface({ input: child.stdout }).on('line', (line) => {
@@ -360,6 +365,7 @@ function runLead(dir, run, task, caps, model, env) {
       } catch {
         return;
       }
+      progress.update(actionOf(e) ? `lead agent: ${actionOf(e)} · ${state.tokens.toLocaleString('en')} tokens` : null);
       if (e.type === 'assistant' && e.message?.usage) {
         const u = e.message.usage;
         const tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
@@ -378,10 +384,12 @@ function runLead(dir, run, task, caps, model, env) {
       }
     });
     child.on('error', (err) => {
+      progress.stop();
       state.error = err.message;
       done(state);
     });
     child.on('close', (code) => {
+      progress.stop();
       if (!state.capped && !state.subtype && code !== 0) state.error = `claude exited with code ${code}: ${stderr.trim().split('\n').pop() ?? ''}`;
       done(state);
     });

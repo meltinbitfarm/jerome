@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { sandbox } from './sandbox.js';
 import { splitCommand, checkChain, changingGit } from '../src/chain.js';
-import { replyShape, handback } from '../src/hooks.js';
+import { replyShape, handback, requestsContext, CITED_FILE_CHARS } from '../src/hooks.js';
 
 const COMMIT_HEREDOC = `git commit -F - <<'EOF'
 Fix the parser && the tests; again | twice
@@ -240,4 +240,32 @@ test('a background subagent\'s reply is read from its last SubagentHandback', ()
   const d = db();
   assert.equal(JSON.parse(d.prepare("SELECT data FROM events WHERE kind = 'subagent-stop'").get().data).words, 5);
   d.close();
+});
+
+test('the session start context carries each open request in full, with the project files it cites', () => {
+  const { dir } = project();
+  mkdirSync(join(dir, 'notes'), { recursive: true });
+  writeFileSync(join(dir, 'notes', 'rigid.md'), '# Rigid fields\n\nOption A: five keys.\n');
+  writeFileSync(join(dir, 'notes', 'big.md'), 'x'.repeat(CITED_FILE_CHARS + 1));
+  const text = requestsContext(dir, [
+    { id: 2, question: 'Which hook fields are rigid? Details in notes/rigid.md.', options: 'A / B', recommendation: 'A' },
+    { id: 3, question: 'Read notes/big.md and notes/missing.md', options: null, recommendation: null },
+  ]);
+  assert.match(text, /without reading other files/);
+  assert.match(text, /R2: Which hook fields are rigid\? Details in notes\/rigid\.md\.\nOptions: A \/ B\nRecommendation: A/);
+  assert.match(text, /--- notes\/rigid\.md ---\n# Rigid fields\n\nOption A: five keys\.\n--- end of notes\/rigid\.md ---/);
+  assert.match(text, /notes\/big\.md \(\d+ characters, not included/);
+  assert.doesNotMatch(text, /--- notes\/missing\.md|notes\/missing\.md \(/);
+});
+
+test('a stop of Claude Code\'s own helpers, with no agent type, is not counted as a reply', () => {
+  const { run, hookCall, db } = project();
+  hookCall('session-start', {});
+  hookCall('subagent-stop', { agent_type: '', last_assistant_message: 'Rigid hook fields' });
+  hookCall('subagent-stop', { agent_type: 'developer', last_assistant_message: 'Done.' });
+  const d = db();
+  const events = d.prepare("SELECT agent, data FROM events WHERE kind = 'subagent-stop' ORDER BY id").all();
+  d.close();
+  assert.deepEqual(events.map((e) => [e.agent, JSON.parse(e.data).internal ?? false]), [[null, true], ['developer', false]]);
+  assert.match(run('state', 'demo', '--replies').stdout, /^replies 7d: developer avg 1w max 1 \(0\/1 over 150\)$/m);
 });

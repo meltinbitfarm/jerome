@@ -266,6 +266,16 @@ function runDetail(r) {
   }
   if (x.transcript === 'unavailable') parts.push(el('div', { class: 'muted' }, r.kind === 'service' ? 'Service run: no transcript.' : 'Transcript not available: only usage is shown.'));
   else if (!x.delegations.length) parts.push(el('div', { class: 'muted' }, 'No delegations in this run.'));
+  if (x.calls?.length) {
+    const contexts = x.calls.map((c) => c.context);
+    const total = contexts.reduce((a, b) => a + b, 0) + x.calls.reduce((a, c) => a + c.output, 0);
+    parts.push(el('details', {}, el('summary', {}, `Lead agent calls · ${x.calls.length} · context ${n(Math.min(...contexts))} to ${n(Math.max(...contexts))} · ${n(total)} tokens in all`),
+      el('div', { class: 'scroll' }, el('table', {},
+        el('thead', {}, el('tr', {}, ['#', 'Time', 'Context', 'Output', 'Tools'].map((h, i) => el('th', { class: i >= 2 && i <= 3 ? 'num' : null }, h)))),
+        el('tbody', {}, x.calls.map((c, i) => el('tr', {},
+          el('td', {}, String(i + 1)), el('td', {}, when(c.at)), el('td', { class: 'num' }, n(c.context)), el('td', { class: 'num' }, n(c.output)),
+          el('td', {}, c.tools.length ? c.tools.map((t) => `${t.name}${t.hint ? ` ${t.hint}` : ''}`).join(' · ') : (c.text ? 'reply' : '—')))))))));
+  }
   for (const g of x.delegations) {
     parts.push(el('div', { class: 'delegation' },
       el('div', {}, el('strong', {}, g.agentType ?? 'subagent'), g.description ? ` · ${g.description}` : '', g.background ? el('span', { class: 'muted' }, ' · in the background') : '', el('span', { class: 'muted' }, ` · ${when(g.at)}`)),

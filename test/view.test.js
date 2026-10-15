@@ -41,7 +41,9 @@ before(async () => {
   const projects = join(process.env.CLAUDE_CONFIG_DIR, 'projects', '-demo');
   mkdirSync(join(projects, SESSION, 'subagents'), { recursive: true });
   writeFileSync(join(projects, `${SESSION}.jsonl`),
-    assistant([{ type: 'tool_use', id: 'tu1', name: 'Agent', input: { subagent_type: 'developer', description: 'Fix it', prompt: 'Fix <b>this</b> in src/a.js' } }]));
+    assistant([{ type: 'tool_use', id: 'tu1', name: 'Agent', input: { subagent_type: 'developer', description: 'Fix it', prompt: 'Fix <b>this</b> in src/a.js' } }],
+      { requestId: 'q1', message: { model: 'claude-opus-5-5', usage: { input_tokens: 5, cache_read_input_tokens: 30000, cache_creation_input_tokens: 900, output_tokens: 120 },
+        content: [{ type: 'tool_use', id: 'tu1', name: 'Agent', input: { subagent_type: 'developer', description: 'Fix it', prompt: 'Fix <b>this</b> in src/a.js' } }] } }));
   writeFileSync(join(projects, SESSION, 'subagents', 'agent-x1.meta.json'), JSON.stringify({ agentType: 'developer', description: 'Fix it', toolUseId: 'tu1', requestShape: 'background' }));
   writeFileSync(join(projects, SESSION, 'subagents', 'agent-x1.jsonl'),
     `${JSON.stringify({ type: 'user', message: { content: 'Fix <b>this</b> in src/a.js' } })}\n`
@@ -112,6 +114,9 @@ test('a run shows its delegations, read now from the transcripts, with the refus
   assert.equal(d.reply, 'Fixed in src/a.js, tests pass.');
   assert.equal(d.replyWords, 5);
   assert.deepEqual(r.events.map((e) => [e.kind, e.data.subcommands]), [['blocked', ['add', 'commit']]]);
+  // The lead agent's calls, read from the transcript: context, output and the tools of each.
+  assert.equal(r.calls.length, 1);
+  assert.deepEqual(r.calls[0].tools, [{ name: 'Agent', hint: 'developer' }]);
   const service = JSON.parse((await get('/api/runs/2')).body);
   assert.equal(service.transcript, 'unavailable');
   assert.equal((await get('/api/runs/99')).status, 200);

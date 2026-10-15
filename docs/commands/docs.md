@@ -34,6 +34,10 @@ On two test projects, integrating one entry took 10 and 23 seconds; on one of th
 
 The project's `.claude/settings.local.json` must exist: run [`jerome doctor`](doctor.md) first if it does not.
 
+## Progress
+
+On a terminal, a line on standard error shows a spinner, the elapsed time and what the documentarist is doing, read from its stream (`reading docs/_pending.md`, `editing docs/index.md`), and disappears at the end. Nothing is drawn when standard error is not a terminal.
+
 ## Exit codes
 
 | Code | Meaning |

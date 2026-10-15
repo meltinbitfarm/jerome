@@ -10,7 +10,7 @@ import { MARKER } from './template.js';
 import { openDb, DB_FILE } from './db.js';
 import { readState } from './state.js';
 import { readAccount, accountPath } from './account.js';
-import { findTranscript, delegations } from './delegations.js';
+import { findTranscript, delegations, leadCalls } from './delegations.js';
 import { PRICES_DATE } from './models.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'index.html');
@@ -148,6 +148,7 @@ function runDetail(dir, id) {
     events,
     transcript: transcript ? 'available' : 'unavailable',
     delegations: transcript ? delegations(transcript, run.session_id) : [],
+    calls: transcript ? leadCalls(transcript) : [],
   };
 }
 

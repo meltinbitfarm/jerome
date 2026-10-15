@@ -188,3 +188,24 @@ test('amounts below a cent show as <$0.01, and cache reads and writes are kept a
   assert.deepEqual([s.byModel.week[0].cacheRead, s.byModel.week[0].cacheWrite], [1000, 520]);
   assert.match(formatState(s), /cache read 1k · write 520\)/);
 });
+
+test('the progress line is drawn only on a terminal, and says what the stream is doing', async () => {
+  const { startProgress, actionOf, describeTool } = await import('../src/progress.js');
+  const written = [];
+  const tty = { isTTY: true, columns: 80, write: (s) => written.push(s) };
+  const p = startProgress('starting', { stream: tty, env: {} });
+  p.update(actionOf({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: '/x/docs/_pending.md' } }] } }));
+  await new Promise((r) => setTimeout(r, 150));
+  p.stop();
+  assert.ok(written.some((s) => /^\r. \ds · reading docs\/_pending\.md/.test(s)), written.join('|'));
+  assert.equal(written.at(-1), '\r\x1b[K');
+  const silent = [];
+  const pipe = { isTTY: false, write: (s) => silent.push(s) };
+  const q = startProgress('starting', { stream: pipe, env: {} });
+  q.stop();
+  assert.deepEqual(silent, []);
+  assert.equal(startProgress('x', { stream: tty, env: { CI: '1' } }).live, false);
+  assert.equal(describeTool('Bash', { description: 'Run the tests' }), 'running Run the tests');
+  assert.equal(describeTool('Agent', { subagent_type: 'analyst' }), 'delegating to analyst');
+  assert.equal(actionOf({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } }), 'writing the reply');
+});

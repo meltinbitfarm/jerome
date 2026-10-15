@@ -117,7 +117,7 @@ function team(dir, monthRows) {
 export const REPLY_LIMIT = 150;
 
 function replyStats(db, since, agent) {
-  const rows = db.prepare(`SELECT agent, data FROM events WHERE kind = 'subagent-stop' AND at >= ?${agent ? ' AND agent = ?' : ''}`)
+  const rows = db.prepare(`SELECT agent, data FROM events WHERE kind = 'subagent-stop' AND coalesce(agent, '') != '' AND at >= ?${agent ? ' AND agent = ?' : ''}`)
     .all(...(agent ? [since, agent] : [since]));
   const by = new Map();
   for (const r of rows) {

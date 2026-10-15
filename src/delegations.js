@@ -83,3 +83,36 @@ export function delegations(transcript, sessionId) {
   }
   return found.sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
+
+// The lead agent's calls in a session (D78): for each API call, its time, the context it sent (input and cache),
+// its output, and the tools it asked for, with a short hint of what each one touched. Read now, never stored:
+// it shows where a session's cost goes, since each call pays for the whole context again.
+export function leadCalls(transcript) {
+  const calls = new Map();
+  for (const e of lines(transcript)) {
+    if (e.type !== 'assistant' || !e.requestId) continue;
+    const u = e.message?.usage ?? {};
+    const call = calls.get(e.requestId) ?? { at: e.timestamp ?? null, model: e.message?.model ?? null, context: 0, output: 0, tools: [], text: false };
+    call.context = Math.max(call.context, (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0));
+    call.output = Math.max(call.output, u.output_tokens ?? 0);
+    for (const c of e.message?.content ?? []) {
+      if (c.type === 'tool_use') call.tools.push({ name: c.name, hint: toolHint(c.name, c.input ?? {}) });
+      else if (c.type === 'text' && c.text?.trim()) call.text = true;
+    }
+    calls.set(e.requestId, call);
+  }
+  return [...calls.values()];
+}
+
+function toolHint(name, input) {
+  const short = (s) => {
+    const one = String(s ?? '').replace(/\s+/g, ' ').trim();
+    return one.length > 70 ? `${one.slice(0, 67)}...` : one;
+  };
+  if (name === 'Bash') return short(input.description || input.command);
+  if (['Read', 'Edit', 'Write', 'NotebookEdit'].includes(name)) return short(input.file_path);
+  if (name === 'Agent' || name === 'Task') return short(input.subagent_type);
+  if (name === 'Skill') return short(input.skill);
+  if (name === 'Grep' || name === 'Glob') return short(input.pattern);
+  return '';
+}

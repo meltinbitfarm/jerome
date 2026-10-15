@@ -8,4 +8,6 @@ It prints one line, which launchd appends to the job's log:
 2026-10-15T12:24:42Z claude-watch done: no work: the next step depends on the open decision request R2
 ```
 
+Run by hand on a terminal, it shows a progress line on standard error for the doctor check, the triage and the lead agent, with what the lead agent is doing and the tokens so far. Under launchd there is no terminal, so the log gets only its one line.
+
 The run's status is `done`, `blocked` (a check said no), `stopped` (token or turn cap) or `failed`, with the reason. It always exits with 0 once the run is recorded, and with 1 only when the folder is not a Jérôme project with a database.

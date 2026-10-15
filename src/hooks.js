@@ -1,7 +1,7 @@
 // `jerome hook <event>`: what Claude Code's hooks run (D59). They write runs, usage and events to the project
 // database and never make a session fail: every error ends in exit code 0, recorded as an `error` event when the
 // database can be reached. Each event records how long the hook took, from process start (`ms`).
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { MARKER } from './template.js';
 import { openDb, prune } from './db.js';
@@ -117,14 +117,62 @@ function sessionStart(db, payload, env) {
   // Decision requests opened by heartbeats wait for the user: an interactive session starts by knowing about them (D74).
   // A heartbeat is told what to do by its own prompt.
   if (kind !== 'interactive' || payload.source === 'compact') return null;
-  const open = db.prepare("SELECT id, question FROM requests WHERE status = 'open' ORDER BY id").all();
+  const open = db.prepare("SELECT id, question, options, recommendation FROM requests WHERE status = 'open' ORDER BY id").all();
   if (!open.length) return null;
-  return `Open decision requests from scheduled runs: ${open.map((r) => `R${r.id} ${r.question}`).join('; ')}. `
-    + 'Mention them to the user in your first reply; record each answer with `jerome request answer <id> "<answer>"` (and in decisions.md if it is a decision), or `jerome request drop <id>`.';
+  return requestsContext(projectDir(payload, env), open);
+}
+
+// The full open requests (D78): question, options, recommendation, and the project files they cite, so the lead
+// agent can put them to the user without exploring. Cited files are included up to a size cap; a larger one is
+// named with its size, to read only if needed.
+export const CITED_FILE_CHARS = 6000;
+export const CITED_TOTAL_CHARS = 12000;
+
+export function requestsContext(dir, open) {
+  const parts = ['Open decision requests from scheduled runs. Put them to the user in your first reply, from what follows, without reading other files; record each answer with `jerome request answer <id> "<answer>"` (and in decisions.md if it is a decision), or `jerome request drop <id>`.'];
+  const cited = new Map();
+  for (const r of open) {
+    parts.push(`\nR${r.id}: ${r.question}${r.options ? `\nOptions: ${r.options}` : ''}${r.recommendation ? `\nRecommendation: ${r.recommendation}` : ''}`);
+    for (const file of citedFiles(dir, [r.question, r.options, r.recommendation].join(' '))) cited.set(file, true);
+  }
+  let budget = CITED_TOTAL_CHARS;
+  for (const file of cited.keys()) {
+    const text = readFileSync(join(dir, file), 'utf8');
+    if (text.length > CITED_FILE_CHARS || text.length > budget) {
+      parts.push(`\n${file} (${text.length} characters, not included: read it only if the user needs it)`);
+      continue;
+    }
+    budget -= text.length;
+    parts.push(`\n--- ${file} ---\n${text.trim()}\n--- end of ${file} ---`);
+  }
+  return parts.join('\n');
+}
+
+// Project files named in a text, such as notes/hook-rigid-fields.md: relative paths that exist inside the project.
+function citedFiles(dir, text) {
+  if (!dir) return [];
+  const found = [];
+  for (const m of String(text).matchAll(/(?:^|[\s`'"(])((?:[\w.-]+\/)*[\w.-]+\.[A-Za-z0-9]{1,8})(?=$|[\s`'"),;:.!?])/g)) {
+    const file = m[1].replace(/^\.\//, '');
+    if (file.startsWith('..') || file.startsWith('/') || found.includes(file)) continue;
+    const path = join(dir, file);
+    try {
+      if (existsSync(path) && statSync(path).isFile()) found.push(file);
+    } catch {
+      // Not a file of the project.
+    }
+  }
+  return found;
 }
 
 function subagentStop(db, payload) {
   const runId = payload.session_id ? ensureRunIfMissing(db, payload.session_id) : null;
+  // Claude Code's own helpers, such as the one that titles a session, stop as subagents with no type and no
+  // transcript. They are not delegations: their stop is recorded, but not as a reply length (D78).
+  if (!payload.agent_type) {
+    logEvent(db, runId, 'subagent-stop', null, { internal: true });
+    return;
+  }
   let calls = 0;
   if (payload.agent_transcript_path && existsSync(payload.agent_transcript_path)) {
     calls = ingestTranscript(db, {

@@ -2,7 +2,7 @@
 // so every session starts with the bare minimum. Only the project's own skills stay on.
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { runClaude, claudeConfigDir } from './claude.js';
+import { runClaude, runClaudeAsync, claudeConfigDir } from './claude.js';
 
 // Prefix under which Claude Code exposes skills synced from claude.ai. The qualified name is required:
 // the plain one would also turn off the project skill with the same name (project-brief, D14).
@@ -122,9 +122,9 @@ export function ensureGitignored(dir, { write = true, entry = `.claude/${LOCAL_S
 
 // What Claude Code actually loads in that folder, according to `/context`.
 // It is a local command: it makes no API call and, without persistence, leaves no transcript.
-export function inspectContext(dir) {
+export async function inspectContext(dir) {
   // The check is not a session of the project: its hooks must not record it as a run (D59).
-  const out = runClaude(['-p', '/context', '--no-session-persistence'], { cwd: dir, timeout: 120_000, env: { JEROME_HOOKS: 'off' } });
+  const out = await runClaudeAsync(['-p', '/context', '--no-session-persistence'], { cwd: dir, timeout: 120_000, env: { JEROME_HOOKS: 'off' } });
   return parseContext(out);
 }
 

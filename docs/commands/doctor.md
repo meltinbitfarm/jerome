@@ -54,6 +54,10 @@ Everything else stays as it is: permissions, hooks, your own entries in `enabled
 
 See [lean-profile.md](../lean-profile.md) for what each key does.
 
+## Progress
+
+The `/context` check takes a few seconds. On a terminal, a line on standard error shows a spinner, the elapsed time and what is running, and disappears at the end. Nothing is drawn when standard error is not a terminal, in CI, or with `JEROME_PROGRESS=off`, so `--json` output and logs stay clean.
+
 ## Exit codes
 
 | Code | Meaning |

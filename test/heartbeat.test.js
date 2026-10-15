@@ -170,7 +170,7 @@ test('a decision request opened by the lead agent is linked to its run, and answ
 
   // An interactive session starts by knowing about it.
   const start = p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'later', source: 'startup' }), 'hook', 'session-start');
-  assert.match(JSON.parse(start.stdout).hookSpecificOutput.additionalContext, /R1 Tests fail on task\/x/);
+  assert.match(JSON.parse(start.stdout).hookSpecificOutput.additionalContext, /R1: Tests fail on task\/x/);
   assert.match(p.run('state', 'demo').stdout, /jerome request answer <id>/);
 
   // The lead agent runs it from the project folder.

@@ -4,7 +4,7 @@ Jérôme records what happens in a project through Claude Code's hooks, so the m
 
 | Event | Runs | What it does |
 |---|---|---|
-| `SessionStart` | synchronously | opens the session's run (or reopens it on resume), applies the [retention policy](database.md#retention), and in an interactive session tells the lead agent about the decision requests that scheduled runs left open |
+| `SessionStart` | synchronously | opens the session's run (or reopens it on resume), applies the [retention policy](database.md#retention), and in an interactive session gives the lead agent the decision requests that scheduled runs left open, in full |
 | `SubagentStop` | in the background | reads the subagent's transcript, and records the length of its reply |
 | `Stop` | in the background | reads the new lines of the session's transcript |
 | `SessionEnd` | synchronously, up to 10 seconds | reads whatever is left in the session's and subagents' transcripts, and closes the run with its reason |
@@ -15,6 +15,10 @@ Each hook runs `jerome hook <event>`. Hooks never make a session fail: they alwa
 `Stop` and `SubagentStop` run in the background, so they never slow the session down. Two things can make them miss calls: `claude -p` cancels background hooks still running when it exits, and at `Stop` the transcript may not hold the final message yet. `SessionEnd` reads whatever they missed, and since every transcript is read from where the last read stopped, nothing is counted twice. On a real project, the usage the hooks recorded matched an independent count of the transcripts exactly, in an interactive session and in a `claude -p` run.
 
 The run's kind is `interactive` for any session you start, `claude -p` included. Jérôme's own checks, such as the `/context` run of `jerome doctor`, set `JEROME_HOOKS=off`, so they are not recorded as runs. Jérôme's own launchers set `JEROME_RUN_KIND` to `heartbeat` or `service`. `jerome docs` runs outside the project, so no hook sees it: the CLI records it as a `service` run itself.
+
+## Open decision requests at session start
+
+When scheduled runs left decision requests open, `SessionStart` gives the lead agent each one in full: the question, the options, the recommendation, and the content of the project files they cite, such as a note the heartbeat wrote. A cited file over 6,000 characters, or beyond 12,000 characters in all, is only named. The lead agent can then put the requests to you in its first reply, without exploring: on a real project the first reply after "ciao" went from 4 calls and 131,000 tokens to one call and 32,600 tokens, and it asked before closing a request that later decisions had made moot.
 
 ## Chained commands
 
@@ -34,7 +38,7 @@ Changing commands are `add`, `commit`, `merge`, `rebase`, `reset`, `restore`, `r
 
 ## Reply lengths
 
-Agents reply in at most 150 words. At every `SubagentStop` the hook records the reply's words, lines and whether it has nested lists, never its text. A subagent running in the background replies through its handback message rather than a final text, which is read from its transcript. To see the figures (here from a project whose analyst was only asked to count lines):
+Agents reply in at most 150 words. At every `SubagentStop` the hook records the reply's words, lines and whether it has nested lists, never its text. Claude Code's own helpers, such as the one that titles a session, also stop as subagents, with no type and no transcript: their stops are recorded but not counted as replies. A subagent running in the background replies through its handback message rather than a final text, which is read from its transcript. To see the figures (here from a project whose analyst was only asked to count lines):
 
 ```
 $ jerome state --replies

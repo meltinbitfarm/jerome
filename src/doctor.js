@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks } from './checks.js';
+import { startProgress } from './progress.js';
 import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './template.js';
 import { isProvisional, misplacedSections } from './brief.js';
 import { RULE_COUNT, missingRules, addRules, isTrusted } from './limits.js';
@@ -22,7 +23,7 @@ export const DOCTOR_SCHEMA = 'jerome.doctor/v1';
 export const BUDGETS = { 'CLAUDE.md': 680, 'PROJECT.md': 800 };
 
 export async function doctor(dirArg, { json = false, check = false } = {}) {
-  const report = runDoctor(resolve(dirArg), { fix: !check });
+  const report = await runDoctor(resolve(dirArg), { fix: !check });
   if (json) console.log(JSON.stringify(report, null, 2));
   else printReport(report);
   return report.ok ? 0 : 1;
@@ -31,7 +32,7 @@ export async function doctor(dirArg, { json = false, check = false } = {}) {
 // Runs every check and returns the report that both the human and the JSON output are built from.
 // With setup: false the setup checks are skipped (jerome new has already run them).
 // With fix: false (`--check`) nothing is written: needed changes are reported as pending and make the profile check fail.
-export function runDoctor(dir, { setup = true, fix = true } = {}) {
+export async function runDoctor(dir, { setup = true, fix = true } = {}) {
   const report = {
     schema: DOCTOR_SCHEMA, ok: false, jerome: VERSION, mode: fix ? 'fix' : 'check', project: dir,
     checks: [], limits: null, hooks: null, db: null, profile: null, context: null, warnings: [],
@@ -70,7 +71,7 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
 
   let result;
   try {
-    result = ensureLeanProfile(dir, { fix });
+    result = await ensureLeanProfile(dir, { fix });
   } catch (err) {
     report.checks.push({ id: 'profile', ok: false, label: 'Lean profile', detail: err.message });
     return done();
@@ -337,7 +338,7 @@ export function printReport(report) {
 // If `/context` cannot be read, the changes made so far are returned with the error instead of being lost.
 // With fix: false nothing is written: the same changes are computed in memory and returned as needed,
 // and `/context` shows what Claude Code loads with the files as they are.
-export function ensureLeanProfile(dir, { fix = true } = {}) {
+export async function ensureLeanProfile(dir, { fix = true } = {}) {
   const changes = [];
   if (ensureGitignored(dir, { write: fix })) changes.push(`.gitignore: added .claude/${LOCAL_SETTINGS}`);
 
@@ -359,8 +360,10 @@ export function ensureLeanProfile(dir, { fix = true } = {}) {
   changes.push(...applied.changes);
 
   const hasProjectMcp = existsSync(join(dir, '.mcp.json'));
+  // /context takes a few seconds: a progress line shows it is running (D79).
+  const progress = startProgress('reading what Claude Code loads (/context)');
   try {
-    let context = inspectContext(dir);
+    let context = await inspectContext(dir);
     let leaks = findLeaks(context, { hasProjectMcp });
 
     const extra = {};
@@ -373,12 +376,15 @@ export function ensureLeanProfile(dir, { fix = true } = {}) {
       changes.push(...patched.changes);
       if (fix) {
         writeSettings(dir, patched.settings);
-        context = inspectContext(dir);
+        progress.update('checking again after turning skills off');
+        context = await inspectContext(dir);
         leaks = findLeaks(context, { hasProjectMcp });
       }
     }
     return { changes, context, leaks };
   } catch (error) {
     return { changes, error };
+  } finally {
+    progress.stop();
   }
 }

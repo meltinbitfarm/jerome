@@ -35,7 +35,7 @@ export async function newProject(name, { fromFile } = {}) {
   console.log(`✓ Project created in ${target}`);
   if (state) console.log(state.message);
 
-  const report = runDoctor(target, { setup: false });
+  const report = await runDoctor(target, { setup: false });
   printReport(report);
   const ok = report.ok;
   console.log(ok

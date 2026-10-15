@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -17,4 +17,36 @@ export function runClaude(args, { cwd, timeout = 60_000, stdoutOnFailure = false
 
 export function claudeConfigDir() {
   return process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+}
+
+// The same as runClaude, without blocking: a progress line can move while Claude Code works. onLine receives each
+// line of standard output as it arrives, for streams.
+export function runClaudeAsync(args, { cwd, timeout = 60_000, env, onLine } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('claude', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: env ? { ...process.env, ...env } : undefined });
+    let stdout = '';
+    let stderr = '';
+    let pending = '';
+    const timer = setTimeout(() => child.kill('SIGTERM'), timeout);
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+      if (!onLine) return;
+      pending += chunk;
+      const parts = pending.split('\n');
+      pending = parts.pop();
+      for (const line of parts) onLine(line);
+    });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err.code === 'ENOENT' ? new Error('Claude Code is not installed (`claude` command not found).') : err);
+    });
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      if (onLine && pending) onLine(pending);
+      if (code === 0) return resolve(stdout);
+      const detail = signal ? `stopped after ${timeout} ms` : (stderr || stdout).trim().split('\n')[0];
+      reject(new Error(`\`claude ${args.join(' ')}\` failed: ${detail}`));
+    });
+  });
 }

@@ -5,7 +5,8 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { runClaude } from './claude.js';
+import { runClaudeAsync } from './claude.js';
+import { startProgress, actionOf } from './progress.js';
 import { MARKER } from './template.js';
 import { QUEUE, documentarist, queueEntries } from './agents.js';
 import { settingsPath } from './profile.js';
@@ -38,26 +39,39 @@ export async function docs(dirArg) {
 
   const cwd = serviceFolder(dir);
   console.log(`Documentarist (${model}${agent.own ? '' : ', from the catalog'}) on ${before} ${before === 1 ? 'entry' : 'entries'}...`);
-  let out;
+  // The call streams its events, so the progress line can say what the documentarist is doing (D79); the
+  // result event carries the same fields as `--output-format json`.
+  let result = null;
+  const progress = startProgress('documentarist starting');
   try {
-    out = runClaude([
+    await runClaudeAsync([
       '-p', task,
       '--agents', JSON.stringify(definition), '--agent', 'documentarist', '--model', model,
       '--tools', tools.join(','), '--allowedTools', ...allowed,
       '--add-dir', dir, '--settings', settings,
-      '--no-session-persistence', '--output-format', 'json',
-    ], { cwd, timeout: 600_000 });
+      '--no-session-persistence', '--output-format', 'stream-json', '--verbose',
+    ], {
+      cwd,
+      timeout: 600_000,
+      onLine: (line) => {
+        let e;
+        try {
+          e = JSON.parse(line);
+        } catch {
+          return;
+        }
+        if (e.type === 'result') result = e;
+        else progress.update(actionOf(e) ? `documentarist: ${actionOf(e)}` : null);
+      },
+    });
   } catch (err) {
     console.error(err.message);
     return 1;
   } finally {
+    progress.stop();
     rmSync(cwd, { recursive: true, force: true });
   }
-
-  let result;
-  try {
-    result = JSON.parse(out);
-  } catch {
+  if (!result) {
     console.error('The documentarist did not return a readable result.');
     return 1;
   }
