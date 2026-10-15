@@ -41,4 +41,4 @@ Uncommitted changes cost tokens: Claude Code puts the repository's status in the
 
 ## Projects from before `.jerome/`
 
-Projects created by earlier versions kept these files at their root. `jerome update` moves them once, with `git mv`, after asking (see [update.md](commands/update.md#moving-an-older-project-to-jerome)).
+Projects created by earlier versions kept these files at their root. `jerome update` moves them once, with `git mv`, after asking, and moves the database with a backup and a check of every table (see [update.md](commands/update.md#moving-an-older-project-to-jerome)). Do it on the branch you keep working on: checking out a branch from before the move deletes the database, which git ignores.

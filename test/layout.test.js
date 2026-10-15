@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { sandbox } from './sandbox.js';
 import { applyMigrations } from '../src/db.js';
+import { layoutPlan, migrateLayout, countRows } from '../src/migrate.js';
+import { readdirSync } from 'node:fs';
 
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 const git = (dir, ...args) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...args], { cwd: dir, encoding: 'utf8' });
@@ -163,4 +165,51 @@ test('an old project with an empty marker gets a readable record', () => {
   const marker = JSON.parse(readFileSync(join(dir, '.jerome', 'project.json'), 'utf8'));
   assert.equal(marker.schema, 'jerome.project/v1');
   assert.equal(JSON.parse(run('doctor', 'old', '--check', '--json').stdout).checks.find((c) => c.id === 'project').ok, true);
+});
+
+test('the database survives what lost claude-watch\'s: a backup outside the repository, with every row', () => {
+  const { root, run } = sandbox();
+  const dir = legacyProject(root);
+  const rows = countRows(join(dir, '.jerome.db'));
+  // The move on a side branch, then back to a branch from before it, where .jerome is a file.
+  git(dir, 'switch', '-q', '-c', 'layout');
+  const r = run('update', 'old', '--yes');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /database: 1 runs, 0 usage, 0 usage_daily, 0 transcript_reads, 0 events, 0 requests, copied and checked; a backup is in /);
+  assert.match(r.stdout, /Checking out a branch or commit from before the move deletes \.jerome\/jerome\.db/);
+  assert.deepEqual(countRows(join(dir, '.jerome', 'jerome.db')), rows);
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'move');
+  git(dir, 'switch', '-q', 'main');
+  // Git removed the ignored database to put .jerome back as a file: what happened on claude-watch.
+  assert.ok(!existsSync(join(dir, '.jerome', 'jerome.db')));
+  const backups = join(root, '.cache', 'jerome', 'backups');
+  const [backup] = readdirSync(backups);
+  assert.match(backup, /^old-[0-9a-f]{8}-.*\.db$/);
+  assert.deepEqual(countRows(join(backups, backup)), rows);
+});
+
+test('a copy of the database that does not match leaves everything where it was', () => {
+  const { root } = sandbox();
+  const dir = legacyProject(root);
+  const rows = countRows(join(dir, '.jerome.db'));
+  const truncated = (from, to) => {
+    const db = new DatabaseSync(to);
+    applyMigrations(db);
+    db.close();
+  };
+  // In this process the backup would go to the real cache: it goes to the sandbox's.
+  const cache = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = join(root, '.cache');
+  try {
+    assert.throws(() => migrateLayout(dir, layoutPlan(dir), { copy: truncated }), /the copied database does not match the original .* nothing was moved/);
+  } finally {
+    if (cache === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = cache;
+  }
+  assert.equal(readdirSync(join(root, '.cache', 'jerome', 'backups')).length, 1, 'the backup is kept');
+  assert.deepEqual(countRows(join(dir, '.jerome.db')), rows);
+  assert.ok(!existsSync(join(dir, '.jerome.db.moving')));
+  assert.ok(existsSync(join(dir, 'decisions.md')), 'no file moved');
+  assert.equal(readFileSync(join(dir, '.jerome'), 'utf8').startsWith('{'), true, '.jerome is still the file');
 });

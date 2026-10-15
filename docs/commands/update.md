@@ -61,7 +61,8 @@ This project keeps Jérôme's files at its root. Jérôme 0.1.0 keeps them in .j
 - Tracked files move with `git mv`, so their history follows them: review the moves and commit them.
 - The root `CLAUDE.md` is removed only if it is still the template's, as its recorded hash shows. If it was changed in the project, it stays as the project's own, and `update` says to check that it does not repeat or contradict `jerome.md`.
 - In the agents of `.claude/agents/`, which are the project's files, only the two moved paths are rewritten.
-- The database is checkpointed and moved. If a session or a heartbeat is running in the project, nothing moves: run it again once they are done.
+- The database never goes through git, which ignores it. Before anything else moves, it is copied to a backup outside the repository (`~/.cache/jerome/backups/`), checkpointed, and copied next to the original; only if every table has the same number of rows in the copy does the move go on, and the original is deleted only once the copy is in `.jerome/`. Otherwise nothing moves. If a session or a heartbeat is running in the project, nothing moves either: run it again once they are done.
+- **Move on the branch you keep working on, and commit there.** Branches and commits from before the move still have `.jerome` as a file: checking one out deletes `.jerome/jerome.db`, because git removes ignored files that stand where it must put a tracked one. Merge or delete those branches, and keep the backup until then. This is how a real project lost its database: moved on a side branch, then `git switch main`.
 - `--check` shows the moves without making them.
 
 Until a project is moved, `jerome doctor` fails with the command to run, its hooks record nothing, and heartbeats do not start.

@@ -120,8 +120,21 @@ async function migrate(dir, { check, yes }) {
       rl.close();
     }
   }
-  migrateLayout(dir, plan);
+  let moved;
+  try {
+    moved = migrateLayout(dir, plan);
+  } catch (err) {
+    console.error(`\nNot moved: ${err.message}`);
+    return 1;
+  }
   console.log(`✓ Moved to .jerome/ (tracked files with git mv: review and commit the moves)${plan.keepLead ? '. CLAUDE.md was changed in this project and stays as its own: check that it does not repeat or contradict .claude/rules/jerome.md' : ''}`);
+  if (moved.db) {
+    const rows = Object.entries(moved.db.rows).map(([t, n]) => `${n} ${t}`).join(', ');
+    console.log(`  database: ${rows}, copied and checked; a backup is in ${moved.db.backup}`);
+  }
+  // Git deletes ignored files that stand where it must put a tracked one: checking out a branch or commit from
+  // before the move, where .jerome is a file, removes .jerome/jerome.db (D92).
+  console.log('! Move on the branch you keep working on, and commit there. Checking out a branch or commit from before the move deletes .jerome/jerome.db: git removes ignored files that stand where it must put .jerome as a file. Merge or delete those branches, and keep the backup until then.');
   return 0;
 }
 
