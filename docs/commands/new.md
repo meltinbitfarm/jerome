@@ -48,7 +48,7 @@ $ jerome new my-project
 ✓ Claude Code installed — 2.1.299 (Claude Code)
 ✓ Logged in with a subscription — you@example.com
 ✓ Project created in /Users/you/my-project
-✓ Default limits — 58 permission rules added to .claude/settings.json
+✓ Default limits — 60 permission rules added to .claude/settings.json
 ✓ Project database — .jerome.db created (schema 1)
 ✓ Lean profile updated (22 changes):
     disableClaudeAiConnectors = true

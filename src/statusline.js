@@ -9,6 +9,7 @@ import { MARKER } from './template.js';
 import { recordWindows, readAccount, WINDOWS } from './account.js';
 import { openDb } from './db.js';
 import { callPrice } from './models.js';
+import { dollars } from './state.js';
 
 export const STATUSLINE_COMMAND = 'jerome statusline';
 
@@ -72,7 +73,7 @@ function todayApiUsd(dir) {
       if (p === null) unpriced = true;
       else usd += p;
     }
-    return `≈$${usd.toFixed(2)}${unpriced ? '+?' : ''} API`;
+    return `${dollars(usd)}${unpriced ? '+?' : ''} API`;
   } finally {
     db.close();
   }

@@ -71,7 +71,7 @@ The safe local operations of a task are allowed, so that Claude Code's auto mode
 |---|---|
 | Reading the repository | `git status *`, `git log *`, `git diff *`, `git show *`, `git rev-parse *`, `git merge-base *`, `git stash list *` |
 | Branches and merges | `git add *`, `git commit *`, `git switch *`, `git checkout *`, `git branch *`, `git merge *` |
-| Jérôme | `jerome state *` |
+| Jérôme | `jerome state *`, `jerome request *`, `jerome digest *` |
 | Tests | `npm test`, `pnpm test`, `yarn test`, `bun test`, `node --test`, `pytest`, `cargo test`, `go test ./...` |
 
 The test commands are exact, because auto mode drops wildcarded package-manager and interpreter rules. If a project runs its tests differently, ask the lead agent to add that exact command.

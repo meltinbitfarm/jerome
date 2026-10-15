@@ -26,17 +26,18 @@ Run it whenever you install a plugin, sync new skills from claude.ai, or move th
    - template files are behind the installed Jérôme version: run [`jerome update`](update.md) to see the changes. This check is skipped in Jérôme's own repository, which holds the template in `template/` rather than a copy: a warning that is always expected would only teach you to ignore warnings.
 2. **Makes the default limits binding**: adds to `.claude/settings.json` the permission rules that are missing, keeping every other setting and rule: deny for pushing, publishing, deploying and sending email, allow for the safe local git operations and the tests, ask for the forms that discard work (see [agents.md](../agents.md#binding-limits)). It also warns when Claude Code has not been told to trust the folder, since until then the allow rules are ignored. With `--check` a missing rule fails the `limits` check. Skipped in Jérôme's own repository.
 3. **Adds the hooks and the status line** that record usage and refuse chained repo-changing commands, next to the project's own (see [hooks.md](../hooks.md)). A status line already set by the project is never replaced: `doctor` warns instead. With `--check` a missing hook fails the `hooks` check. Skipped in Jérôme's own repository.
-4. **Creates or migrates the project database**, `.jerome.db`, and adds `.jerome.db*` to `.gitignore` (see [database.md](../database.md)). With `--check` it only reads the schema version from the file header, without opening the database, and fails if the database is missing, behind, newer than this Jérôme, or not ignored by git.
-5. **Runs the same setup checks as `jerome new`**: Node.js, git, Claude Code and subscription login.
-6. **Rebuilds the lean profile from what is installed now.**
+4. **Checks the heartbeat job**, if the project has a schedule in `.jerome` (see [heartbeat.md](../heartbeat.md)): the launchd job must exist and be loaded, and the `node`, `jerome` and `claude` it runs must still be where they were, for example after switching Node version with nvm. Otherwise the `heartbeat` check fails and gives the command to reschedule.
+5. **Creates or migrates the project database**, `.jerome.db`, and adds `.jerome.db*` to `.gitignore` (see [database.md](../database.md)). With `--check` it only reads the schema version from the file header, without opening the database, and fails if the database is missing, behind, newer than this Jérôme, or not ignored by git.
+6. **Runs the same setup checks as `jerome new`**: Node.js, git, Claude Code and subscription login.
+7. **Rebuilds the lean profile from what is installed now.**
    - It reads the installed plugins from `claude plugin list --json`.
    - It reads the skills synced from claude.ai from the Claude Code config folder.
    - It writes the result into the project's `.claude/settings.local.json`, and makes sure `.gitignore` excludes that file.
    - Profile entries left in `.claude/settings.json` by earlier versions are moved to the local file.
-7. **Verifies what Claude Code actually loads** by running `claude -p "/context"` in the project. This is a local command: it makes no API call, uses no tokens and saves no session.
+8. **Verifies what Claude Code actually loads** by running `claude -p "/context"` in the project. This is a local command: it makes no API call, uses no tokens and saves no session.
    - Any skill that is not a project skill, and any MCP tool without a project `.mcp.json`, counts as a leak.
    - Leaked skills that can be turned off are added to `skillOverrides`, and the check runs once more.
-8. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` 680 tokens and `PROJECT.md` 800 by default, or the project's own budgets from `.jerome`. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
+9. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` 680 tokens and `PROJECT.md` 800 by default, or the project's own budgets from `.jerome`. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
 
 ## What it changes
 
@@ -88,7 +89,7 @@ Warnings, such as a file over its token budget, a provisional `PROJECT.md`, an a
   "project": "/Users/you/my-project",
   "checks": [
     { "id": "project", "ok": true, "label": "Jérôme project", "detail": "/Users/you/my-project" },
-    { "id": "limits", "ok": true, "label": "Default limits", "detail": "58 permission rules in place" },
+    { "id": "limits", "ok": true, "label": "Default limits", "detail": "60 permission rules in place" },
     { "id": "hooks", "ok": true, "label": "Hooks and status line", "detail": "in place" },
     { "id": "db", "ok": true, "label": "Project database", "detail": "schema 1" },
     { "id": "node", "ok": true, "label": "Node ≥ 24", "detail": "24.13.0" },
@@ -134,6 +135,6 @@ Warnings, such as a file over its token budget, a provisional `PROJECT.md`, an a
 | `context` | `null` if `/context` was not read. If its format was not recognized, only `sections` is present. Otherwise: `totalTokens` (estimated startup context), `sections` (`found` and `rows` for each section `doctor` depends on), `counts`, `projectSkills`, `memoryFiles` (with `file` as a base name), and `leaks` (skills and MCP tool groups that should not be loaded). |
 | `warnings` | Things worth fixing that do not make `ok` false. Each has an `id`, a `message`, and fields specific to its `id`. `budget`: `file`, `tokens` and `budget`. `provisional-project`: no extra fields. `project-layout`: `sections`, the sections to move to `scope.md`. `budgets-config`: no extra fields, for an invalid `budgets` entry in `.jerome`. `agents`: `file` and `problems`, a list of strings. `docs-queue`: `lines`, the number of entries. `trust`: no extra fields. `statusline`: no extra fields. `template`: `files`, a list of `{ path, status }` where `status` is `new`, `update` (unchanged in the project, safe to replace) or `modified` (changed in the project); it is empty when the files cannot be compared, and the message says why. |
 
-Check `id`s in v1: `project`, `limits`, `hooks`, `db`, `node`, `git`, `claude-code`, `login`, `profile`, `context-format`, `startup-context`.
+Check `id`s in v1: `project`, `limits`, `hooks`, `heartbeat` (only with a schedule), `db`, `node`, `git`, `claude-code`, `login`, `profile`, `context-format`, `startup-context`.
 
 Without `--check`, `doctor --json` applies fixes like the plain command: it may update the profile and `.gitignore`, and lists what it changed in `profile.changes`. With `--check`, `/context` reports what Claude Code loads with the files as they are, so `context.leaks` may list skills that a fix would turn off.

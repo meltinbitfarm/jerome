@@ -64,8 +64,11 @@ export const ALLOW_RULES = [
   'Bash(git checkout *)',
   'Bash(git branch *)',
   'Bash(git merge *)',
-  // Reading Jérôme's own record of usage, runs and decision requests (D57).
+  // Reading Jérôme's own record of usage, runs and decision requests (D57), opening and answering requests (D74),
+  // and the digest (D75).
   'Bash(jerome state *)',
+  'Bash(jerome request *)',
+  'Bash(jerome digest *)',
   // Running the tests: exact commands, since auto mode drops wildcarded package-manager and interpreter rules.
   'Bash(npm test)',
   'Bash(pnpm test)',

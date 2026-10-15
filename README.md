@@ -51,6 +51,10 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
 | [`jerome state [dir] [--json]`](docs/commands/state.md) | Shows a project's usage, runs and open decision requests in a few lines, with dollars as API equivalents |
 | [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, runs, usage, subscription windows and the messages between agents |
+| [`jerome schedule [dir] hourly\|daily\|weekly`](docs/commands/schedule.md) | Schedules heartbeats, runs of the lead agent without you, with a cap per run (macOS) |
+| [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it |
+| [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
+| [`jerome digest [dir]`](docs/commands/digest.md) | What happened recently, at zero tokens |
 | [`jerome docs [dir]`](docs/commands/docs.md) | Brings the documentation queue into the project's docs, with the documentarist on Haiku |
 
 ## The lean profile
@@ -67,6 +71,10 @@ The template's `CLAUDE.md` turns the main Claude Code session into the project's
 
 After the brief, the lead agent proposes a team from Jérôme's catalog (developer, writer, researcher, analyst, clerk, documentarist), each with a model chosen for its kind of work, and creates it only after you confirm. Agents skip `CLAUDE.md`, reply in a few lines and queue documentation changes for the documentarist. Each task runs on a branch, which the lead agent merges into `main` itself when the tests pass. Pushing, publishing, deploying and sending email are denied by permission rules in the project's `.claude/settings.json`, for the lead agent and every subagent; the safe local git operations and the tests are allowed. See [docs/agents.md](docs/agents.md).
 
+## Heartbeats
+
+Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work, within a token and turn cap. When it needs you it leaves a decision request instead of asking. See [docs/heartbeat.md](docs/heartbeat.md).
+
 ## The briefing
 
 Every project starts from a brief in the `brief/v2` format. You can run the briefing anywhere: in Claude Code inside the project, with the template's `project-brief` skill, which writes the project files directly; or in any chat (claude.ai, ChatGPT, Gemini…) with the instructions printed by `jerome prompt`, then import the result with `jerome new --from-file`. A text that is not a valid brief is accepted too: the lead agent converts it in the first session, with your confirmation. See [docs/project-brief.md](docs/project-brief.md).
@@ -80,7 +88,7 @@ Every project starts from a brief in the `brief/v2` format. You can run the brie
 5. ~~A SQLite database per project, read with `jerome state`~~
 6. ~~Usage tracking through hooks and the status line~~
 7. ~~Read-only local viewer (`jerome view`)~~
-8. Scheduled headless runs, with a lock and a budget per run
+8. ~~Scheduled headless runs, with a lock and a budget per run~~
 9. Daily and weekly limits with automatic pause
 
 ## Repository layout

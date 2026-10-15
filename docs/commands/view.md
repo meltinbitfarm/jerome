@@ -21,10 +21,10 @@ Read-only. Press Ctrl+C to stop.
 - **Decision requests** with their options and recommendation, each linked to its run.
 - **Team:** the lead agent with the models it used, then the project's agents from `.claude/agents/` with their model and tools, then agents that appear in the usage without a file, such as `general-purpose`, marked built-in. Each with its usage over 7 days and its reply lengths.
 - **Runs:** the latest 50 with kind, status, duration, tokens, API equivalent and the agents involved. Opening a run shows its usage per agent and model, the chained commands the hook refused, hook errors, and each delegation: the agent, the task the lead agent gave it and its reply, both closed by default. Tasks and replies are read at that moment from Claude Code's transcripts and are never stored by Jérôme. A service run, or a run whose transcript was deleted, shows usage only.
-- **Usage by agent and model** for today, 7 or 30 days.
-- **Reply lengths** per agent over 7 days, against the 150-word limit.
+- **Usage by agent and model** for today, 7 or 30 days, with cache reads and cache writes in separate columns: on the API they cost very differently.
+- **Reply lengths** per agent over 7 days, against the 150-word limit. An agent with no reply recorded yet shows "no data yet".
 
-Dollar amounts are always API equivalents, written `≈$3.40 API`: a subscription is not billed per token. The theme follows the system; the menu in the header switches it, and the browser remembers the choice. The page checks for changes every 10 seconds while its tab is visible, and the server answers "not modified" when nothing changed. `#run-<id>` at the end of the address opens that run.
+Dollar amounts are always API equivalents, written `≈$3.40 API`, or `<$0.01 API` below a cent: a subscription is not billed per token. The theme follows the system; the menu in the header switches it, and the browser remembers the choice. The page checks for changes every 10 seconds while its tab is visible, and the server answers "not modified" when nothing changed. `#run-<id>` at the end of the address opens that run.
 
 ## Safety
 

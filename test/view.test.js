@@ -121,6 +121,9 @@ test('the page builds every text with textContent, so transcript contents are ne
   const page = readFileSync(new URL('../viewer/index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(page, /innerHTML|insertAdjacentHTML|outerHTML/);
   assert.match(page, /prefers-color-scheme: dark/);
+  assert.match(page, /'Cache read', 'Cache write'/);
+  assert.match(page, /no data yet/);
+  assert.match(page, /count === 1 \? 'word' : 'words'/);
 });
 
 test('jerome state --json carries the team too', () => {

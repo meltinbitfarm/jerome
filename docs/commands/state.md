@@ -14,13 +14,13 @@ open    no decision requests
 
 | Line | What it shows |
 |---|---|
-| `usage` | tokens today (since local midnight) and over the last 7 days, with their API-equivalent price |
+| `usage` | tokens today (since local midnight), split into input, output, cache reads and cache writes, and over the last 7 days, with their API-equivalent price |
 | `window` | the latest reading of the subscription's 5-hour and 7-day windows, its source and time, and the global limits, from `~/.config/jerome/account.json` |
 | `agents` | tokens per agent over the last 7 days; `main` is the lead agent |
 | `runs` | the latest runs: start, kind, status (with the reason when blocked) and tokens |
-| `open` | the open decision requests |
+| `open` | the open decision requests, followed by how to record an answer (`jerome request answer <id> "<answer>"`) |
 
-Tokens count input, output and cache reads and writes. **Dollar amounts are API equivalents**, never a cost: a subscription is not billed per token. They are computed from the API list prices and always written as `≈$3.40 API`; `+?` means some calls used a model whose price Jérôme does not know.
+Tokens count input, output and cache reads and writes. **Dollar amounts are API equivalents**, never a cost: a subscription is not billed per token. They are computed from the API list prices and always written as `≈$3.40 API`, or `<$0.01 API` below a cent; `+?` means some calls used a model whose price Jérôme does not know. Cache reads and writes are kept apart (`cacheRead`, `cacheWrite` in `--json`, with `cache` their sum), since on the API a read costs a tenth of an input token and a write more than one.
 
 | Option | Effect |
 |---|---|

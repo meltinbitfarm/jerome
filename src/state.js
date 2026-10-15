@@ -140,30 +140,36 @@ function replyStats(db, since, agent) {
 }
 
 // Sums usage rows: tokens of every kind, the API-equivalent price, and whether some model had no known price.
+// Cache reads and writes are kept apart: on the API a read costs a tenth of an input token, a write more than one.
+// `cache` stays as their sum, for readers of jerome.state/v1. apiUsd keeps four decimals, so amounts below a cent
+// still show as such.
 function totals(rows) {
-  const t = { tokens: 0, input: 0, output: 0, cache: 0, calls: 0, apiUsd: 0, unpriced: false };
+  const t = { tokens: 0, input: 0, output: 0, cache: 0, cacheRead: 0, cacheWrite: 0, calls: 0, apiUsd: 0, unpriced: false };
   for (const r of rows) {
-    const cache = r.cache_read + r.cache_write_5m + r.cache_write_1h;
+    const write = r.cache_write_5m + r.cache_write_1h;
+    const cache = r.cache_read + write;
     t.input += r.input;
     t.output += r.output;
     t.cache += cache;
+    t.cacheRead += r.cache_read;
+    t.cacheWrite += write;
     t.tokens += r.input + r.output + cache;
     t.calls += r.calls;
     const price = callPrice(r.model, r);
     if (price === null) t.unpriced = true;
     else t.apiUsd += price;
   }
-  t.apiUsd = Math.round(t.apiUsd * 100) / 100;
+  t.apiUsd = Math.round(t.apiUsd * 10000) / 10000;
   return t;
 }
 
 function total(parts) {
-  const t = { tokens: 0, input: 0, output: 0, cache: 0, calls: 0, apiUsd: 0, unpriced: false };
+  const t = { tokens: 0, input: 0, output: 0, cache: 0, cacheRead: 0, cacheWrite: 0, calls: 0, apiUsd: 0, unpriced: false };
   for (const p of parts) {
-    for (const k of ['tokens', 'input', 'output', 'cache', 'calls', 'apiUsd']) t[k] += p[k];
+    for (const k of ['tokens', 'input', 'output', 'cache', 'cacheRead', 'cacheWrite', 'calls', 'apiUsd']) t[k] += p[k];
     t.unpriced ||= p.unpriced;
   }
-  t.apiUsd = Math.round(t.apiUsd * 100) / 100;
+  t.apiUsd = Math.round(t.apiUsd * 10000) / 10000;
   return t;
 }
 
@@ -171,7 +177,7 @@ export function formatState(s, { replies = false } = {}) {
   const now = new Date(s.at);
   const lines = [`${s.project}${s.agent ? ` · agent ${s.agent}` : ''} · state at ${when(s.at, now, true)}`];
   const { today, week } = s.usage;
-  lines.push(`usage   today ${n(today.tokens)} (in ${n(today.input)} · out ${n(today.output)} · cache ${n(today.cache)}) ${usd(today)} · 7d ${n(week.tokens)} ${usd(week)}`);
+  lines.push(`usage   today ${n(today.tokens)} (in ${n(today.input)} · out ${n(today.output)} · cache read ${n(today.cacheRead)} · write ${n(today.cacheWrite)}) ${usd(today)} · 7d ${n(week.tokens)} ${usd(week)}`);
   const windows = Object.entries(s.windows);
   const limits = WINDOWS.filter((w) => s.limits[w] !== undefined).map((w) => `${s.limits[w]}%`);
   if (windows.length) {
@@ -185,12 +191,20 @@ export function formatState(s, { replies = false } = {}) {
     lines.push(`replies 7d: ${s.replies.length ? s.replies.map((r) => `${r.agent} avg ${r.average}w max ${r.max} (${r.over}/${r.replies} over ${REPLY_LIMIT})`).join(' · ') : 'none recorded'}`);
   }
   lines.push(`open    ${s.requests.length ? s.requests.map((r) => `R${r.id} ${r.question} (${when(r.openedAt, now)})`).join(' · ') : 'no decision requests'}`);
+  // The lead agent learns how to close a request where it reads it, at no cost to CLAUDE.md (D74).
+  if (s.requests.length) lines.push('        propose them to the user; record each answer with `jerome request answer <id> "<answer>"`, or `jerome request drop <id>`');
   return lines.join('\n');
 }
 
 // "≈$3.40 API", with a "+?" when some calls used a model without a known price.
 function usd(t) {
-  return `≈$${t.apiUsd.toFixed(2)}${t.unpriced ? '+?' : ''} API`;
+  return `${dollars(t.apiUsd)}${t.unpriced ? '+?' : ''} API`;
+}
+
+// "≈$3.40", "<$0.01" for amounts above zero but below a cent, "$0.00" for nothing.
+export function dollars(value) {
+  if (value > 0 && value < 0.005) return '<$0.01';
+  return value === 0 ? '$0.00' : `≈$${value.toFixed(2)}`;
 }
 
 // 950 → "950", 12_300 → "12k", 2_140_000 → "2.1M".

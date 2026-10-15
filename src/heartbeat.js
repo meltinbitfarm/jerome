@@ -1,0 +1,410 @@
+// `jerome heartbeat [dir]`: one scheduled run of the lead agent (D6, D73), started by launchd. It goes through
+// cheap checks first and stops at the first that fails, leaving its run in the database with the reason (D13):
+// lock, open interactive session, trust, provisional PROJECT.md, clean tree, doctor, global limits, a zero-token
+// check for changes, a triage on Haiku, and only then the lead agent, in a new session, within its caps.
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import { homedir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
+import { MARKER, readMarker } from './template.js';
+import { openDb, DB_FILE } from './db.js';
+import { isTrusted } from './limits.js';
+import { isProvisional } from './brief.js';
+import { runDoctor } from './doctor.js';
+import { readAccount, recordWindows, WINDOWS } from './account.js';
+import { DEFAULT_CAPS, jobLabel } from './schedule.js';
+import { openRequest } from './request.js';
+import { closeSession } from './hooks.js';
+import { findTranscript } from './delegations.js';
+import { runClaude } from './claude.js';
+import { settingsPath } from './profile.js';
+import { serviceFolder, recordResultUsage } from './docs.js';
+import { DIGEST } from './digest.js';
+
+const STALE_READING_HOURS = 3;
+const INTERACTIVE_HOURS = 12;
+
+function cacheDir(...parts) {
+  return join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'jerome', ...parts);
+}
+
+export async function heartbeat(dirArg, { env = process.env, now = new Date() } = {}) {
+  const dir = resolve(dirArg);
+  const log = (line) => console.log(`${new Date().toISOString()} ${basename(dir)} ${line}`);
+  if (!existsSync(join(dir, MARKER)) || !existsSync(join(dir, DB_FILE))) {
+    log(`not started: ${dir} is not a Jérôme project with a database`);
+    return 1;
+  }
+  const settings = readMarker(dir).heartbeat ?? {};
+  const caps = { maxTokens: settings.maxTokens ?? DEFAULT_CAPS.maxTokens, maxTurns: settings.maxTurns ?? DEFAULT_CAPS.maxTurns };
+  const run = startRun(dir, now);
+  const finish = (status, reason, request) => {
+    const opened = endRun(dir, run, status, reason, request);
+    log(`${status}: ${reason}${opened ? ` (decision request R${opened})` : ''}`);
+    if (opened || status === 'failed') notify(env, basename(dir), opened ? `Decision request R${opened}: ${request.question}` : `Heartbeat failed: ${reason}`);
+    return 0;
+  };
+
+  const lock = acquireLock(dir);
+  if (!lock) return finish('blocked', 'locked: another heartbeat of this project is running');
+  try {
+    const blocked = checks(dir, now);
+    if (blocked) return finish('blocked', blocked.reason, blocked.request);
+
+    const limits = globalLimits(now);
+    if (limits.over) return finish('blocked', limits.over);
+    const note = limits.note ? ` (${limits.note})` : '';
+
+    const fingerprint = projectFingerprint(dir);
+    const last = readLast(dir);
+    if (last?.fingerprint === fingerprint && last.verdict === 'no work') return finish('done', `no changes since the last heartbeat${note}`);
+
+    const triage = runTriage(dir, run, env);
+    if (triage.error) return finish('failed', `triage: ${triage.error}${note}`);
+    if (!triage.work) {
+      writeLast(dir, { fingerprint, verdict: 'no work', at: now.toISOString() });
+      return finish('done', `no work: ${triage.reason ?? 'nothing to do'}${note}`);
+    }
+
+    const before = openRequests(dir);
+    const lead = await runLead(dir, run, triage.task, caps, settings.model ?? 'opus', env);
+    closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
+    writeLast(dir, { fingerprint: projectFingerprint(dir), verdict: 'work', at: new Date().toISOString() });
+    const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
+    for (const r of opened) notify(env, basename(dir), `Decision request R${r.id}: ${r.question}`);
+    if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${note}`);
+    if (lead.subtype === 'error_max_turns') return finish('stopped', `turn cap: ${caps.maxTurns} turns${note}`);
+    if (lead.error) return finish('failed', `${lead.error}${note}`);
+    return finish('done', `${triage.task}${note}`);
+  } finally {
+    releaseLock(lock);
+  }
+}
+
+// One row per heartbeat (D13). Its session id is given to Claude Code, so the hooks of the lead agent's session
+// update this same row instead of adding one.
+function startRun(dir, now) {
+  const db = openDb(dir);
+  try {
+    const sessionId = randomUUID();
+    const id = Number(db.prepare("INSERT INTO runs (session_id, kind, started_at, status) VALUES (?, 'heartbeat', ?, 'running')")
+      .run(sessionId, now.toISOString()).lastInsertRowid);
+    return { id, sessionId };
+  } finally {
+    db.close();
+  }
+}
+
+function endRun(dir, run, status, reason, request) {
+  const db = openDb(dir);
+  try {
+    db.prepare('UPDATE runs SET status = ?, reason = ?, ended_at = ? WHERE id = ?').run(status, reason, new Date().toISOString(), run.id);
+    if (!request) return null;
+    // A block that keeps happening opens one request, not one per heartbeat.
+    const existing = db.prepare("SELECT id FROM requests WHERE status = 'open' AND question = ?").get(request.question);
+    if (existing) return null;
+    return openRequest(db, { ...request, runId: run.id });
+  } finally {
+    db.close();
+  }
+}
+
+function openRequests(dir) {
+  const db = openDb(dir);
+  try {
+    return db.prepare("SELECT id, question FROM requests WHERE status = 'open'").all();
+  } finally {
+    db.close();
+  }
+}
+
+// A lock file with the pid of the heartbeat holding it. A lock left by a process that no longer exists is taken over.
+function acquireLock(dir) {
+  const path = cacheDir('locks', `${jobLabel(dir)}.lock`);
+  mkdirSync(dirname(path), { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      writeFileSync(path, String(process.pid), { flag: 'wx' });
+      return path;
+    } catch {
+      const pid = Number(readFileSync(path, 'utf8'));
+      if (alive(pid)) return null;
+      rmSync(path, { force: true });
+    }
+  }
+  return null;
+}
+
+function alive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+function releaseLock(path) {
+  if (path) rmSync(path, { force: true });
+}
+
+// The checks that cost nothing, in order. Each failure has a reason and, when the user must act, a decision request.
+function checks(dir, now) {
+  const db = openDb(dir);
+  try {
+    const since = new Date(now.getTime() - INTERACTIVE_HOURS * 3_600_000).toISOString();
+    const open = db.prepare("SELECT count(*) n FROM runs WHERE kind = 'interactive' AND status = 'running' AND started_at >= ?").get(since).n;
+    if (open) return { reason: 'an interactive session is open in the project' };
+  } finally {
+    db.close();
+  }
+  if (isTrusted(dir) !== true) {
+    return {
+      reason: 'the folder is not trusted in Claude Code, so the project\'s allow rules would be ignored',
+      request: { question: `Open \`claude\` in ${dir} once and accept the trust dialog, so heartbeats can run.`, recommendation: 'Do it now; the next heartbeat starts by itself.' },
+    };
+  }
+  const project = join(dir, 'PROJECT.md');
+  if (existsSync(project) && isProvisional(readFileSync(project, 'utf8'))) {
+    return {
+      reason: 'PROJECT.md is provisional',
+      request: { question: 'PROJECT.md is still provisional: open a session so the lead agent converts brief.md with your confirmation.', recommendation: 'Open a session with `claude`.' },
+    };
+  }
+  const dirty = uncommitted(dir);
+  if (dirty === null) return { reason: 'not a git repository with a commit yet' };
+  if (dirty.length) {
+    return {
+      reason: `uncommitted changes (${dirty.slice(0, 3).join(', ')}${dirty.length > 3 ? ', …' : ''})`,
+      request: { question: `Commit or discard the uncommitted changes in ${dir}: heartbeats start from a clean tree.`, recommendation: 'Commit them, or ask the lead agent to.' },
+    };
+  }
+  const report = runDoctor(dir, { setup: true, fix: true });
+  if (!report.ok) {
+    const failed = report.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`);
+    return {
+      reason: `jerome doctor failed: ${failed.join('; ')}`,
+      request: { question: `Run \`jerome doctor\` in ${dir} and fix what it reports: ${failed.join('; ')}.`, recommendation: 'Fix it; the next heartbeat starts by itself.' },
+    };
+  }
+  return null;
+}
+
+// Tracked files changed in the working tree, except digest.md, which the lead agent appends to, and .jerome, which
+// `jerome schedule` and `jerome update` change. Null without a commit.
+function uncommitted(dir) {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: dir, stdio: 'ignore' });
+    return execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: dir, encoding: 'utf8' })
+      .split('\n').filter(Boolean).map((l) => l.slice(3)).filter((f) => f !== DIGEST && f !== MARKER);
+  } catch {
+    return null;
+  }
+}
+
+// The global thresholds of account.json (D52, D73): a window at or over its limit skips the heartbeat. A reading
+// whose window has reset since says nothing about now and is ignored; an old one is mentioned in the reason.
+export function globalLimits(now, account = readAccount()) {
+  const names = { five_hour: '5h', seven_day: '7d' };
+  let note = null;
+  for (const w of WINDOWS) {
+    const reading = account.windows?.[w];
+    const limit = account.limits?.[w];
+    if (!reading || typeof limit !== 'number') continue;
+    if (reading.resetsAt && reading.resetsAt * 1000 < now.getTime()) continue;
+    const hours = Math.floor((now.getTime() - Date.parse(reading.readAt)) / 3_600_000);
+    const age = hours >= STALE_READING_HOURS ? `reading from ${hours} h ago` : null;
+    if (reading.used >= limit) return { over: `global limit: ${names[w]} ${reading.used}% ≥ ${limit}%${age ? ` (${age})` : ''}` };
+    if (age) note = `limits checked on a ${age}`;
+  }
+  return { over: null, note };
+}
+
+// What the triage looks at: when none of it changed since a "no work" verdict, there is nothing new to do.
+function projectFingerprint(dir) {
+  const hash = createHash('sha256');
+  try {
+    hash.update(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }));
+  } catch {
+    hash.update('no-head');
+  }
+  for (const file of ['open.md', 'decisions.md', 'scope.md']) {
+    hash.update(existsSync(join(dir, file)) ? readFileSync(join(dir, file)) : '');
+  }
+  const db = openDb(dir);
+  try {
+    hash.update(JSON.stringify(db.prepare("SELECT count(*) n, max(answered_at) at FROM requests WHERE status != 'open'").get()));
+  } finally {
+    db.close();
+  }
+  return hash.digest('hex');
+}
+
+function lastPath(dir) {
+  return cacheDir('heartbeat', `${jobLabel(dir)}.json`);
+}
+
+function readLast(dir) {
+  try {
+    return JSON.parse(readFileSync(lastPath(dir), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function writeLast(dir, data) {
+  mkdirSync(dirname(lastPath(dir)), { recursive: true });
+  writeFileSync(lastPath(dir), `${JSON.stringify(data)}\n`);
+}
+
+function section(text, heading) {
+  const m = text.match(new RegExp(`^## ${heading}[ \\t]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'));
+  return m ? m[1].trim() : '';
+}
+
+// The triage (D73): a service call on Haiku with no tools, given the little it needs in the prompt. It answers
+// whether there is one task the lead agent can do now without the user.
+function runTriage(dir, run, env) {
+  const read = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '');
+  let gitLog = '';
+  try {
+    gitLog = execFileSync('git', ['log', '-10', '--oneline'], { cwd: dir, encoding: 'utf8' }).trim();
+  } catch {
+    // No history yet.
+  }
+  const db = openDb(dir);
+  let requests;
+  try {
+    requests = db.prepare('SELECT id, question, status, answer FROM requests ORDER BY id DESC LIMIT 10').all();
+  } finally {
+    db.close();
+  }
+  const digestLines = read(DIGEST).split('\n').filter((l) => l.startsWith('- ')).slice(-3);
+  const prompt = `You decide whether a scheduled heartbeat of a software project should start its lead agent.
+Answer with one JSON object and nothing else: {"work": true|false, "task": "<one task, one sentence>", "reason": "<one sentence>"}.
+There is work only if one concrete task moves the project towards its success criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. Prefer the next step the recent history points to.
+
+## Open questions and parked topics (open.md)
+${read('open.md').trim() || 'none'}
+
+## Success criteria (scope.md)
+${section(read('scope.md'), 'Success') || 'none'}
+
+## Recent commits
+${gitLog || 'none'}
+
+## Decision requests (latest first)
+${requests.map((r) => `R${r.id} [${r.status}] ${r.question}${r.answer ? ` → ${r.answer}` : ''}`).join('\n') || 'none'}
+
+## Latest heartbeats (digest.md)
+${digestLines.join('\n') || 'none'}`;
+  const settings = settingsPath(dir);
+  let out;
+  try {
+    out = runClaude(['-p', prompt, '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json',
+      ...(existsSync(settings) ? ['--settings', settings] : [])], { cwd: serviceFolder(dir), timeout: 180_000, env: { JEROME_HOOKS: 'off' } });
+  } catch (err) {
+    return { error: err.message };
+  }
+  let result;
+  try {
+    result = JSON.parse(out);
+  } catch {
+    return { error: 'unreadable result' };
+  }
+  const db2 = openDb(dir);
+  try {
+    recordResultUsage(db2, run.id, result, 'triage');
+  } finally {
+    db2.close();
+  }
+  const verdict = String(result.result ?? '').match(/\{[\s\S]*\}/);
+  try {
+    const v = JSON.parse(verdict?.[0] ?? '');
+    return { work: v.work === true && Boolean(v.task), task: String(v.task ?? '').slice(0, 300), reason: String(v.reason ?? '').slice(0, 300) };
+  } catch {
+    return { error: 'the triage did not answer with JSON' };
+  }
+}
+
+export function leadPrompt(task) {
+  return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
+Task chosen by the triage: ${task}
+- Do this task only. Work on a new branch. Delegate reading and code to the agents in .claude/agents/, and keep your own turns few.
+- Never ask the user. When you need a decision, run \`jerome request open --question "…" --options "…" --recommendation "…"\` and stop that line of work.
+- When the tests pass and there are no conflicts, merge the branch into main and report it; if tests fail or there is a conflict, open a decision request instead.
+- Before ending, append one line to digest.md: \`- YYYY-MM-DD HH:MM · what you did · branches merged · requests opened\`. Commit it with your work, and end on main with a clean working tree.
+- End with at most 3 lines.`;
+}
+
+// The lead agent in a new session (never resumed: long sessions are where its usage grows), with the turn cap
+// passed to Claude Code and the token cap enforced here, from the usage in the stream.
+function runLead(dir, run, task, caps, model, env) {
+  return new Promise((done) => {
+    const child = spawn('claude', ['-p', leadPrompt(task), '--model', model, '--max-turns', String(caps.maxTurns),
+      '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose', '--session-id', run.sessionId], {
+      cwd: dir, stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...env, JEROME_RUN_KIND: 'heartbeat', JEROME_SESSION_ID: run.sessionId },
+    });
+    const usage = new Map();
+    const state = { tokens: 0, capped: false, subtype: null, error: null };
+    let stderr = '';
+    child.stderr.on('data', (c) => { stderr = (stderr + c).slice(-2000); });
+    createInterface({ input: child.stdout }).on('line', (line) => {
+      let e;
+      try {
+        e = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (e.type === 'assistant' && e.message?.usage) {
+        const u = e.message.usage;
+        const tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+        const key = e.message.id ?? `${usage.size}`;
+        usage.set(key, Math.max(usage.get(key) ?? 0, tokens));
+        state.tokens = [...usage.values()].reduce((a, b) => a + b, 0);
+        if (state.tokens > caps.maxTokens && !state.capped) {
+          state.capped = true;
+          child.kill('SIGTERM');
+        }
+      } else if (e.type === 'rate_limit_event') {
+        recordRateLimit(e.rate_limit_info);
+      } else if (e.type === 'result') {
+        state.subtype = e.subtype ?? null;
+        if (e.is_error && e.subtype !== 'error_max_turns') state.error = `${e.subtype ?? 'error'}: ${String(e.result ?? '').slice(0, 200)}`;
+      }
+    });
+    child.on('error', (err) => {
+      state.error = err.message;
+      done(state);
+    });
+    child.on('close', (code) => {
+      if (!state.capped && !state.subtype && code !== 0) state.error = `claude exited with code ${code}: ${stderr.trim().split('\n').pop() ?? ''}`;
+      done(state);
+    });
+  });
+}
+
+// The subscription windows from a headless run (D20, D52), as fractions in the rate_limit_event.
+function recordRateLimit(info) {
+  const windows = info?.unifiedWindows ?? {};
+  const reading = {};
+  for (const w of WINDOWS) {
+    if (typeof windows[w]?.utilization === 'number') reading[w] = { used: Math.round(windows[w].utilization * 100), resetsAt: windows[w].resetsAt ?? null };
+  }
+  try {
+    if (Object.keys(reading).length) recordWindows(reading, { source: 'heartbeat' });
+  } catch {
+    // The account file is a convenience: a failure here never stops the run.
+  }
+}
+
+// A local macOS notification when the user is needed (D74). No external channel.
+function notify(env, project, message) {
+  if (env.JEROME_NOTIFY === 'off' || process.platform !== 'darwin') return;
+  const quote = (s) => `"${String(s).replace(/["\\]/g, '\\$&')}"`;
+  spawnSync('osascript', ['-e', `display notification ${quote(message)} with title ${quote(`Jérôme · ${project}`)}`], { stdio: 'ignore', timeout: 5000 });
+}

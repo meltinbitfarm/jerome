@@ -10,7 +10,7 @@ import { sandbox } from './sandbox.js';
 import { openDb, applyMigrations, schemaVersion, prune, migrations, LATEST } from '../src/db.js';
 import { ingestTranscript, parseCall } from '../src/usage.js';
 import { recordWindows, readAccount } from '../src/account.js';
-import { readState, formatState } from '../src/state.js';
+import { readState, formatState, dollars } from '../src/state.js';
 import { callPrice } from '../src/models.js';
 
 const NOW = new Date('2026-10-15T12:00:00Z');
@@ -158,7 +158,8 @@ test('state is compact, labels dollars as API equivalents, and lists runs and op
   assert.match(text, /global limits 80%/);
   assert.match(text, /heartbeat done 5k/);
   assert.match(text, /^open    R1 merge task\/x: tests fail/m);
-  assert.ok(text.split('\n').length <= 6);
+  assert.match(text, /record each answer with `jerome request answer <id>/);
+  assert.ok(text.split('\n').length <= 7);
 });
 
 test('jerome state on a project without the database says how to create it', () => {
@@ -169,4 +170,21 @@ test('jerome state on a project without the database says how to create it', () 
   assert.equal(r.status, 1);
   assert.match(r.stderr, /\.jerome\.db is missing: run `jerome doctor`/);
   assert.equal(run('state', 'p', '--runs', 'x').status, 2);
+});
+
+test('amounts below a cent show as <$0.01, and cache reads and writes are kept apart', () => {
+  assert.equal(dollars(0), '$0.00');
+  assert.equal(dollars(0.0012), '<$0.01');
+  assert.equal(dollars(0.005), '≈$0.01');
+  assert.equal(dollars(3.4), '≈$3.40');
+  const dir = temp();
+  const db = openDb(dir, { create: true });
+  const path = join(dir, 's.jsonl');
+  writeFileSync(path, line({ id: 'r1', read: 1000, w1h: 500, w5m: 20 }));
+  ingestTranscript(db, { path, agent: 'main', now: NOW });
+  db.close();
+  const s = readState(dir, { now: NOW, account: { windows: {}, limits: {} } });
+  assert.deepEqual([s.usage.week.cacheRead, s.usage.week.cacheWrite, s.usage.week.cache], [1000, 520, 1520]);
+  assert.deepEqual([s.byModel.week[0].cacheRead, s.byModel.week[0].cacheWrite], [1000, 520]);
+  assert.match(formatState(s), /cache read 1k · write 520\)/);
 });

@@ -200,7 +200,7 @@ test('the status line records the windows only when they change and appends to t
   const input = JSON.stringify({ cwd: dir, rate_limits: { five_hour: { used_percentage: 43, resets_at: 1 }, seven_day: { used_percentage: 10, resets_at: 2 } } });
   const r = runWithInput({ CLAUDE_PROJECT_DIR: dir }, input, 'statusline');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^personal · 5h 43% · 7d 10% · today ≈\$0\.00 API\n$/);
+  assert.match(r.stdout, /^personal · 5h 43% · 7d 10% · today <\$0\.01 API\n$/);
   const account = join(root, '.config', 'jerome', 'account.json');
   const first = readFileSync(account, 'utf8');
   runWithInput({ CLAUDE_PROJECT_DIR: dir }, input, 'statusline');

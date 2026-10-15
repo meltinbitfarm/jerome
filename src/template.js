@@ -12,7 +12,7 @@ export const MARKER_SCHEMA = 'jerome.project/v1';
 export const MARKER = '.jerome';
 
 // Project state: never copied or overwritten from the template, even if a MANIFEST listed it (D30).
-export const STATE_FILES = ['PROJECT.md', 'scope.md', 'decisions.md', 'open.md', 'archive.md', 'brief.md', MARKER, '.claude/settings.local.json',
+export const STATE_FILES = ['PROJECT.md', 'scope.md', 'decisions.md', 'open.md', 'archive.md', 'brief.md', 'digest.md', MARKER, '.claude/settings.local.json',
   '.jerome.db', '.jerome.db-wal', '.jerome.db-shm'];
 // Other paths that belong to the project, even when they started from the template: the agents created from
 // the catalog (D42), the settings with the deny rules (D46), the documentation and its queue, the agents' notes.
@@ -88,6 +88,13 @@ export function writeMarker(dir, files) {
   }
   const sorted = Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)));
   const data = { ...kept, schema: MARKER_SCHEMA, jerome: VERSION, files: sorted };
+  writeFileSync(join(dir, MARKER), `${JSON.stringify(data, null, 2)}\n`);
+}
+
+// Changes fields of `.jerome` other than the template record, keeping everything else (e.g. `heartbeat`, D71).
+export function updateMarker(dir, change) {
+  const data = readMarker(dir);
+  change(data);
   writeFileSync(join(dir, MARKER), `${JSON.stringify(data, null, 2)}\n`);
 }
 

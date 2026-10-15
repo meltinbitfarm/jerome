@@ -36,12 +36,16 @@ export async function hook(event, { input = readStdin(), env = process.env } = {
     return 0;
   }
 
+  let context = null;
   record(dir, (db) => {
-    if (event === 'session-start') sessionStart(db, payload, env);
+    if (event === 'session-start') context = sessionStart(db, payload, env);
     else if (event === 'subagent-stop') subagentStop(db, payload);
     else if (event === 'stop') stop(db, payload);
     else if (event === 'session-end') sessionEnd(db, payload);
   });
+  if (context) {
+    process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } })}\n`);
+  }
   return 0;
 }
 
@@ -110,6 +114,13 @@ function sessionStart(db, payload, env) {
   const runId = payload.session_id ? ensureRun(db, payload.session_id, kind) : null;
   const pruned = prune(db);
   logEvent(db, runId, 'session-start', 'main', { source: payload.source ?? null, pruned: pruned.usage + pruned.events + pruned.reads });
+  // Decision requests opened by heartbeats wait for the user: an interactive session starts by knowing about them (D74).
+  // A heartbeat is told what to do by its own prompt.
+  if (kind !== 'interactive' || payload.source === 'compact') return null;
+  const open = db.prepare("SELECT id, question FROM requests WHERE status = 'open' ORDER BY id").all();
+  if (!open.length) return null;
+  return `Open decision requests from scheduled runs: ${open.map((r) => `R${r.id} ${r.question}`).join('; ')}. `
+    + 'Mention them to the user in your first reply; record each answer with `jerome request answer <id> "<answer>"` (and in decisions.md if it is a decision), or `jerome request drop <id>`.';
 }
 
 function subagentStop(db, payload) {
@@ -128,6 +139,12 @@ function stop(db, payload) {
   const runId = payload.session_id ? ensureRunIfMissing(db, payload.session_id) : null;
   const calls = readMain(db, payload, runId);
   logEvent(db, runId, 'stop', 'main', { calls });
+}
+
+// Closes a session from outside its hooks: the heartbeat runner calls it after Claude Code exits, since a run it
+// stopped at the token cap never reached its SessionEnd hook. Reading is incremental, so nothing counts twice.
+export function closeSession(dir, payload) {
+  record(dir, (db) => sessionEnd(db, payload));
 }
 
 // The last word on a session: whatever the asynchronous hooks did not read, because they were still running when a

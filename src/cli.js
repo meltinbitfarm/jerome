@@ -8,6 +8,10 @@ import { state } from './state.js';
 import { hook, HOOK_EVENTS } from './hooks.js';
 import { statusline } from './statusline.js';
 import { view } from './view.js';
+import { schedule, EVERY } from './schedule.js';
+import { heartbeat } from './heartbeat.js';
+import { request } from './request.js';
+import { digest } from './digest.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -28,6 +32,20 @@ const USAGE = `Usage:
   jerome view [dir]       open the read-only viewer in the browser (local server, stopped with Ctrl+C)
     --port <n>            port to listen on (default: any free port)
     --no-open             print the address without opening the browser
+  jerome schedule [dir] hourly|daily|weekly
+                          run the lead agent on a schedule (macOS, launchd)
+    --at <time>           09:00 for daily and weekly (default), :15 for hourly (default :00)
+    --day <day>           mon … sun, for weekly (default mon)
+    --max-tokens <n>      token cap per run (default 500000)
+    --max-turns <n>       turn cap per run (default 40)
+    --off                 remove the project's schedule
+    --list                list the scheduled projects
+  jerome heartbeat [dir]  one scheduled run, as launchd starts it
+  jerome request open --question <q> [--options <o>] [--recommendation <r>]
+  jerome request answer <id> <answer> | drop <id>
+                          open or close a decision request
+  jerome digest [dir]     what happened recently, at no token cost
+    --since <n>d          the period (default 7d)
   jerome hook <event>     run by Claude Code's hooks: ${HOOK_EVENTS.join(', ')}
   jerome statusline       run by Claude Code's status line`;
 
@@ -41,11 +59,22 @@ const OPTIONS = {
   agent: { type: 'string' },
   replies: { type: 'boolean' },
   port: { type: 'string' },
+  at: { type: 'string' },
+  day: { type: 'string' },
+  'max-tokens': { type: 'string' },
+  'max-turns': { type: 'string' },
+  off: { type: 'boolean' },
+  list: { type: 'boolean' },
+  question: { type: 'string' },
+  options: { type: 'string' },
+  recommendation: { type: 'string' },
+  since: { type: 'string' },
   'no-open': { type: 'boolean' },
 };
 
 // The options each command accepts; any other option is a usage error.
-const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'] };
+const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation'], digest: ['since'] };
 
 export async function main(argv) {
   let parsed;
@@ -89,6 +118,26 @@ export async function main(argv) {
       if (!Number.isInteger(port) || port < 0 || port > 65535) return usageError('--port takes a port number.');
       return view(rest[0] ?? '.', { port, open: !parsed.values['no-open'] });
     }
+    case 'schedule': {
+      const v = parsed.values;
+      if (v.list) return schedule('.', { list: true });
+      const every = rest.find((r) => EVERY.includes(r));
+      const dirs = rest.filter((r) => r !== every);
+      if (dirs.length > 1) return usageError('jerome schedule takes at most one folder.');
+      if (!v.off && !every) return usageError(`jerome schedule needs how often: ${EVERY.join(', ')}.`);
+      return schedule(dirs[0] ?? '.', { every, at: v.at, day: v.day, maxTokens: v['max-tokens'], maxTurns: v['max-turns'], off: v.off });
+    }
+    case 'heartbeat':
+      if (rest.length > 1) return usageError('jerome heartbeat takes at most one folder.');
+      return heartbeat(rest[0] ?? '.');
+    case 'request': {
+      const [action, ...args] = rest;
+      if (!['open', 'answer', 'drop'].includes(action)) return usageError('jerome request takes open, answer or drop.');
+      return request(action, args, { question: parsed.values.question, options: parsed.values.options, recommendation: parsed.values.recommendation });
+    }
+    case 'digest':
+      if (rest.length > 1) return usageError('jerome digest takes at most one folder.');
+      return digest(rest[0] ?? '.', { since: parsed.values.since ?? '7d' });
     case 'hook':
       // Hooks never fail a session: even a wrong event name exits with 0.
       if (rest.length !== 1 || !HOOK_EVENTS.includes(rest[0])) return 0;

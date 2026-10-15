@@ -19,11 +19,34 @@ case "$1" in
     fi;;
   plugin) echo '[{"id": "shop@official"}, {"id": "sito@synced"}]';;
   -p)
+    echo "$*" >> "$HOME/claude-calls.log"
     # A service call (jerome docs): record where it ran and with which arguments, then empty the queue it was given.
     case " $* " in *" --agent "*)
       pwd -P > "$HOME/service-cwd"; printf '%s\n' "$@" > "$HOME/service-args"
       while [ "$#" -gt 0 ]; do [ "$1" = "--add-dir" ] && : > "$2/docs/_pending.md"; shift; done
       echo '{"type": "result", "is_error": false, "result": "Integrated the entries."}'; exit 0;;
+    esac
+    # A heartbeat's triage: no tools, on Haiku. FAKE_TRIAGE is the JSON verdict it gives.
+    case " $* " in *" --model haiku "*)
+      "$FAKE_NODE" -e 'console.log(JSON.stringify({ type: "result", is_error: false, result: process.env.FAKE_TRIAGE || JSON.stringify({ work: false, reason: "nothing to do" }), modelUsage: { "claude-haiku-5-5": { inputTokens: 3000, outputTokens: 40, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } } }))'
+      exit 0;;
+    esac
+    # A heartbeat's lead agent: it streams FAKE_LEAD_CALLS calls of FAKE_LEAD_TOKENS tokens each, writes them to its
+    # transcript, may open a decision request, and ends with FAKE_LEAD_RESULT.
+    case " $* " in *" --max-turns "*)
+      sid=""; prev=""; for a in "$@"; do [ "$prev" = "--session-id" ] && sid="$a"; prev="$a"; done
+      t="$CLAUDE_CONFIG_DIR/projects/-fake/$sid.jsonl"; mkdir -p "$(dirname "$t")"
+      i=1; while [ "$i" -le "\${FAKE_LEAD_CALLS:-2}" ]; do
+        u="{\\"input_tokens\\":10,\\"output_tokens\\":90,\\"cache_read_input_tokens\\":$(( \${FAKE_LEAD_TOKENS:-1000} - 100 )),\\"cache_creation_input_tokens\\":0}"
+        echo "{\\"type\\":\\"assistant\\",\\"message\\":{\\"id\\":\\"m$i\\",\\"usage\\":$u}}"
+        echo "{\\"type\\":\\"assistant\\",\\"requestId\\":\\"req-$sid-$i\\",\\"timestamp\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"message\\":{\\"model\\":\\"claude-opus-5-5\\",\\"usage\\":$u}}" >> "$t"
+        [ -n "$FAKE_LEAD_SLEEP" ] && sleep "$FAKE_LEAD_SLEEP"
+        i=$((i + 1))
+      done
+      echo '{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.42,"resetsAt":4102444800},"seven_day":{"utilization":0.1,"resetsAt":4102444800}}}}'
+      [ -n "$FAKE_LEAD_REQUEST" ] && "$FAKE_NODE" "$JEROME_BIN" request open --question "$FAKE_LEAD_REQUEST" > /dev/null
+      echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"\${FAKE_LEAD_RESULT:-success}\\",\\"is_error\\":$([ "\${FAKE_LEAD_RESULT:-success}" = success ] && echo false || echo true),\\"result\\":\\"done\\"}"
+      exit 0;;
     esac
     S="$(cat .claude/settings.json .claude/settings.local.json 2>/dev/null)"
     echo "## Context Usage"; echo; echo "**Tokens:** 12.1k / 1m (1%)"; echo
@@ -54,6 +77,9 @@ export function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
     writeFileSync(join(bin, 'claude'), FAKE_CLAUDE);
     chmodSync(join(bin, 'claude'), 0o755);
   }
+  // launchctl records its calls; FAKE_LAUNCHCTL_PRINT=fail makes `launchctl print` report the job as not loaded.
+  writeFileSync(join(bin, 'launchctl'), `#!/bin/sh\necho "$*" >> "$HOME/launchctl.log"\n[ "$1" = print ] && [ "$FAKE_LAUNCHCTL_PRINT" = fail ] && exit 113\nexit 0\n`);
+  chmodSync(join(bin, 'launchctl'), 0o755);
   const config = join(root, 'claude-config');
   mkdirSync(join(config, 'skills', 'synced', 'acct', 'docx'), { recursive: true });
   writeFileSync(join(config, 'skills', 'synced', 'acct', 'docx', 'SKILL.md'), '');
@@ -68,6 +94,9 @@ export function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
       CLAUDE_CONFIG_DIR: config,
       FAKE_LOGGED_IN: loggedIn ? '1' : '0',
       GIT_CONFIG_NOSYSTEM: '1',
+      JEROME_BIN: BIN,
+      FAKE_NODE: process.execPath,
+      JEROME_NOTIFY: 'off',
       ...env,
       ...extra,
     },

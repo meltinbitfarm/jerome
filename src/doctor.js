@@ -6,6 +6,7 @@ import { isProvisional, misplacedSections } from './brief.js';
 import { RULE_COUNT, missingRules, addRules, isTrusted } from './limits.js';
 import { agentWarnings, queueWarning } from './agents.js';
 import { planHooks, applyHooks } from './hookconfig.js';
+import { heartbeatProblems, rescheduleCommand } from './schedule.js';
 import { openDb, dbPath, schemaVersion, peekVersion, applyMigrations, LATEST, DB_FILE } from './db.js';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
@@ -55,6 +56,8 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
     report.checks.push(hooks.check);
     if (hooks.warning) report.warnings.push(hooks.warning);
   }
+  const beat = heartbeatCheck(dir);
+  if (beat) report.checks.push(beat);
   const db = dbCheck(dir, { fix });
   report.db = db.db;
   report.checks.push(db.check);
@@ -175,6 +178,22 @@ function hooksCheck(dir, { fix }) {
   } catch (err) {
     return { hooks: null, warning: null, check: { id: 'hooks', ok: false, label, detail: err.message } };
   }
+}
+
+// A scheduled heartbeat (D72): its launchd job must be there and loaded, and run paths that still exist.
+// Without a schedule in .jerome there is no check.
+function heartbeatCheck(dir) {
+  let h;
+  try {
+    h = readMarker(dir).heartbeat;
+  } catch {
+    return null;
+  }
+  if (!h) return null;
+  const problems = heartbeatProblems(dir);
+  return problems.length
+    ? { id: 'heartbeat', ok: false, label: 'Heartbeat job', detail: `${problems.join('; ')}: reschedule with \`${rescheduleCommand(dir, h)}\`` }
+    : { id: 'heartbeat', ok: true, label: 'Heartbeat job', detail: 'scheduled and loaded' };
 }
 
 // The project database (D51, D54): created and brought to the latest schema with fix, and kept out of git.

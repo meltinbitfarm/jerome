@@ -222,7 +222,11 @@ A scheduler launches headless `claude -p` with preconfigured permissions, an ove
 - on a project with a provisional PROJECT.md, the heartbeat does not start, and the log line and the decision request appear.
 
 **Done when:** all ten tests pass, and a heartbeat never performs actions forbidden by L1.
-**Questions to settle first:** Q3 (default frequency and budget per run).
+**Questions to settle first:** none (Q3 closed by D71).
+**Status: implemented (2026-10-15), waiting for Fabio's check** (the first scheduled heartbeat of claude-watch).
+- `jerome schedule` (launchd, D71, D72), `jerome heartbeat` (D73), `jerome request` and the SessionStart context for open requests (D74), `jerome digest` (D75), the `heartbeat` check of `doctor`; the viewer fixes (D76); 104 tests with `npm test`, among them every check, both caps, the lock and the requests, with a fake `claude` and `launchctl`.
+- On claude-watch, for real: a dirty tree blocked in 0.2 s with a request; after a commit, the triage chose a task and the lead agent (164,000 tokens, one minute) found it depended on open question Q1, wrote its notes on a branch, opened a decision request instead of deciding, merged, added its digest line and ended on main; a concurrent heartbeat stopped on the lock; the next found no work because of the open request; the one after stopped at zero tokens. A 15% test threshold blocked. An untrusted copy opened its request. launchd started the job twice with the nvm paths: the first was blocked because `jerome schedule` had changed `.jerome`, now ignored by the clean-tree check; the second ran the triage. A broken `node` path in the job was reported by doctor with the command to reschedule.
+- Not tried for real: the token and turn caps and a merge refused for failing tests, since claude-watch had no task needing them; the fake `claude` covers them. The schedule was removed after the test: Fabio decides when to turn it on.
 
 ## Phase 9 — Limits, pause and subscription %
 
@@ -249,7 +253,7 @@ Checks to do before announcing Jérôme or publishing it on npm:
 | Q5 (CLI part) | resolved by D19 |
 | Q4 | closed by D58 |
 | Q5 (viewer part) | closed by D64 |
-| Q3 | 8 |
+| Q3 | closed by D71 |
 | Q2 | 9 |
 
 P1 and P2 (parked) and the Out of scope section of PROJECT.md stay outside the plan.

@@ -121,7 +121,13 @@ function n(v) {
   if (v >= 1e3) return `${Math.round(v / 1e3)}k`;
   return String(v ?? 0);
 }
-const usd = (t) => `≈$${(t.apiUsd ?? 0).toFixed(2)}${t.unpriced ? '+?' : ''} API`;
+// "≈$3.40 API", "<$0.01 API" above zero but below a cent, "$0.00 API" for nothing.
+function usd(t) {
+  const v = t.apiUsd ?? 0;
+  const amount = v > 0 && v < 0.005 ? '<$0.01' : v === 0 ? '$0.00' : `≈$${v.toFixed(2)}`;
+  return `${amount}${t.unpriced ? '+?' : ''} API`;
+}
+const words = (count) => `${count} ${count === 1 ? 'word' : 'words'}`;
 const pad = (x) => String(x).padStart(2, '0');
 function when(iso) {
   if (!iso) return '—';
@@ -203,7 +209,7 @@ function renderTeam(d) {
       el('strong', {}, a.agent), ' ',
       el('span', { class: 'badge' }, a.source === 'built-in' ? 'built-in' : (a.model ?? 'no model')), ' · ', usageOf(a.agent),
       a.tools.length ? el('div', { class: 'tools' }, a.tools.join(' · ')) : null,
-      r ? el('div', { class: 'small muted' }, `replies: avg ${r.average} words · max ${r.max} · ${r.over}/${r.replies} over ${REPLY_LIMIT}`) : null);
+      el('div', { class: 'small muted' }, r ? `replies: avg ${words(r.average)} · max ${r.max} · ${r.over}/${r.replies} over ${REPLY_LIMIT}` : 'replies: no data yet'));
   });
   fill('team', el('h2', {}, 'Team (usage over 7 days)'), el('ul', { class: 'tree' }, lead, subs));
 }
@@ -264,7 +270,7 @@ function runDetail(r) {
     parts.push(el('div', { class: 'delegation' },
       el('div', {}, el('strong', {}, g.agentType ?? 'subagent'), g.description ? ` · ${g.description}` : '', g.background ? el('span', { class: 'muted' }, ' · in the background') : '', el('span', { class: 'muted' }, ` · ${when(g.at)}`)),
       el('details', {}, el('summary', {}, 'Task'), el('pre', {}, g.task || '(empty)')),
-      el('details', {}, el('summary', {}, `Reply · ${g.replyWords} words${g.replyWords > REPLY_LIMIT ? ` (over ${REPLY_LIMIT})` : ''}`), el('pre', {}, g.reply || '(no reply recorded)'))));
+      el('details', {}, el('summary', {}, `Reply · ${words(g.replyWords)}${g.replyWords > REPLY_LIMIT ? ` (over ${REPLY_LIMIT})` : ''}`), el('pre', {}, g.reply || '(no reply recorded)'))));
   }
   parts.push(el('div', { class: 'small muted' }, 'Tasks and replies are read now from Claude Code\'s transcripts and are not stored by Jérôme.'));
   return parts;
@@ -275,24 +281,29 @@ function renderUsage(d) {
   const tabs = Object.entries(labels).map(([k, v]) => el('button', { class: k === state.period ? 'on' : '', onclick: () => { state.period = k; renderUsage(state.data); } }, v));
   const rows = (d.byModel[state.period] ?? []).map((u) => el('tr', {},
     el('td', {}, u.agent), el('td', {}, u.model), el('td', { class: 'num' }, String(u.calls)), el('td', { class: 'num' }, n(u.input)),
-    el('td', { class: 'num' }, n(u.output)), el('td', { class: 'num' }, n(u.cache)), el('td', { class: 'num' }, usd(u))));
+    el('td', { class: 'num' }, n(u.output)), el('td', { class: 'num' }, n(u.cacheRead)), el('td', { class: 'num' }, n(u.cacheWrite)), el('td', { class: 'num' }, usd(u))));
   fill('usage', el('h2', {}, 'Usage by agent and model ', ...tabs),
     el('div', { class: 'scroll' }, el('table', {},
-      el('thead', {}, el('tr', {}, ['Agent', 'Model', 'Calls', 'Input', 'Output', 'Cache', 'API equivalent'].map((h, i) => el('th', { class: i >= 2 ? 'num' : null }, h)))),
-      el('tbody', {}, rows.length ? rows : el('tr', {}, el('td', { colspan: 7, class: 'muted' }, 'No usage in this period.'))))));
+      el('thead', {}, el('tr', {}, ['Agent', 'Model', 'Calls', 'Input', 'Output', 'Cache read', 'Cache write', 'API equivalent'].map((h, i) => el('th', { class: i >= 2 ? 'num' : null }, h)))),
+      el('tbody', {}, rows.length ? rows : el('tr', {}, el('td', { colspan: 8, class: 'muted' }, 'No usage in this period.'))))));
 }
 
 function renderReplies(d) {
-  const list = d.replies ?? [];
+  const recorded = new Map((d.replies ?? []).map((r) => [r.agent, r]));
+  const list = [...recorded.values()];
   const scale = Math.max(REPLY_LIMIT * 1.5, ...list.map((r) => r.max));
   const rows = list.map((r) => el('div', { class: 'row' },
     el('span', {}, r.agent),
     el('div', { class: 'track', title: `average ${r.average}, longest ${r.max}` },
       el('div', { class: `fill ${r.average > REPLY_LIMIT ? 'over' : ''}`, style: `width:${Math.min(100, (r.average / scale) * 100)}%` }),
       el('div', { class: 'limit', style: `left:${(REPLY_LIMIT / scale) * 100}%`, title: `limit ${REPLY_LIMIT} words` })),
-    el('span', { class: 'muted small' }, `avg ${r.average} · max ${r.max} · ${r.over}/${r.replies} over`)));
+    el('span', { class: 'muted small' }, `avg ${words(r.average)} · max ${r.max} · ${r.over}/${r.replies} over`)));
+  // Agents of the team with no reply recorded yet are listed too, so a missing figure is never mistaken for zero.
+  for (const a of d.team.subagents) {
+    if (!recorded.has(a.agent)) rows.push(el('div', { class: 'row' }, el('span', {}, a.agent), el('span', { class: 'muted small' }, 'no data yet'), el('span', {})));
+  }
   fill('replies', el('h2', {}, `Reply lengths (7 days, limit ${REPLY_LIMIT} words)`),
-    rows.length ? el('div', { class: 'bars' }, rows) : el('div', { class: 'muted' }, 'No subagent replies recorded yet.'));
+    rows.length ? el('div', { class: 'bars' }, rows) : el('div', { class: 'muted' }, 'No subagents yet.'));
 }
 
 function render(d) {
