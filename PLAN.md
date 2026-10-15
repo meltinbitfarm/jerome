@@ -106,17 +106,23 @@ The template's CLAUDE.md defines the lead agent. It is loaded into every session
 
 ## Phase 3 — Briefing and import in the template
 
-Both flows of D15 work inside a project created from the template:
-- from the PC, the briefing with the project-brief skill in Claude Code writes the files right away;
-- from the phone, the brief saved in MementoVault is imported on the PC by the CLI with `jerome new <name> --from-vault <slug>` (D22), without the model;
-- a brief made elsewhere and saved as a file, or copied to the clipboard, is imported with `jerome new <name> --from-file <path|->` (D29).
+The contract is the brief/v2 format, not a tool (D34). A brief can come from anywhere:
+- from the PC, the briefing with the project-brief skill in Claude Code, inside the project, writes the files right away;
+- from any chat (claude.ai on the phone, ChatGPT, Gemini…), with the skill or with the instructions printed by `jerome prompt` (D34), the brief ends up in a markdown block; it reaches the Mac through the chat history or the clipboard and is imported with `jerome new <name> --from-file <path|->` (D29, D33).
 
-Existing projects receive template fixes with `jerome update`, and `jerome doctor` warns when they are behind (D30).
+The import is tolerant (D35): a valid brief/v2 or brief/v1 is sorted by the CLI into PROJECT.md, decisions.md and open.md following the "Import" table in `references/brief-v2.md`, at zero tokens; a declared but unknown format stops the command; any other text is saved in `brief.md` with a provisional PROJECT.md that tells the lead agent to convert it first, with the user's confirmation. `jerome doctor` warns while PROJECT.md is provisional.
 
-The CLI reads URL and token from `~/.config/jerome/mementovault.json`, finds the document titled "Brief" in the project's collection (D31), checks `format: brief/v2` (or the older brief/v1) and sorts the sections into the three files following the "Import" table in `references/brief-v2.md` (D26). The skill's Import section points to the CLI.
-**Testable result:** from a brief saved on the phone, a single command leads to a project with the lead agent ready (Success 1). Redoing the briefing on Jérôme's original idea leads to the same decisions (Success 2).
-**Done when:** both Success criteria pass, a brief in a format other than brief/v2 or brief/v1 is rejected with a message, `--from-file` works from a file and from standard input, and `jerome update` brings claude-watch up to date without touching its state files.
-**Questions to settle first:** none. Q6 is resolved by D32, and the route to MementoVault is verified (D31): MCP over HTTP, since there is no REST API for documents.
+Existing projects receive template fixes with `jerome update`, and `jerome doctor` warns when they are behind (D30). Project rules live in PROJECT.md, never in template files (D32).
+
+**Testable result:** a briefing on the phone, copied and imported with `pbpaste | jerome new <name> --from-file -`, leads to a project with the lead agent ready (Success 1). Redoing the briefing on Jérôme's original idea leads to the same decisions (Success 2). A free-text brief is converted by the lead agent in the first session, after confirmation of the decisions.
+**Done when:** both Success criteria pass; `--from-file` works from a file and from standard input, with and without code fences; an unknown format is rejected with a message and creates nothing; `jerome prompt` prints instructions that, pasted into another chat, produce a brief the CLI imports; `jerome update` brings claude-watch up to date without touching its state files; docs/ describes `prompt`, `update` and the import (D24).
+**Questions to settle first:** none.
+**Status: implemented (2026-10-15), waiting for the tests with Fabio.**
+- `jerome new --from-file`, `jerome prompt`, `jerome update`, the JSON `.jerome` and the two new `doctor` warnings (`provisional-project`, `template`); 53 tests with `npm test`.
+- Tried for real: Jérôme's own brief (brief/v1) piped from the clipboard is imported with no warnings (PROJECT.md 653 tokens, CLAUDE.md 569); the repo's `brief.md`, with its English note before the first section, is imported too, with a warning that the note was left out; `jerome update --check` on claude-watch, created before D30, lists CLAUDE.md and the skill as changed in the project, the new briefing.md, and the old MementoVault adapter as no longer in the template.
+- Fixed along the way: Claude Code leaves the "Memory Files" section out of `/context` when a folder has no CLAUDE.md, and `doctor` took that for a format change. A missing section now counts as empty, while a renamed one is still an error.
+- `doctor` skips the template check in Jérôme's own repository, and `jerome update` refuses to run there.
+- Still to do: Fabio applies `jerome update` to claude-watch; a briefing on the phone imported from the clipboard (Success 1); a free-text brief converted by the lead agent in the first session; Success 2.
 
 ## Phase 4 — Rules for creating subagents
 
@@ -173,6 +179,8 @@ A scheduler launches headless `claude -p` with preconfigured permissions, an ove
 
 **Decision requests without a reader.** In a heartbeat nobody reads the reply, so a decision request in the final message would be lost. The heartbeat prompt (not CLAUDE.md, which has no room for it) tells the lead agent to write decision requests to a file or to the DB, where the viewer and the notifications pick them up, and to stop that line of work until the user answers.
 
+**Provisional projects.** The scheduler never runs a heartbeat on a project whose PROJECT.md is still provisional (D35): the brief has not been converted and confirmed yet, so there is nothing safe to work on. It logs the block and opens a decision request asking the user to open a session and finish the conversion.
+
 **Executable paths.** Jobs started by launchd or cron do not load the user's shell profile, so they do not see version managers like nvm. On Fabio's Mac, Node and jerome are installed through nvm (`~/.nvm/versions/node/v24.13.0/bin/`) and would not be found by a scheduled job. The same holds for `claude`, installed in `~/.local/bin`.
 - When a heartbeat is scheduled, the CLI writes into the job the absolute paths of `node`, `jerome` and `claude` detected at that moment, or an explicit `PATH` built from them. It never relies on the PATH of the environment the job runs in.
 - `jerome doctor` checks that the paths recorded in the project's jobs still exist and are executable, for example after switching Node version with nvm. If one is missing, it reports it with the command to reschedule the job.
@@ -187,9 +195,10 @@ A scheduler launches headless `claude -p` with preconfigured permissions, an ove
 - with a profile `doctor` cannot fix, the run does not start, and the log line and the "decision request" appear;
 - a job scheduled from a shell with Node from nvm runs under launchd, with no shell profile loaded;
 - after switching Node version with nvm (or removing the recorded path), `jerome doctor` reports the job's broken path and how to reschedule it;
-- a heartbeat that needs the user leaves its decision request where the viewer shows it, and the next heartbeat does not redo that work before the answer.
+- a heartbeat that needs the user leaves its decision request where the viewer shows it, and the next heartbeat does not redo that work before the answer;
+- on a project with a provisional PROJECT.md, the heartbeat does not start, and the log line and the decision request appear.
 
-**Done when:** all nine tests pass, and a heartbeat never performs actions forbidden by L1.
+**Done when:** all ten tests pass, and a heartbeat never performs actions forbidden by L1.
 **Questions to settle first:** Q3 (default frequency and budget per run).
 
 ## Phase 9 — Limits, pause and subscription %

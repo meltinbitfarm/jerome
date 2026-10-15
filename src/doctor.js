@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks } from './checks.js';
+import { VERSION, templatePlan, behind, isJeromeRepo } from './template.js';
+import { isProvisional } from './brief.js';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
   splitProfileKeys, ensureGitignored, inspectContext, findLeaks, overrideFor, parseTokens,
@@ -9,8 +11,6 @@ import {
 
 // Version of the `doctor --json` output. Adding fields keeps it; renaming or removing fields bumps it.
 export const DOCTOR_SCHEMA = 'jerome.doctor/v1';
-
-const VERSION = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')).version;
 
 // Token budgets for the files loaded into every session (phase 2). Going over them only warns.
 export const BUDGETS = { 'CLAUDE.md': 600, 'PROJECT.md': 800 };
@@ -38,6 +38,7 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
   const isProject = existsSync(join(dir, '.jerome'));
   report.checks.push({ id: 'project', ok: isProject, label: 'Jérôme project', detail: isProject ? dir : 'the .jerome marker is missing' });
   if (!isProject) return done();
+  report.warnings.push(...projectWarnings(dir));
 
   if (setup) {
     const results = setupChecks();
@@ -110,6 +111,34 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
     });
   }
   return done();
+}
+
+// Warnings about the project's own files, which need neither the setup nor Claude Code:
+// a PROJECT.md still provisional (D35) and template files behind the installed version (D30),
+// except in Jérôme's own repository, where the template is the source and not a copy.
+export function projectWarnings(dir) {
+  const warnings = [];
+  const project = join(dir, 'PROJECT.md');
+  if (existsSync(project) && isProvisional(readFileSync(project, 'utf8'))) {
+    warnings.push({
+      id: 'provisional-project',
+      message: 'PROJECT.md is provisional: open a session with `claude` so the lead agent converts brief.md, with your confirmation, before any other task.',
+    });
+  }
+  if (isJeromeRepo(dir)) return warnings;
+  try {
+    const files = behind(templatePlan(dir)).map(({ path, status }) => ({ path, status }));
+    if (files.length) {
+      warnings.push({
+        id: 'template',
+        files,
+        message: `${files.length} template ${files.length === 1 ? 'file is' : 'files are'} behind Jérôme ${VERSION}: run \`jerome update\` to see the changes.`,
+      });
+    }
+  } catch (err) {
+    warnings.push({ id: 'template', files: [], message: `The template files cannot be compared: ${err.message}.` });
+  }
+  return warnings;
 }
 
 export function checkBudgets(dir, context) {

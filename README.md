@@ -4,7 +4,7 @@ A lean setup for running projects with [Claude Code](https://docs.claude.com/en/
 
 The name is a nod to Saint Jerome, patron saint of translators: the lead agent translates ideas into tasks.
 
-> **Status: early development.** What works today is creating a project (`jerome new`) and keeping its lean profile in place (`jerome doctor`). The lead agent, usage tracking, the viewer and scheduled runs are planned; see [Roadmap](#roadmap).
+> **Status: early development.** What works today: creating a project, from scratch or from a brief (`jerome new`), the lead agent's instructions, the briefing (`jerome prompt` and the `project-brief` skill), keeping the lean profile in place (`jerome doctor`) and updating a project's template files (`jerome update`). Usage tracking, the viewer and scheduled runs are planned; see [Roadmap](#roadmap).
 
 ## Requirements
 
@@ -35,12 +35,20 @@ claude
 
 `jerome new` checks your setup before creating anything. If something is missing, such as the Claude Code login, it stops and tells you what to fix.
 
+If you already have a brief, for example from a briefing on your phone, start from it:
+
+```sh
+pbpaste | jerome new my-project --from-file -
+```
+
 ## Commands
 
 | Command | What it does |
 |---|---|
-| [`jerome new <name>`](docs/commands/new.md) | Creates a project from the template, with git and the lean profile |
+| [`jerome new <name> [--from-file <path\|->]`](docs/commands/new.md) | Creates a project from the template, with git and the lean profile, optionally from a brief |
+| [`jerome prompt`](docs/commands/prompt.md) | Prints the briefing instructions, to paste into any chat |
 | [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report |
+| [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
 
 ## The lean profile
 
@@ -54,13 +62,13 @@ The template's `CLAUDE.md` turns the main Claude Code session into the project's
 
 ## The briefing
 
-Every project starts from a brief. The template ships a `project-brief` skill that runs the briefing in your language and writes the project files, or saves the brief to a store such as MementoVault when you start from claude.ai. See [docs/project-brief.md](docs/project-brief.md).
+Every project starts from a brief in the `brief/v2` format. You can run the briefing anywhere: in Claude Code inside the project, with the template's `project-brief` skill, which writes the project files directly; or in any chat (claude.ai, ChatGPT, Gemini…) with the instructions printed by `jerome prompt`, then import the result with `jerome new --from-file`. A text that is not a valid brief is accepted too: the lead agent converts it in the first session, with your confirmation. See [docs/project-brief.md](docs/project-brief.md).
 
 ## Roadmap
 
 1. ~~Project creation and setup checks~~ (`jerome new`, `jerome doctor`)
-2. Lead agent instructions in the project's `CLAUDE.md`
-3. Briefing in Claude Code and import of a saved brief (`jerome new --from-vault`)
+2. ~~Lead agent instructions in the project's `CLAUDE.md`~~
+3. Briefing anywhere and import of a brief (`jerome prompt`, `jerome new --from-file`), template updates (`jerome update`)
 4. Rules for creating subagents, including a documentation agent
 5. SQLite databases, per project and global
 6. Usage tracking through hooks and the status line

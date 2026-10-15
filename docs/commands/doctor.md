@@ -18,16 +18,19 @@ Run it whenever you install a plugin, sync new skills from claude.ai, or move th
 
 ## What it does
 
-1. **Runs the same setup checks as `jerome new`**: Node.js, git, Claude Code and subscription login.
-2. **Rebuilds the lean profile from what is installed now.**
+1. **Looks at the project's own files**, before anything else. Both findings are warnings:
+   - `PROJECT.md` is still provisional: the project was created from a text that is not a valid brief, and the lead agent has not converted it yet (see [new.md](new.md#importing-a-brief));
+   - template files are behind the installed Jérôme version: run [`jerome update`](update.md) to see the changes. This check is skipped in Jérôme's own repository, which holds the template in `template/` rather than a copy: a warning that is always expected would only teach you to ignore warnings.
+2. **Runs the same setup checks as `jerome new`**: Node.js, git, Claude Code and subscription login.
+3. **Rebuilds the lean profile from what is installed now.**
    - It reads the installed plugins from `claude plugin list --json`.
    - It reads the skills synced from claude.ai from the Claude Code config folder.
    - It writes the result into the project's `.claude/settings.local.json`, and makes sure `.gitignore` excludes that file.
    - Profile entries left in `.claude/settings.json` by earlier versions are moved to the local file.
-3. **Verifies what Claude Code actually loads** by running `claude -p "/context"` in the project. This is a local command: it makes no API call, uses no tokens and saves no session.
+4. **Verifies what Claude Code actually loads** by running `claude -p "/context"` in the project. This is a local command: it makes no API call, uses no tokens and saves no session.
    - Any skill that is not a project skill, and any MCP tool without a project `.mcp.json`, counts as a leak.
    - Leaked skills that can be turned off are added to `skillOverrides`, and the check runs once more.
-4. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` at most 600 tokens, `PROJECT.md` about 800. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
+5. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` at most 600 tokens, `PROJECT.md` about 800. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
 
 ## What it changes
 
@@ -50,19 +53,19 @@ See [lean-profile.md](../lean-profile.md) for what each key does.
 | 1 | A setup check failed, the folder is not a Jérôme project, `/context` output was not recognized, or something is still loaded that should not be |
 | 2 | Wrong usage |
 
-Warnings, such as a file over its token budget, never change the exit code.
+Warnings, such as a file over its token budget, a provisional `PROJECT.md` or template files behind the installed version, never change the exit code.
 
 ## When Claude Code changes `/context`
 
 `doctor` reads the text output of `claude -p "/context"`, which is not a documented interface and can change between Claude Code releases. In the first release, a renamed section made `doctor` read empty lists and report a false pass. The format check now fails with an explicit error, listing what it did not recognize, when any of these happens:
 
 - the `## Context Usage` heading or the `**Tokens:**` line is missing;
-- one of the sections `Estimated usage by category`, `Skills` or `Memory Files` is missing;
+- the section `Estimated usage by category` or `Skills` is missing, or `Memory Files` appears under another name (another section with its table header);
 - one of those sections has a table header other than `Category | Tokens | Percentage`, `Skill | Source | Tokens` or `Type | Path | Tokens`;
 - `Estimated usage by category` or `Skills` is present but empty: a Jérôme project always has at least the `project-brief` skill;
 - a skill has a source label `doctor` does not know. The known labels are `Project`, `User`, `Local`, `Flag`, `Managed`, `Built-in`, `MCP`, `Memory store`, `claude.ai sync` and `Plugin (<name>)`. Overrides depend on them, so an unknown one is not guessed.
 
-A section that is present but empty is not an error for `Memory Files`. If this check fails after a Claude Code update, `doctor` needs updating: please open an issue.
+`Memory Files` may be empty, or missing altogether: Claude Code leaves it out when the folder has no `CLAUDE.md` or other memory files. If this check fails after a Claude Code update, `doctor` needs updating: please open an issue.
 
 ## `--json`
 
@@ -112,7 +115,7 @@ A section that is present but empty is not an error for `Memory Files`. If this 
 | `checks` | Checks in the order they ran. `id` is stable; `label` and `detail` are for humans and may change. Checking stops at the first failure that makes the next ones pointless, so a failed report can have fewer checks. A failed `context-format` check also has `problems`, a list of strings. |
 | `profile` | `changes`: what this run changed in the profile; `pending`: what it would change but did not, because of `--check`. One of the two is always empty. `null` if the profile check did not run. With `--check`, a non-empty `pending` makes the `profile` check, and `ok`, false. |
 | `context` | `null` if `/context` was not read. If its format was not recognized, only `sections` is present. Otherwise: `totalTokens` (estimated startup context), `sections` (`found` and `rows` for each section `doctor` depends on), `counts`, `projectSkills`, `memoryFiles` (with `file` as a base name), and `leaks` (skills and MCP tool groups that should not be loaded). |
-| `warnings` | Things worth fixing that do not make `ok` false. Each has an `id` (today only `budget`), a `message`, and fields specific to its `id`: `file`, `tokens` and `budget` for `budget`. |
+| `warnings` | Things worth fixing that do not make `ok` false. Each has an `id`, a `message`, and fields specific to its `id`. `budget`: `file`, `tokens` and `budget`. `provisional-project`: no extra fields. `template`: `files`, a list of `{ path, status }` where `status` is `new`, `update` (unchanged in the project, safe to replace) or `modified` (changed in the project); it is empty when the files cannot be compared, and the message says why. |
 
 Check `id`s in v1: `project`, `node`, `git`, `claude-code`, `login`, `profile`, `context-format`, `startup-context`.
 

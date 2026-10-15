@@ -133,7 +133,8 @@ export function inspectContext(dir) {
 export const CONTEXT_SECTIONS = {
   categories: { heading: 'Estimated usage by category', header: ['Category', 'Tokens', 'Percentage'] },
   skills: { heading: 'Skills', header: ['Skill', 'Source', 'Tokens'] },
-  memoryFiles: { heading: 'Memory Files', header: ['Type', 'Path', 'Tokens'] },
+  // Claude Code leaves this section out when the folder has no memory files (no CLAUDE.md): missing means empty.
+  memoryFiles: { heading: 'Memory Files', header: ['Type', 'Path', 'Tokens'], optional: true },
 };
 
 // Skill source labels Claude Code uses in `/context` (2.1.x). Overrides depend on them, so an unknown one is an error.
@@ -179,8 +180,14 @@ export function parseContext(text) {
   const found = readSections(text);
   const rows = {};
   const sections = {};
-  for (const [key, { heading, header }] of Object.entries(CONTEXT_SECTIONS)) {
+  for (const [key, { heading, header, optional }] of Object.entries(CONTEXT_SECTIONS)) {
     const section = found.get(heading);
+    // An optional section may be left out, but not renamed: another section with its table header is a rename.
+    const renamed = !section && [...found.values()].some((s) => s.header?.join('|') === header.join('|'));
+    if (!section && optional && !renamed) {
+      sections[heading] = { found: false, rows: 0 };
+      continue;
+    }
     if (!section) {
       problems.push(`section "${heading}" is missing`);
       sections[heading] = { found: false, rows: 0 };

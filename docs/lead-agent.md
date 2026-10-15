@@ -28,7 +28,7 @@ To keep the files that are read on demand light, the lead agent moves closed ent
 
 ## Project rules
 
-`CLAUDE.md` comes from the template, and template files are replaced when the project is updated to a newer Jérôme version. Rules that belong to one project only, such as conventions, tools to prefer or things to avoid, go in `PROJECT.md` under a `## Project rules` section, one line per rule:
+`CLAUDE.md` comes from the template, and template files are replaced when the project is updated to a newer Jérôme version with [`jerome update`](commands/update.md). Rules that belong to one project only, such as conventions, tools to prefer or things to avoid, go in `PROJECT.md` under a `## Project rules` section, one line per rule:
 
 ```markdown
 ## Project rules
@@ -37,6 +37,16 @@ To keep the files that are read on demand light, the lead agent moves closed ent
 ```
 
 The lead agent adds the section when the first rule comes up, and `CLAUDE.md` tells it never to write rules into itself. `PROJECT.md` is a state file that updates never touch, and it is already loaded at startup, so the rules cost nothing extra beyond their own lines. They count towards `PROJECT.md`'s budget.
+
+## A project started from free text
+
+When `jerome new --from-file` gets a text that is not a valid brief, it saves the text in `brief.md` and writes a provisional `PROJECT.md` whose only content is an instruction for the lead agent (see [new.md](commands/new.md#importing-a-brief)). Since `PROJECT.md` is loaded at startup, the lead agent sees it in the first session and, before any other task:
+
+1. converts `brief.md` with the `project-brief` skill;
+2. lists the decisions it found and asks you to confirm them in one block, because the text may come from another chat and hold proposals you never confirmed;
+3. writes `PROJECT.md`, `decisions.md` and `open.md`, replacing the provisional file, and leaves `brief.md` as the original text.
+
+The instruction lives in `PROJECT.md` and not in `CLAUDE.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and scheduled runs (planned) will not start on it.
 
 ## Token budget
 

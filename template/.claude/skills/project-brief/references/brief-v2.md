@@ -69,6 +69,10 @@ When a brief is imported into a Jérôme project:
 
 The original brief stays in `brief.md` for reference. From then on, the living source is the three project files, not the brief.
 
+The lead agent adds a `## Project rules` section to `PROJECT.md` for rules that apply to this project only. It never comes from the brief.
+
+When the text is not a valid brief, the CLI saves it in `brief.md` as it is and writes a provisional `PROJECT.md`. The lead agent converts it in the first session, with the user's confirmation of the decisions it found.
+
 ## Reading brief/v1
 
 brief/v1 had the same structure with Italian section headings. Map them like this:

@@ -94,6 +94,10 @@ test('parseContext fails on a renamed section, a different header or an unknown 
 test('parseContext tells a missing section from an empty one', () => {
   const noMemoryRows = CONTEXT.replace(/\| Project \| \/tmp\/demo\/[^\n]*\n/g, '');
   assert.deepEqual(parseContext(noMemoryRows).sections['Memory Files'], { found: true, rows: 0 });
+  // Claude Code leaves the section out when there are no memory files: that is not an error.
+  const noSection = CONTEXT.slice(0, CONTEXT.indexOf('### Memory Files'));
+  assert.deepEqual(parseContext(noSection).sections['Memory Files'], { found: false, rows: 0 });
+  assert.deepEqual(parseContext(noSection).memoryFiles, []);
   const headingOnly = CONTEXT.slice(0, CONTEXT.indexOf('### Memory Files')) + '### Memory Files\n\nNo memory files.\n';
   assert.deepEqual(parseContext(headingOnly).sections['Memory Files'], { found: true, rows: 0 });
   const noSkills = CONTEXT.replace(/^\| (?!Skill \|)[^|\n]+\| (Project|claude\.ai sync|Plugin \(shopify-plugin\)|Built-in) \|[^\n]*\n/gm, '');

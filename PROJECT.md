@@ -20,7 +20,7 @@ A template repo to clone into a folder for each new project, built on Claude Cod
 - L1: No sending, publishing, deploying, merging to main, purchases or emails: drafts and proposals only (default).
 
 ## Tools
-- Claude Code (subscription), SQLite, MementoVault via MCP.
+- Claude Code (subscription), SQLite. MementoVault is no longer used (D33).
 
 ## Out of scope
 - A dedicated interface for talking to the agents.

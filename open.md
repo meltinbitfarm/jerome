@@ -11,3 +11,4 @@
 ## Parked
 - P1: Telegram / Claude Code Channels to talk to the lead agent, with outgoing notifications through scripts — once the core works.
 - P2: Zero-step start (a Mac Mini that creates projects on its own from the briefs in MementoVault) — not of interest for now.
+- P3: MementoVault integration (importing briefs and saving them to a store), removed by D33 — a possible future extension.

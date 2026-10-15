@@ -1,0 +1,96 @@
+// Tests of brief parsing, the briefing prompt and the template record, without the CLI.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { stripFences, parseBrief, projectFiles, provisionalProject, isProvisional } from '../src/brief.js';
+import { briefingPrompt } from '../src/prompt.js';
+import { readManifest } from '../src/template.js';
+import { BRIEF_V2 } from './fixtures.js';
+
+
+test('stripFences unwraps a fenced brief and finds it inside a chat reply', () => {
+  assert.equal(stripFences(BRIEF_V2), BRIEF_V2.trim());
+  assert.equal(stripFences(`\`\`\`markdown\n${BRIEF_V2}\`\`\`\n`), BRIEF_V2.trim());
+  const reply = `Here is your brief:\n\n\`\`\`md\n${BRIEF_V2}\`\`\`\n\nWant changes?`;
+  assert.equal(stripFences(reply), BRIEF_V2.trim());
+  const notes = 'Some notes\n\n```sh\nls\n```\n\nmore notes';
+  assert.equal(stripFences(notes), notes);
+});
+
+test('parseBrief reads a valid brief/v2', () => {
+  const brief = parseBrief(BRIEF_V2);
+  assert.equal(brief.kind, 'brief');
+  assert.equal(brief.meta.name, 'Demo app');
+  assert.equal(brief.meta.status, 'ready');
+  assert.equal(brief.sections.Decisions, '- D1: Node only — fewer tools.');
+});
+
+test('parseBrief maps brief/v1 headings', () => {
+  const v1 = BRIEF_V2.replace('brief/v2', 'brief/v1')
+    .replace('## Goal', '## Obiettivo').replace('## Decisions', '## Decisioni').replace('## Context', '## Contesto')
+    .replace('## Constraints', '## Vincoli').replace('## Agent limits', '## Limiti agenti').replace('## Open questions', '## Domande aperte')
+    .replace('## Parked', '## Parcheggiate').replace('## Out of scope', '## Fuori scope').replace('## Success', '## Successo');
+  const brief = parseBrief(v1);
+  assert.equal(brief.kind, 'brief');
+  assert.equal(brief.sections.Goal, 'A demo.');
+});
+
+test('parseBrief tells an unknown format from free text', () => {
+  assert.deepEqual(parseBrief(BRIEF_V2.replace('brief/v2', 'brief/v3')), { kind: 'unknown-format', format: 'brief/v3' });
+  assert.equal(parseBrief('Just an idea for an app').kind, 'text');
+  assert.equal(parseBrief(BRIEF_V2.replace('brief/v2', 'notes')).kind, 'text');
+  const missing = parseBrief(BRIEF_V2.replace('## Success\n- Tests pass.\n', ''));
+  assert.deepEqual(missing.reasons, ['missing section "Success"']);
+  const extra = parseBrief(`${BRIEF_V2}\n## Notes\n- extra\n`);
+  assert.deepEqual(extra.reasons, ['unexpected section "Notes"']);
+});
+
+test('projectFiles sorts the sections following the Import table', () => {
+  const files = projectFiles(parseBrief(BRIEF_V2));
+  assert.match(files['PROJECT.md'], /^# Demo app\n\n## Goal\nA demo\.\n/);
+  assert.match(files['PROJECT.md'], /## Agent limits\n- L1: drafts only\./);
+  assert.doesNotMatch(files['PROJECT.md'], /## Tools|## Decisions|## Open questions/);
+  assert.equal(files['decisions.md'], '# Decisions\n\n- D1: Node only — fewer tools.\n');
+  assert.equal(files['open.md'], '# Open\n\n## Open questions\n- Q1: which name?\n\n## Parked\nnone\n');
+});
+
+test('the provisional PROJECT.md is recognized', () => {
+  const content = provisionalProject(['no front matter']);
+  assert.ok(isProvisional(content));
+  assert.match(content, /Before any other task/);
+  assert.ok(!isProvisional('# Demo app\n'));
+});
+
+test('the briefing prompt holds the rules and the format, not the Claude Code parts', () => {
+  const prompt = briefingPrompt();
+  assert.match(prompt, /single markdown block/);
+  assert.match(prompt, /silence, or moving on to another topic, is not confirmation/i);
+  assert.match(prompt, /format: brief\/v2/);
+  assert.match(prompt, /## Decisions/);
+  assert.doesNotMatch(prompt, /## Import|Reading brief\/v1|\.jerome|MementoVault/);
+});
+
+test('a MANIFEST that lists project state is refused', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jerome-manifest-'));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'MANIFEST'), 'CLAUDE.md\nPROJECT.md\n');
+  assert.throws(() => readManifest(dir), /project state path/);
+  writeFileSync(join(dir, 'MANIFEST'), '.claude/\n');
+  assert.throws(() => readManifest(dir), /project state path/);
+});
+
+test('parseBrief imports a brief with a chat preamble, and lists the text it left out', () => {
+  const chatty = `Sure! Here is the brief we agreed on.\n\n${BRIEF_V2.replace('---\n\n## Goal', '---\n\n> Saved from my phone.\n\n## Goal')}`;
+  const brief = parseBrief(chatty);
+  assert.equal(brief.kind, 'brief');
+  assert.deepEqual(brief.ignored, [
+    'text before the front matter: "Sure! Here is the brief we agreed on."',
+    'text before the first section: "> Saved from my phone."',
+  ]);
+  assert.equal(brief.sections.Goal, 'A demo.');
+  assert.deepEqual(parseBrief(BRIEF_V2).ignored, []);
+  // A horizontal rule in the preamble is not taken for the front matter.
+  assert.equal(parseBrief(`Notes\n---\nmore\n---\n\n${BRIEF_V2}`).kind, 'brief');
+});
