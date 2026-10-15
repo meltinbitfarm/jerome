@@ -9,7 +9,7 @@ jerome update                                # in the project folder
 
 ## What it touches
 
-Only the paths listed in the template's `MANIFEST`: today `CLAUDE.md` and the `project-brief`, `project-team` and `docs` skills. The `MANIFEST` itself stays in the installed package; projects created before this rule received a copy at their root, which `jerome update` removes if it is unchanged. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome` and `.claude/settings.local.json`. The same holds for the paths that belong to the project even when they started from Jérôme: the agents in `.claude/agents/`, created from the catalog (see [agents.md](../agents.md)), `.claude/settings.json` with its deny rules, which [`jerome doctor`](doctor.md) maintains, `docs/` and `notes/`.
+Only the paths listed in the template's `MANIFEST`: today `.claude/rules/jerome.md` and the `project-brief`, `project-team` and `docs` skills. The `MANIFEST` itself stays in the installed package; projects created before this rule received a copy at their root, which `jerome update` removes if it is unchanged. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome` and `.claude/settings.local.json`. The same holds for the paths that belong to the project even when they started from Jérôme: the agents in `.claude/agents/`, created from the catalog (see [agents.md](../agents.md)), `.claude/settings.json` with its deny rules, which [`jerome doctor`](doctor.md) maintains, `docs/` and `notes/`.
 
 Rules that belong to one project go in `PROJECT.md` under `## Project rules`, never in `CLAUDE.md` or other template files (see [lead-agent.md](../lead-agent.md#project-rules)). That way updates never conflict with them.
 
@@ -29,7 +29,7 @@ Before asking, it prints the list and a diff of each file, from the project's ve
 
 If you keep a file you changed, the choice is remembered: it is not offered again until the template changes that file once more.
 
-Files the template no longer has, but that were changed in the project or have no record in `.jerome`, are reported and left in place, never deleted. Delete them yourself if you don't need them.
+Files the template no longer has, but that were changed in the project or have no record in `.jerome/project.json`, are reported and left in place, never deleted. Delete them yourself if you don't need them.
 
 In Jérôme's own repository, recognized by its `package.json` and `template/MANIFEST`, the command refuses to run: the template there is the source, not a copy.
 
@@ -42,32 +42,54 @@ Without `--yes` and outside a terminal, nothing is written.
 
 `jerome doctor` warns when template files are behind the installed version, without failing.
 
-## The `.jerome` file
+## Moving an older project to `.jerome/`
 
-`.jerome` is a JSON file:
+Projects created before Jérôme kept its files in `.jerome/` have them at their root. The first `jerome update` moves them (see [project-layout.md](../project-layout.md)), after showing what it will do and asking:
+
+```
+This project keeps Jérôme's files at its root. Jérôme 0.1.0 keeps them in .jerome/ and the lead agent's instructions in .claude/rules/jerome.md:
+  move        .jerome → .jerome/project.json
+  move        PROJECT.md → .jerome/PROJECT.md
+  …
+  move        docs/_pending.md → .jerome/docs-queue.md
+  move        .jerome.db → .jerome/jerome.db
+  remove      CLAUDE.md (the template's, replaced by .claude/rules/jerome.md)
+  paths       .claude/agents/developer.md (docs/_pending.md → .jerome/docs-queue.md, notes/ → .jerome/notes/)
+  .gitignore  .jerome.db* → .jerome/jerome.db*
+```
+
+- Tracked files move with `git mv`, so their history follows them: review the moves and commit them.
+- The root `CLAUDE.md` is removed only if it is still the template's, as its recorded hash shows. If it was changed in the project, it stays as the project's own, and `update` says to check that it does not repeat or contradict `jerome.md`.
+- In the agents of `.claude/agents/`, which are the project's files, only the two moved paths are rewritten.
+- The database is checkpointed and moved. If a session or a heartbeat is running in the project, nothing moves: run it again once they are done.
+- `--check` shows the moves without making them.
+
+Until a project is moved, `jerome doctor` fails with the command to run, its hooks record nothing, and heartbeats do not start.
+
+## The `.jerome/project.json` file
+
+`.jerome/project.json` is a JSON file:
 
 ```json
 {
   "schema": "jerome.project/v1",
   "jerome": "0.1.0",
   "files": {
-    "CLAUDE.md": "<sha-256>",
-    "MANIFEST": "<sha-256>"
+    ".claude/rules/jerome.md": "<sha-256>",
+    ".claude/skills/project-brief/SKILL.md": "<sha-256>"
   }
 }
 ```
 
 - `schema` is the version of this file's format. Adding fields keeps it; renaming or removing fields bumps it.
 - `jerome` is the version that last wrote it.
-- `budgets`, optional, sets the project's own token budgets (see [lead-agent.md](../lead-agent.md#token-budget)). `jerome update` keeps it, like any field it does not manage.
+- `budgets`, `limits` and `heartbeat`, optional, hold the project's own token budgets, usage limits and schedule (see [lead-agent.md](../lead-agent.md#token-budget), [limits.md](../limits.md), [heartbeat.md](../heartbeat.md)). `jerome update` keeps them, like any field it does not manage.
 - `files` holds, for each template file, the hash of the template version the project file was last reconciled with. A project file with that hash is unchanged since then; any other hash means it was changed in the project. File dates are not used, because git and copies change them.
-
-Projects created before this file existed have an empty `.jerome`. For them, every template file that differs from the installed template counts as changed in the project, and the first `jerome update` writes the record.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | Up to date, or the chosen files were updated |
-| 1 | Not a Jérôme project, Jérôme's own repository, `.jerome` unreadable, with `--check` something is behind, or outside a terminal without `--yes` |
+| 1 | Not a Jérôme project, Jérôme's own repository, `.jerome/project.json` unreadable, with `--check` something is behind, or outside a terminal without `--yes` |
 | 2 | Wrong usage |

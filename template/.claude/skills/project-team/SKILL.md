@@ -14,13 +14,13 @@ The catalog is in `agents/`, next to this file. Each agent declares its model, i
 | researcher | sonnet | research on the web and in the project |
 | analyst | sonnet | analysis of code, data or documents, reviews |
 | clerk | haiku | mechanical work: counts, extractions, formatting |
-| documentarist | haiku | brings `docs/_pending.md` into `docs/`, with `/docs` |
+| documentarist | haiku | brings `.jerome/docs-queue.md` into `docs/`, with `/docs` |
 
 The model follows the kind of work, not a hierarchy: opus for code and writing that stays, sonnet for research and analysis, haiku for mechanical work.
 
 ## Proposing the team
 
-1. Read `scope.md` and `decisions.md`, and list the files in `.claude/agents/`.
+1. Read `.jerome/scope.md` and `.jerome/decisions.md`, and list the files in `.claude/agents/`.
 2. Propose the smallest team that covers the work ahead. For each agent: name, what it will do in this project, model, tools, and why it is needed. Start from the catalog; adapt an agent (name, description, tools) or write a new one only when no catalog agent fits, saying why. Include the documentarist whenever other agents will change things.
 3. Keep the catalog's model unless the project gives a reason; say so when you propose a different one.
 4. End with a decision request. Create nothing before the user explicitly confirms.
@@ -29,7 +29,7 @@ The model follows the kind of work, not a hierarchy: opus for code and writing t
 
 1. Copy each confirmed agent from `agents/` to `.claude/agents/<name>.md`, with the confirmed changes. Keep `model` declared and `omitClaudeMd: true`.
 2. In its `## Project limits` section, copy word for word, with their IDs, the Agent limits from PROJECT.md that apply to that agent; leave `- none` if none applies. Agents do not read PROJECT.md: this section is the only way they know the project's limits.
-3. Record one decision in `decisions.md`: the team, each agent with its model, and the reason.
+3. Record one decision in `.jerome/decisions.md`: the team, each agent with its model, and the reason.
 4. Tell the user in one line that the team is ready. If the Agent tool does not list the new agents yet, ask them to restart the session.
 
 ## Changing the team

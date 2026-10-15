@@ -1,3 +1,5 @@
+import { STATE } from './paths.js';
+
 // Reading briefs for `jerome new --from-file` (D29, D35). The contract is the brief/v2 format (D34):
 // a valid brief/v2 or brief/v1 is sorted into the project files here, without the model; anything else
 // is saved as it is and left to the lead agent, through a provisional PROJECT.md.
@@ -87,10 +89,10 @@ export function projectFiles(brief) {
   const block = (s) => `## ${s}\n${sections[s] || 'none'}\n`;
   const present = (list) => list.filter((s) => !OPTIONAL.has(s) || sections[s]).map(block).join('\n');
   return {
-    'PROJECT.md': `# ${meta.name}\n\n${present(PROJECT_SECTIONS)}`,
-    'scope.md': `# Scope\n\n${present(SCOPE_SECTIONS)}`,
-    'decisions.md': `# Decisions\n\n${sections.Decisions || 'none'}\n`,
-    'open.md': `# Open\n\n${block('Open questions')}\n${block('Parked')}`,
+    [STATE.project]: `# ${meta.name}\n\n${present(PROJECT_SECTIONS)}`,
+    [STATE.scope]: `# Scope\n\n${present(SCOPE_SECTIONS)}`,
+    [STATE.decisions]: `# Decisions\n\n${sections.Decisions || 'none'}\n`,
+    [STATE.open]: `# Open\n\n${block('Open questions')}\n${block('Parked')}`,
   };
 }
 
@@ -100,11 +102,11 @@ export function provisionalProject(reasons) {
   return `${PROVISIONAL_MARKER}
 # Provisional project: convert brief.md first
 
-This project has no brief yet: \`brief.md\` holds raw text, not a valid brief/v2 (${reasons.join('; ')}).
+This project has no brief yet: \`.jerome/brief.md\` holds raw text, not a valid brief/v2 (${reasons.join('; ')}).
 Your next reply must start the conversion, whatever the user asks:
 1. If the user asked for something else, acknowledge it in one line, in their language ("I'll get to it right after"). Do not answer it, start it or run any tool for it.
-2. Convert \`brief.md\` with the project-brief skill ("PROJECT.md is provisional"): list the decisions you find and ask the user to confirm them in one block. Record nothing before they confirm.
-3. Once confirmed, write PROJECT.md, scope.md, decisions.md and open.md, replacing this file, and leave brief.md as it is. Only then go back to the user's request.
+2. Convert \`.jerome/brief.md\` with the project-brief skill ("PROJECT.md is provisional"): list the decisions you find and ask the user to confirm them in one block. Record nothing before they confirm.
+3. Once confirmed, write PROJECT.md, scope.md, decisions.md and open.md in .jerome/, replacing this file, and leave brief.md as it is. Only then go back to the user's request.
 `;
 }
 

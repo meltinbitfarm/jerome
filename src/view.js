@@ -12,6 +12,7 @@ import { readState } from './state.js';
 import { readAccount, accountPath } from './account.js';
 import { findTranscript, delegations, leadCalls } from './delegations.js';
 import { PRICES_DATE } from './models.js';
+import { notProjectMessage } from './paths.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'index.html');
 const RUNS = 50;
@@ -19,7 +20,7 @@ const RUNS = 50;
 export async function view(dirArg, { port = 0, open = true } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
-    console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+    console.error(notProjectMessage(dir));
     return 1;
   }
   if (!existsSync(join(dir, DB_FILE))) {

@@ -152,7 +152,10 @@ export const DEPS = [
   d('files', '<config>/settings.json statusLine.command', 'the user\'s own status line', { kind: 'file', decisions: ['D60'], phase: 6, code: ['src/statusline.js'] }),
   d('files', '.claude/agents/*.md front matter: name, description, tools, model, omitClaudeMd', 'the team; omitClaudeMd keeps CLAUDE.md out of subagents', { kind: 'file', decisions: ['D27', 'D41'], phase: 4, code: ['src/agents.js'] }),
   d('files', '.claude/skills/*/SKILL.md front matter: name, description, disable-model-invocation', 'project-brief, project-team, docs', { kind: 'file', decisions: ['D14', 'D43'], phase: 3, code: ['template/'] }),
-  d('files', 'CLAUDE.md @PROJECT.md import', 'the lead agent\'s instructions; a missing import is skipped', { kind: 'file', decisions: ['D7', 'D36'], phase: 2, code: ['template/CLAUDE.md'] }),
+  d('files', '.claude/rules/jerome.md, loaded at launch like .claude/CLAUDE.md (a rules file without paths front matter)', 'the lead agent\'s instructions, out of the way of the project\'s own CLAUDE.md', { kind: 'file', decisions: ['D87'], phase: 9, code: ['template/.claude/rules/jerome.md', 'src/doctor.js'] }),
+  d('files', '@../../.jerome/PROJECT.md import, relative to the importing file; a missing import is skipped', 'PROJECT.md in every session', { kind: 'file', decisions: ['D7', 'D36', 'D87'], phase: 9, code: ['template/.claude/rules/jerome.md'] }),
+  d('behaviour', 'omitClaudeMd keeps .claude/rules files out of subagents too', 'subagents without the lead agent\'s instructions (2,209 tokens with them in rules, 2,189 in .claude/CLAUDE.md)', { kind: 'behaviour', documented: false, decisions: ['D27', 'D87'], phase: 9 }),
+  d('behaviour', 'a project\'s own CLAUDE.md, .claude/CLAUDE.md and rules are loaded next to jerome.md', 'their weight is shown by doctor', { kind: 'behaviour', decisions: ['D88'], phase: 9, code: ['src/doctor.js'] }),
 
   // Behaviours measured in the phases.
   d('behaviour', 'auto mode drops broad allow rules', 'test commands allowed as exact commands', { kind: 'behaviour', decisions: ['D48'], phase: 4, code: ['src/limits.js'] }),

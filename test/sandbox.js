@@ -23,7 +23,7 @@ case "$1" in
     # A service call (jerome docs): record where it ran and with which arguments, then empty the queue it was given.
     case " $* " in *" --agent "*)
       pwd -P > "$HOME/service-cwd"; printf '%s\n' "$@" > "$HOME/service-args"
-      while [ "$#" -gt 0 ]; do [ "$1" = "--add-dir" ] && : > "$2/docs/_pending.md"; shift; done
+      while [ "$#" -gt 0 ]; do [ "$1" = "--add-dir" ] && : > "$2/.jerome/docs-queue.md"; shift; done
       echo '{"type": "result", "is_error": false, "result": "Integrated the entries."}'; exit 0;;
     esac
     # A heartbeat's triage: no tools, on Haiku. FAKE_TRIAGE is the JSON verdict it gives.
@@ -63,8 +63,9 @@ case "$1" in
     echo "$S" | grep -q '"plugin-authoring": "off"' || echo "| plugin-authoring | Built-in | ~90 |"
     [ "$FAKE_STUCK_PLUGIN" = "1" ] && echo "| shop:x | Plugin (shop) | ~40 |"
     echo; echo "### Memory Files"; echo; echo "| Type | Path | Tokens |"; echo "|---|---|---|"
-    [ -f CLAUDE.md ] && echo "| Project | $(pwd -P)/CLAUDE.md | \${FAKE_CLAUDE_MD_TOKENS:-496} |"
-    [ -f PROJECT.md ] && echo "| Project | $(pwd -P)/PROJECT.md | 1.1k |"
+    [ -f CLAUDE.md ] && echo "| Project | $(pwd -P)/CLAUDE.md | 36 |"
+    [ -f .claude/rules/jerome.md ] && echo "| Project | $(pwd -P)/.claude/rules/jerome.md | \${FAKE_CLAUDE_MD_TOKENS:-496} |"
+    [ -f .jerome/PROJECT.md ] && echo "| Project | $(pwd -P)/.jerome/PROJECT.md | 1.1k |"
     exit 0;;
 esac
 `;

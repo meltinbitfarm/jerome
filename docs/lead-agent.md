@@ -1,6 +1,6 @@
 # The lead agent
 
-Every Jérôme project has one lead agent: the main Claude Code session you talk to. Its instructions live in the project's `CLAUDE.md`, which comes from the template.
+Every Jérôme project has one lead agent: the main Claude Code session you talk to. Its instructions live in `.claude/rules/jerome.md`, which comes from the template and which Claude Code loads at startup like a `CLAUDE.md`. The project's own `CLAUDE.md`, if it has one, stays the project's and is loaded too. The state files named on this page are in `.jerome/` (see [project-layout.md](project-layout.md)).
 
 ## What it does
 
@@ -15,12 +15,12 @@ Every Jérôme project has one lead agent: the main Claude Code session you talk
 
 ## What it reads, and when
 
-`CLAUDE.md` is loaded into every session and every scheduled run, so it is kept as small as possible.
+`jerome.md` is loaded into every session and every scheduled run, so it is kept as small as possible.
 
 | File | When it is read |
 |---|---|
-| `CLAUDE.md` | Always, at startup |
-| `PROJECT.md` | Always, at startup, imported by `CLAUDE.md` with `@PROJECT.md`: goal, constraints, agent limits and project rules |
+| `.claude/rules/jerome.md` | Always, at startup |
+| `PROJECT.md` | Always, at startup, imported by `jerome.md` with `@../../.jerome/PROJECT.md`: goal, constraints, agent limits and project rules |
 | `scope.md` | Before proposing an approach, a plan or agents; before calling work done; when a request may be out of scope: context, out of scope, success criteria, tools, pace |
 | `decisions.md` | Before proposing an approach, a plan or agents, or when a decision is cited |
 | `open.md` | For status questions, or when an open or parked topic comes up |
@@ -32,7 +32,7 @@ To keep the files that are read on demand light, the lead agent moves closed ent
 
 ## Project rules
 
-`CLAUDE.md` comes from the template, and template files are replaced when the project is updated to a newer Jérôme version with [`jerome update`](commands/update.md). Rules that belong to one project only, such as conventions, tools to prefer or things to avoid, go in `PROJECT.md` under a `## Project rules` section, one line per rule:
+`jerome.md` comes from the template, and template files are replaced when the project is updated to a newer Jérôme version with [`jerome update`](commands/update.md). Rules that belong to one project only, such as conventions, tools to prefer or things to avoid, go in `PROJECT.md` under a `## Project rules` section, one line per rule:
 
 ```markdown
 ## Project rules
@@ -40,13 +40,13 @@ To keep the files that are read on demand light, the lead agent moves closed ent
 - Tests run with `pnpm test` before every commit proposal.
 ```
 
-The lead agent adds the section when the first rule comes up, and `CLAUDE.md` tells it never to write rules into itself. `PROJECT.md` is a state file that updates never touch, and it is already loaded at startup, so the rules cost nothing extra beyond their own lines. They count towards `PROJECT.md`'s budget.
+The lead agent adds the section when the first rule comes up, and `jerome.md` tells it never to write rules into itself. `PROJECT.md` is a state file that updates never touch, and it is already loaded at startup, so the rules cost nothing extra beyond their own lines. They count towards `PROJECT.md`'s budget.
 
 ## Projects from before `scope.md`
 
 Projects created before `scope.md` existed have all the brief's sections in `PROJECT.md`. `jerome doctor` warns about it and names the sections to move. To migrate:
 
-1. run `jerome update`, so `CLAUDE.md` knows about `scope.md`;
+1. run `jerome update`, so the lead agent's instructions know about `scope.md`;
 2. ask the lead agent: "move Context, Out of scope, Success, Tools, Pace and usage from PROJECT.md to scope.md, unchanged".
 
 ## A project started from free text
@@ -57,17 +57,17 @@ When `jerome new --from-file` gets a text that is not a valid brief, it saves th
 2. lists the decisions it found and asks you to confirm them in one block, because the text may come from another chat and hold proposals you never confirmed;
 3. writes `PROJECT.md`, `scope.md`, `decisions.md` and `open.md`, replacing the provisional file, and leaves `brief.md` as the original text.
 
-The instruction lives in `PROJECT.md` and not in `CLAUDE.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and scheduled runs (planned) will not start on it.
+The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and scheduled runs (planned) will not start on it.
 
-## What goes in `CLAUDE.md`
+## What goes in `jerome.md`
 
-`CLAUDE.md` is paid at every call, so a rule goes there only if the lead agent needs it at every turn. Rules needed at specific moments go in a skill, whose description costs a few tokens and whose body is read only when it applies: the briefing in `project-brief`, the team in `project-team`.
+`jerome.md` is paid at every call, so a rule goes there only if the lead agent needs it at every turn. Rules needed at specific moments go in a skill, whose description costs a few tokens and whose body is read only when it applies: the briefing in `project-brief`, the team in `project-team`.
 
 ## Token budget
 
 | File | Budget | Current |
 |---|---:|---:|
-| `CLAUDE.md` | 680 tokens | 679 |
+| `jerome.md` | 680 tokens | 678 |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
 `jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome`:
@@ -79,7 +79,7 @@ The instruction lives in `PROJECT.md` and not in `CLAUDE.md`, so it costs tokens
 }
 ```
 
-Only `CLAUDE.md` and `PROJECT.md` have budgets. Invalid entries are reported by `jerome doctor` and the defaults apply. `jerome update` keeps the field.
+Only `jerome.md` and `PROJECT.md` have budgets. A project's own `CLAUDE.md` has none, since it is not Jérôme's to trim, but `jerome doctor` shows its weight next to `jerome.md`. Invalid entries are reported by `jerome doctor` and the defaults apply. `jerome update` keeps the field.
 
 Measured in phase 2 on a project created with `jerome new`, with a 614-token `PROJECT.md` and a 496-token `CLAUDE.md`:
 
@@ -92,20 +92,20 @@ So the lead agent's instructions and the project summary add about 1.4k tokens t
 
 ## Subagents
 
-Claude Code also loads `CLAUDE.md`, and the files it imports, into subagents. In the same test project a trivial subagent call cost 2,518 input tokens with it and 1,142 without. For this reason:
+Claude Code also loads `CLAUDE.md` and rules files, with what they import, into subagents. In the same test project a trivial subagent call cost 2,518 input tokens with it and 1,142 without. For this reason:
 
-- the agents of Jérôme's catalog set `omitClaudeMd: true` and skip the file entirely; the project's limits are copied into each agent's own file instead (see [agents.md](agents.md));
+- the agents of Jérôme's catalog set `omitClaudeMd: true`, which keeps out `CLAUDE.md` and `.claude/rules/` alike (measured: 2,209 tokens with the instructions in rules, 2,189 with them in `.claude/CLAUDE.md`); the project's limits are copied into each agent's own file instead (see [agents.md](agents.md));
 - built-in subagents still load it, and its second line tells them to ignore it.
 
-`CLAUDE.md` only says to delegate to the agents in `.claude/agents/` and to create or change them with the `project-team` skill after you confirm. How to pick the team and models lives in the skill, read only when needed.
+`jerome.md` only says to delegate to the agents in `.claude/agents/` and to create or change them with the `project-team` skill after you confirm. How to pick the team and models lives in the skill, read only when needed.
 
 ## Service calls
 
 Some runs are not the lead agent's work, for example the documentation agent behind [`jerome docs`](commands/docs.md). When the CLI launches `claude -p` for them, it:
 
-- starts from a service folder outside the project, so the lead agent's `CLAUDE.md` is not loaded;
+- starts from a service folder outside the project, so the lead agent's instructions are not loaded;
 - passes `--settings` with the project's `.claude/settings.local.json`, so the lean profile still applies. Without it, a folder outside the project gets every plugin, skill and connector you have installed: 14.1k tokens instead of 10.4k on the test machine;
 - passes `--no-session-persistence`, so the run leaves no transcript that would be counted as project usage;
-- adds the project with `--add-dir` only when the task needs its files. `CLAUDE.md` still stays out, while the project's skills come in.
+- adds the project with `--add-dir` only when the task needs its files. The lead agent's instructions still stay out, while the project's skills come in.
 
 The service folder is one fixed path per project, emptied before each call, because Claude Code keeps a small folder in `~/.claude/projects/` for every folder it is started from.

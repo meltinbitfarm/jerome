@@ -18,7 +18,7 @@ project week  ≈$4.22 API (5.8M tokens) / $20
 | `--daily <usd\|off\|default>` | the project's limit per calendar day, from local midnight, in API-equivalent dollars |
 | `--weekly <usd\|off\|default>` | the project's limit per calendar week, from Monday 00:00 |
 
-Global limits are saved in `~/.config/jerome/account.json` and apply to every project. Project limits are saved in the project's `.jerome`; without them the defaults apply, $5 a day and $20 a week. `off` turns a limit off, `default` goes back to the default.
+Global limits are saved in `~/.config/jerome/account.json` and apply to every project. Project limits are saved in the project's `.jerome/project.json`; without them the defaults apply, $5 a day and $20 a week. `off` turns a limit off, `default` goes back to the default.
 
 ## Exit codes
 

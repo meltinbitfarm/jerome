@@ -26,6 +26,7 @@ import { startProgress, actionOf } from './progress.js';
 import { settingsPath } from './profile.js';
 import { serviceFolder, recordResultUsage } from './docs.js';
 import { DIGEST } from './digest.js';
+import { STATE, isLegacy } from './paths.js';
 
 const INTERACTIVE_HOURS = 12;
 
@@ -36,6 +37,12 @@ function cacheDir(...parts) {
 export async function heartbeat(dirArg, { env = process.env, now = new Date() } = {}) {
   const dir = resolve(dirArg);
   const log = (line) => console.log(`${new Date().toISOString()} ${basename(dir)} ${line}`);
+  if (isLegacy(dir) && !existsSync(join(dir, MARKER))) {
+    // A project from before D87: nothing can be recorded until it moves to .jerome/ (D89).
+    log('not started: this project uses the layout from before .jerome/; run `jerome update` to move it');
+    notify(env, basename(dir), 'Heartbeat not started: run `jerome update` to move the project to .jerome/');
+    return 1;
+  }
   if (!existsSync(join(dir, MARKER)) || !existsSync(join(dir, DB_FILE))) {
     log(`not started: ${dir} is not a Jérôme project with a database`);
     return 1;
@@ -187,7 +194,7 @@ async function checks(dir, now) {
       request: { question: `Open \`claude\` in ${dir} once and accept the trust dialog, so heartbeats can run.`, recommendation: 'Do it now; the next heartbeat starts by itself.' },
     };
   }
-  const project = join(dir, 'PROJECT.md');
+  const project = join(dir, STATE.project);
   if (existsSync(project) && isProvisional(readFileSync(project, 'utf8'))) {
     return {
       reason: 'PROJECT.md is provisional',
@@ -233,7 +240,7 @@ function projectFingerprint(dir) {
   } catch {
     hash.update('no-head');
   }
-  for (const file of ['open.md', 'decisions.md', 'scope.md']) {
+  for (const file of [STATE.open, STATE.decisions, STATE.scope]) {
     hash.update(existsSync(join(dir, file)) ? readFileSync(join(dir, file)) : '');
   }
   const db = openDb(dir);
@@ -290,10 +297,10 @@ Answer with one JSON object and nothing else: {"work": true|false, "task": "<one
 There is work only if one concrete task moves the project towards its success criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. Prefer the next step the recent history points to.
 
 ## Open questions and parked topics (open.md)
-${read('open.md').trim() || 'none'}
+${read(STATE.open).trim() || 'none'}
 
 ## Success criteria (scope.md)
-${section(read('scope.md'), 'Success') || 'none'}
+${section(read(STATE.scope), 'Success') || 'none'}
 
 ## Recent commits
 ${gitLog || 'none'}
@@ -341,7 +348,7 @@ Task chosen by the triage: ${task}
 - Do this task only. Work on a new branch. Delegate reading and code to the agents in .claude/agents/, and keep your own turns few.
 - Never ask the user. When you need a decision, run \`jerome request open --question "…" --options "…" --recommendation "…"\` and stop that line of work.
 - When the tests pass and there are no conflicts, merge the branch into main and report it; if tests fail or there is a conflict, open a decision request instead.
-- Before ending, append one line to digest.md: \`- YYYY-MM-DD HH:MM · what you did · branches merged · requests opened\`. Commit it with your work, and end on main with a clean working tree.
+- Before ending, append one line to .jerome/digest.md: \`- YYYY-MM-DD HH:MM · what you did · branches merged · requests opened\`. Commit it with your work, and end on main with a clean working tree.
 - End with at most 3 lines.`;
 }
 

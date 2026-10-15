@@ -4,16 +4,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { basename, join, resolve } from 'node:path';
 import { MARKER } from './template.js';
+import { STATE } from './paths.js';
 import { openDb, DB_FILE } from './db.js';
 import { n, dollars } from './state.js';
 import { callPrice, TIER_SQL } from './models.js';
+import { notProjectMessage } from './paths.js';
 
-export const DIGEST = 'digest.md';
+export const DIGEST = STATE.digest;
 
 export async function digest(dirArg, { since = '7d' } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
-    console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+    console.error(notProjectMessage(dir));
     return 1;
   }
   const days = Number(String(since).replace(/d$/, ''));

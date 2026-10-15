@@ -9,13 +9,14 @@ import { projectAgents } from './agents.js';
 import { projectStatus, projectOver, projectSummary, globalLimits } from './budget.js';
 import { callPrice, TIER_SQL } from './models.js';
 import { readAccount, WINDOWS } from './account.js';
+import { notProjectMessage } from './paths.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
 
 export async function state(dirArg, { json = false, runs = 3, agent = null, replies = false } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
-    console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+    console.error(notProjectMessage(dir));
     return 1;
   }
   let report;

@@ -23,7 +23,8 @@ const assistant = (content, extra = {}) => `${JSON.stringify({ type: 'assistant'
 
 before(async () => {
   mkdirSync(join(dir, '.claude', 'agents'), { recursive: true });
-  writeFileSync(join(dir, '.jerome'), '');
+  mkdirSync(join(dir, '.jerome'), { recursive: true });
+  writeFileSync(join(dir, '.jerome', 'project.json'), '');
   writeFileSync(join(dir, '.claude', 'agents', 'developer.md'), '---\nname: developer\ndescription: Code.\ntools: Read, Edit\nmodel: opus\nomitClaudeMd: true\n---\nWrite code.\n');
   const db = openDb(dir, { create: true });
   const now = new Date().toISOString();
@@ -70,7 +71,7 @@ function get(path, { host, token = 'secret-token', method = 'GET', headers = {} 
   });
 }
 
-const fingerprint = () => createHash('sha256').update(readFileSync(join(dir, '.jerome.db'))).digest('hex');
+const fingerprint = () => createHash('sha256').update(readFileSync(join(dir, '.jerome', 'jerome.db'))).digest('hex');
 
 test('the viewer listens on 127.0.0.1 and refuses requests without the token, from another host, or that write', async () => {
   assert.match(viewer.url, /^http:\/\/127\.0\.0\.1:\d+\/\?t=secret-token$/);
@@ -135,5 +136,5 @@ test('the page builds every text with textContent, so transcript contents are ne
 test('jerome state --json carries the team too', () => {
   const s = readState(dir, { readOnly: true });
   assert.ok(s.team.subagents.length >= 1);
-  assert.equal(statSync(join(dir, '.jerome.db')).isFile(), true);
+  assert.equal(statSync(join(dir, '.jerome', 'jerome.db')).isFile(), true);
 });

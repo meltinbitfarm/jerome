@@ -49,10 +49,10 @@ test('parseBrief tells an unknown format from free text', () => {
 
 test('projectFiles sorts the sections following the Import table', () => {
   const files = projectFiles(parseBrief(BRIEF_V2));
-  assert.equal(files['PROJECT.md'], '# Demo app\n\n## Goal\nA demo.\n\n## Constraints\n- V1: no network.\n\n## Agent limits\n- L1: drafts only.\n');
-  assert.equal(files['scope.md'], '# Scope\n\n## Context\n- Built for tests.\n\n## Out of scope\n- Mobile.\n\n## Success\n- Tests pass.\n');
-  assert.equal(files['decisions.md'], '# Decisions\n\n- D1: Node only — fewer tools.\n');
-  assert.equal(files['open.md'], '# Open\n\n## Open questions\n- Q1: which name?\n\n## Parked\nnone\n');
+  assert.equal(files['.jerome/PROJECT.md'], '# Demo app\n\n## Goal\nA demo.\n\n## Constraints\n- V1: no network.\n\n## Agent limits\n- L1: drafts only.\n');
+  assert.equal(files['.jerome/scope.md'], '# Scope\n\n## Context\n- Built for tests.\n\n## Out of scope\n- Mobile.\n\n## Success\n- Tests pass.\n');
+  assert.equal(files['.jerome/decisions.md'], '# Decisions\n\n- D1: Node only — fewer tools.\n');
+  assert.equal(files['.jerome/open.md'], '# Open\n\n## Open questions\n- Q1: which name?\n\n## Parked\nnone\n');
 });
 
 test('the provisional PROJECT.md is recognized', () => {

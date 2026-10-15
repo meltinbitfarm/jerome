@@ -4,13 +4,22 @@ import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join, resolve } from 'node:path';
 import { TEMPLATE_DIR, VERSION, MARKER, templatePlan, behind, reconciled, writeMarker, isJeromeRepo } from './template.js';
+import { notProjectMessage, isLegacy, isProject } from './paths.js';
+import { layoutPlan, describeLayoutPlan, migrateLayout, busy } from './migrate.js';
+import { jobLabel } from './schedule.js';
+import { homedir } from 'node:os';
 
 const LABELS = { new: 'new', update: 'update', modified: 'changed here', remove: 'remove' };
 
 export async function update(dirArg, { check = false, yes = false } = {}) {
   const dir = resolve(dirArg);
+  // A project from before D87 first moves to the .jerome/ layout (D89), once, after confirmation.
+  if (isLegacy(dir) && !isProject(dir)) {
+    const result = await migrate(dir, { check, yes });
+    if (result !== 0) return result;
+  }
   if (!existsSync(join(dir, MARKER))) {
-    console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+    console.error(notProjectMessage(dir));
     return 1;
   }
   if (isJeromeRepo(dir)) {
@@ -76,6 +85,43 @@ export async function update(dirArg, { check = false, yes = false } = {}) {
   const removed = apply.filter((f) => f.status === 'remove').length;
   const updated = apply.length - removed;
   console.log(`✓ ${updated} ${updated === 1 ? 'file' : 'files'} updated${removed ? `, ${removed} removed` : ''}${kept.length ? `, ${kept.length} kept as changed in this project` : ''}`);
+  return 0;
+}
+
+async function migrate(dir, { check, yes }) {
+  let plan;
+  try {
+    plan = layoutPlan(dir);
+  } catch (err) {
+    console.error(`Cannot read the project's layout: ${err.message}`);
+    return 1;
+  }
+  console.log(`This project keeps Jérôme's files at its root. Jérôme ${VERSION} keeps them in .jerome/ and the lead agent's instructions in .claude/rules/jerome.md:`);
+  console.log(describeLayoutPlan(plan));
+  if (check) return 1;
+  const lock = join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'jerome', 'locks', `${jobLabel(dir)}.lock`);
+  const why = busy(dir, lock);
+  if (why) {
+    console.error(`\nNot now: ${why}. Nothing was moved.`);
+    return 1;
+  }
+  if (!yes) {
+    if (!process.stdin.isTTY) {
+      console.error('\nNothing was moved: run `jerome update` in a terminal to confirm, or add --yes.');
+      return 1;
+    }
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      if (!await confirm(rl, '\nMove them?')) {
+        console.log('Nothing was moved.');
+        return 1;
+      }
+    } finally {
+      rl.close();
+    }
+  }
+  migrateLayout(dir, plan);
+  console.log(`✓ Moved to .jerome/ (tracked files with git mv: review and commit the moves)${plan.keepLead ? '. CLAUDE.md was changed in this project and stays as its own: check that it does not repeat or contradict .claude/rules/jerome.md' : ''}`);
   return 0;
 }
 

@@ -4,7 +4,7 @@ A lean setup for running projects with [Claude Code](https://docs.claude.com/en/
 
 The name is a nod to Saint Jerome, patron saint of translators: the lead agent translates ideas into tasks.
 
-> **Status: early development.** What works today: creating a project, from scratch or from a brief (`jerome new`), the lead agent's instructions, the briefing (`jerome prompt` and the `project-brief` skill), keeping the lean profile in place (`jerome doctor`) and updating a project's template files (`jerome update`). Usage tracking, the viewer and scheduled runs are planned; see [Roadmap](#roadmap).
+> **Status: early development.** All the phases of the [roadmap](#roadmap) are in place: projects (`jerome new`, `jerome init`), the lead agent and its team, usage tracking, the viewer, heartbeats and limits. They have been tried on real projects, but not yet on a clean machine.
 
 ## Requirements
 
@@ -33,6 +33,8 @@ cd my-project
 claude
 ```
 
+For an existing project, run `jerome init` in its folder instead: it adds Jérôme's files without overwriting any of yours.
+
 `jerome new` checks your setup before creating anything. If something is missing, such as the Claude Code login, it stops and tells you what to fix.
 
 If you already have a brief, for example from a briefing on your phone, start from it:
@@ -46,6 +48,7 @@ pbpaste | jerome new my-project --from-file -
 | Command | What it does |
 |---|---|
 | [`jerome new <name> [--from-file <path\|->]`](docs/commands/new.md) | Creates a project from the template, with git and the lean profile, optionally from a brief |
+| [`jerome init [dir]`](docs/commands/init.md) | Brings Jérôme into an existing project, overwriting nothing |
 | [`jerome prompt`](docs/commands/prompt.md) | Prints the briefing instructions, to paste into any chat |
 | [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report |
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
@@ -65,13 +68,17 @@ Out of the box, every Claude Code session loads the descriptions of all your ins
 
 Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes from: [docs/usage-data.md](docs/usage-data.md); how it is recorded: [docs/hooks.md](docs/hooks.md); where it is kept: [docs/database.md](docs/database.md).
 
+## Project layout
+
+Jérôme keeps its state in `.jerome/` and the lead agent's instructions in `.claude/rules/jerome.md`, so the project's root, its own `CLAUDE.md` and its `docs/` stay the project's. See [docs/project-layout.md](docs/project-layout.md).
+
 ## The lead agent
 
-The template's `CLAUDE.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to the project's agents, and only drafts things it is not allowed to do, such as deploying. It is kept within 680 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
+The template's `.claude/rules/jerome.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to the project's agents, and only drafts things it is not allowed to do, such as deploying. It is kept within 680 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
 
 ## Agents and limits
 
-After the brief, the lead agent proposes a team from Jérôme's catalog (developer, writer, researcher, analyst, clerk, documentarist), each with a model chosen for its kind of work, and creates it only after you confirm. Agents skip `CLAUDE.md`, reply in a few lines and queue documentation changes for the documentarist. Each task runs on a branch, which the lead agent merges into `main` itself when the tests pass. Pushing, publishing, deploying and sending email are denied by permission rules in the project's `.claude/settings.json`, for the lead agent and every subagent; the safe local git operations and the tests are allowed. See [docs/agents.md](docs/agents.md).
+After the brief, the lead agent proposes a team from Jérôme's catalog (developer, writer, researcher, analyst, clerk, documentarist), each with a model chosen for its kind of work, and creates it only after you confirm. Agents skip the lead agent's instructions, reply in a few lines and queue documentation changes for the documentarist. Each task runs on a branch, which the lead agent merges into `main` itself when the tests pass. Pushing, publishing, deploying and sending email are denied by permission rules in the project's `.claude/settings.json`, for the lead agent and every subagent; the safe local git operations and the tests are allowed. See [docs/agents.md](docs/agents.md).
 
 ## Heartbeats
 
@@ -84,7 +91,7 @@ Every project starts from a brief in the `brief/v2` format. You can run the brie
 ## Roadmap
 
 1. ~~Project creation and setup checks~~ (`jerome new`, `jerome doctor`)
-2. ~~Lead agent instructions in the project's `CLAUDE.md`~~
+2. ~~Lead agent instructions, now in `.claude/rules/jerome.md`~~
 3. ~~Briefing anywhere and import of a brief (`jerome prompt`, `jerome new --from-file`), template updates (`jerome update`)~~
 4. Rules for creating subagents, including a documentation agent (`jerome docs`)
 5. ~~A SQLite database per project, read with `jerome state`~~

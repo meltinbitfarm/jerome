@@ -6,7 +6,8 @@ import { TEMPLATE_DIR } from './template.js';
 
 export const AGENTS_DIR = join('.claude', 'agents');
 export const CATALOG_DIR = join(TEMPLATE_DIR, '.claude', 'skills', 'project-team', 'agents');
-export const QUEUE = join('docs', '_pending.md');
+export { QUEUE } from './paths.js';
+import { QUEUE } from './paths.js';
 export const QUEUE_LIMIT = 20;
 
 const MODELS = ['opus', 'sonnet', 'haiku'];

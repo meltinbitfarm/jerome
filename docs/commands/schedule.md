@@ -19,7 +19,7 @@ jerome schedule --off
 | `--list` | the projects with a schedule on this machine |
 | `--off` | removes the project's schedule and its launchd job |
 
-Scheduling again replaces the previous schedule. The schedule and the caps are saved in `.jerome` under `heartbeat`; the launchd job, with the absolute paths of `node`, `jerome` and `claude`, lives in `~/Library/LaunchAgents/` and stays on your machine. `jerome doctor` checks it.
+Scheduling again replaces the previous schedule. The schedule and the caps are saved in `.jerome/project.json` under `heartbeat`; the launchd job, with the absolute paths of `node`, `jerome` and `claude`, lives in `~/Library/LaunchAgents/` and stays on your machine. `jerome doctor` checks it.
 
 ## Exit codes
 

@@ -13,12 +13,12 @@ test('new creates the project with template, marker, git and lean profile', () =
   const r = run('new', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const dir = join(root, 'demo');
-  assert.ok(existsSync(join(dir, '.jerome')));
+  assert.ok(existsSync(join(dir, '.jerome', 'project.json')));
   assert.ok(existsSync(join(dir, '.git')));
   assert.ok(existsSync(join(dir, '.claude', 'skills', 'project-brief', 'SKILL.md')));
   // The MANIFEST stays in the package: projects don't need it (D38).
   assert.ok(!existsSync(join(dir, 'MANIFEST')));
-  assert.ok(existsSync(join(dir, 'CLAUDE.md')));
+  assert.ok(existsSync(join(dir, '.claude', 'rules', 'jerome.md')));
   assert.doesNotMatch(r.stdout, /budget/);
   for (const devFile of ['PROJECT.md', 'decisions.md', 'open.md', 'PLAN.md', 'package.json']) {
     assert.ok(!existsSync(join(dir, devFile)), `${devFile} must not end up in the project`);
@@ -113,10 +113,10 @@ test('doctor moves a profile left in settings.json to the local settings', () =>
 test('doctor warns, without failing, when the files loaded every session are over budget', () => {
   const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '700' } });
   assert.equal(run('new', 'demo').status, 0);
-  writeFileSync(join(root, 'demo', 'PROJECT.md'), '# Demo\n');
+  writeFileSync(join(root, 'demo', '.jerome', 'PROJECT.md'), '# Demo\n');
   const r = run('doctor', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /! CLAUDE\.md: 700 tokens, over its 680-token budget/);
+  assert.match(r.stdout, /! jerome\.md: 700 tokens, over its 680-token budget/);
   assert.match(r.stdout, /! PROJECT\.md: 1100 tokens, over its 800-token budget/);
 });
 
@@ -124,17 +124,17 @@ test('a project can raise its budgets in .jerome, and bad entries only warn', ()
   const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '700' } });
   assert.equal(run('new', 'demo').status, 0);
   const dir = join(root, 'demo');
-  writeFileSync(join(dir, 'PROJECT.md'), '# Demo\n');
-  const marker = JSON.parse(readFileSync(join(dir, '.jerome'), 'utf8'));
-  writeFileSync(join(dir, '.jerome'), JSON.stringify({ ...marker, budgets: { 'PROJECT.md': 1200, 'CLAUDE.md': -1, 'open.md': 300 } }));
+  writeFileSync(join(dir, '.jerome', 'PROJECT.md'), '# Demo\n');
+  const marker = JSON.parse(readFileSync(join(dir, '.jerome', 'project.json'), 'utf8'));
+  writeFileSync(join(dir, '.jerome', 'project.json'), JSON.stringify({ ...marker, budgets: { 'PROJECT.md': 1200, 'jerome.md': -1, 'open.md': 300 } }));
   const r = run('doctor', 'demo', '--check', '--json');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const warnings = JSON.parse(r.stdout).warnings;
-  assert.deepEqual(warnings.filter((w) => w.id === 'budget').map((w) => [w.file, w.budget]), [['CLAUDE.md', 680]]);
+  assert.deepEqual(warnings.filter((w) => w.id === 'budget').map((w) => [w.file, w.budget]), [['jerome.md', 680]]);
   assert.deepEqual(warnings.filter((w) => w.id === 'budgets-config').length, 2);
   // jerome update rewrites .jerome but keeps the budgets.
   run('update', 'demo', '--yes');
-  assert.deepEqual(JSON.parse(readFileSync(join(dir, '.jerome'), 'utf8')).budgets['PROJECT.md'], 1200);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, '.jerome', 'project.json'), 'utf8')).budgets['PROJECT.md'], 1200);
 });
 
 test('doctor fails if a plugin skill stays loaded', () => {
@@ -189,7 +189,7 @@ test('doctor --json: schema, checks, sections, counts and warnings, with a match
   assert.deepEqual(report.context.counts, { categories: 1, skills: 3, projectSkills: 3, memoryFiles: 1 });
   assert.deepEqual(report.limits, { added: [], missing: [] });
   assert.equal(report.context.totalTokens, 12100);
-  assert.deepEqual(report.warnings.map((w) => [w.id, w.file, w.tokens, w.budget]), [['budget', 'CLAUDE.md', 700, 680]]);
+  assert.deepEqual(report.warnings.map((w) => [w.id, w.file, w.tokens, w.budget]), [['budget', 'jerome.md', 700, 680]]);
 });
 
 test('doctor --json reports a broken /context with ok false and exit code 1', () => {

@@ -85,7 +85,7 @@ function project() {
   const transcripts = join(box.root, 'transcripts');
   mkdirSync(join(transcripts, 's1', 'subagents'), { recursive: true });
   const hookCall = (event, payload) => box.runWithInput({ CLAUDE_PROJECT_DIR: dir }, JSON.stringify({ cwd: dir, session_id: 's1', ...payload }), 'hook', event);
-  const db = () => new DatabaseSync(join(dir, '.jerome.db'), { readOnly: true });
+  const db = () => new DatabaseSync(join(dir, '.jerome', 'jerome.db'), { readOnly: true });
   return { ...box, dir, transcripts, hookCall, db };
 }
 
@@ -189,7 +189,7 @@ test('hooks never fail: outside a project, with bad input or an unknown event', 
   assert.equal(runWithInput({}, '{"cwd": "/nowhere"}', 'hook', 'stop').status, 0);
   assert.equal(runWithInput({}, 'not json', 'hook', 'stop').status, 0);
   assert.equal(runWithInput({}, '{}', 'hook', 'whatever').status, 0);
-  assert.ok(!existsSync(join(root, '.jerome.db')));
+  assert.ok(!existsSync(join(root, '.jerome', 'jerome.db')));
 });
 
 test('the status line records the windows only when they change and appends to the personal status line', () => {

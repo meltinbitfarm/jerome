@@ -52,14 +52,14 @@ test('doctor warns when the documentation queue holds more than 20 entries', () 
   const { root, run } = sandbox();
   assert.equal(run('new', 'demo').status, 0);
   mkdirSync(join(root, 'demo', 'docs'));
-  const queue = join(root, 'demo', 'docs', '_pending.md');
+  const queue = join(root, 'demo', '.jerome', 'docs-queue.md');
   const lines = (n) => Array.from({ length: n }, (_, i) => `- 2026-10-15 · developer · a.js · change ${i}`).join('\n');
   writeFileSync(queue, `# Pending\n\n${lines(20)}\n`);
   assert.doesNotMatch(run('doctor', 'demo').stdout, /_pending/);
   writeFileSync(queue, `# Pending\n\n${lines(21)}\n`);
   const r = run('doctor', 'demo');
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /! docs\/_pending\.md holds 21 entries, over 20/);
+  assert.match(r.stdout, /! \.jerome\/docs-queue\.md holds 21 entries, over 20/);
 });
 
 test('jerome update never touches the project agents or settings.json', () => {
@@ -89,12 +89,12 @@ test('jerome docs runs the documentarist as a service call, outside the project'
   assert.equal(run('new', 'demo').status, 0);
   const dir = realpathSync(join(root, 'demo'));
   mkdirSync(join(dir, 'docs'));
-  writeFileSync(join(dir, 'docs', '_pending.md'), '- 2026-10-15 · developer · a.js · added a\n- 2026-10-15 · developer · b.js · added b\n');
+  writeFileSync(join(dir, '.jerome', 'docs-queue.md'), '- 2026-10-15 · developer · a.js · added a\n- 2026-10-15 · developer · b.js · added b\n');
 
   const r = run('docs', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Documentarist \(haiku, from the catalog\) on 2 entries/);
-  assert.match(r.stdout, /✓ docs\/_pending\.md: 2 of 2 entries integrated/);
+  assert.match(r.stdout, /✓ \.jerome\/docs-queue\.md: 2 of 2 entries integrated/);
   const cwd = readFileSync(join(root, 'service-cwd'), 'utf8').trim();
   assert.ok(!cwd.startsWith(dir), 'the call must not start from the project');
   assert.ok(!existsSync(cwd), 'the service folder is emptied');
@@ -108,7 +108,7 @@ test('jerome docs runs the documentarist as a service call, outside the project'
   // The project's own documentarist wins over the catalog's, with its model.
   mkdirSync(join(dir, '.claude', 'agents'));
   writeFileSync(join(dir, '.claude', 'agents', 'documentarist.md'), AGENT('model: sonnet\nomitClaudeMd: true'));
-  writeFileSync(join(dir, 'docs', '_pending.md'), '- 2026-10-15 · developer · a.js · added a\n');
+  writeFileSync(join(dir, '.jerome', 'docs-queue.md'), '- 2026-10-15 · developer · a.js · added a\n');
   const own = run('docs', 'demo');
   assert.match(own.stdout, /Documentarist \(sonnet\) on 1 entry/);
 });

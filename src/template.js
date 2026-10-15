@@ -1,6 +1,7 @@
 // The template files of a project and the `.jerome` marker that records them (D30).
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { PROJECT_FILE, JEROME_DIR } from './paths.js';
 import { join, normalize } from 'node:path';
 
 export const TEMPLATE_DIR = join(import.meta.dirname, '..', 'template');
@@ -9,14 +10,15 @@ export const VERSION = PACKAGE.version;
 
 // Version of the `.jerome` file. Adding fields keeps it; renaming or removing fields bumps it.
 export const MARKER_SCHEMA = 'jerome.project/v1';
-export const MARKER = '.jerome';
+// The project file (D87): `.jerome/project.json`, a JSON record of the Jérôme version, the template files and the
+// project's settings (budgets, limits, heartbeat). Before D87 it was the file `.jerome` at the root.
+export const MARKER = PROJECT_FILE;
 
 // Project state: never copied or overwritten from the template, even if a MANIFEST listed it (D30).
-export const STATE_FILES = ['PROJECT.md', 'scope.md', 'decisions.md', 'open.md', 'archive.md', 'brief.md', 'digest.md', MARKER, '.claude/settings.local.json',
-  '.jerome.db', '.jerome.db-wal', '.jerome.db-shm'];
+export const STATE_FILES = [JEROME_DIR, '.claude/settings.local.json'];
 // Other paths that belong to the project, even when they started from the template: the agents created from
 // the catalog (D42), the settings with the deny rules (D46), the documentation and its queue, the agents' notes.
-export const PROJECT_PATHS = ['.claude/agents', '.claude/settings.json', 'docs', 'notes'];
+export const PROJECT_PATHS = ['.claude/agents', '.claude/settings.json', 'docs', 'CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md'];
 
 // Jérôme's own development repository is a Jérôme project too, but it holds the template in `template/`
 // instead of a copy at its root: template checks and updates do not apply there.
@@ -80,6 +82,7 @@ export function readMarker(dir) {
 
 // Rewrites the record of the template files. Other fields set in `.jerome`, such as `budgets` (D37), are kept.
 export function writeMarker(dir, files) {
+  mkdirSync(join(dir, JEROME_DIR), { recursive: true });
   let kept = {};
   try {
     kept = readMarker(dir);
@@ -94,6 +97,7 @@ export function writeMarker(dir, files) {
 // Changes fields of `.jerome` other than the template record, keeping everything else (e.g. `heartbeat`, D71).
 export function updateMarker(dir, change) {
   const data = readMarker(dir);
+  mkdirSync(join(dir, JEROME_DIR), { recursive: true });
   change(data);
   writeFileSync(join(dir, MARKER), `${JSON.stringify(data, null, 2)}\n`);
 }

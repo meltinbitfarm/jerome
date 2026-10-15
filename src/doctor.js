@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks } from './checks.js';
+import { notProjectMessage, isLegacy, LEAD_FILE, STATE, DB_IGNORE, LEGACY, PROJECT_FILE } from './paths.js';
 import { startProgress } from './progress.js';
 import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './template.js';
 import { isProvisional, misplacedSections } from './brief.js';
@@ -22,7 +23,8 @@ export const DOCTOR_SCHEMA = 'jerome.doctor/v1';
 
 // Token budgets for the files loaded into every session. Going over them only warns, and a project can
 // change them in `.jerome` under "budgets" (D37).
-export const BUDGETS = { 'CLAUDE.md': 680, 'PROJECT.md': 800 };
+// Keyed by file name: jerome.md is the lead agent's instructions (D87), CLAUDE.md before it.
+export const BUDGETS = { 'jerome.md': 680, 'PROJECT.md': 800 };
 
 export async function doctor(dirArg, { json = false, check = false } = {}) {
   const report = await runDoctor(resolve(dirArg), { fix: !check });
@@ -44,8 +46,8 @@ export async function runDoctor(dir, { setup = true, fix = true } = {}) {
     return report;
   };
 
-  const isProject = existsSync(join(dir, '.jerome'));
-  report.checks.push({ id: 'project', ok: isProject, label: 'Jérôme project', detail: isProject ? dir : 'the .jerome marker is missing' });
+  const isProject = existsSync(join(dir, PROJECT_FILE));
+  report.checks.push({ id: 'project', ok: isProject, label: 'Jérôme project', detail: isProject ? dir : notProjectMessage(dir) });
   if (!isProject) return done();
   report.warnings.push(...projectWarnings(dir));
   const limits = limitsCheck(dir, { fix });
@@ -134,6 +136,7 @@ export async function runDoctor(dir, { setup = true, fix = true } = {}) {
     detail: `${context.total} estimated headless (/context)${real}; project skills: ${projectSkills.join(', ') || 'none'}`,
   });
   if (last.warning) report.warnings.push(last.warning);
+  report.context.instructions = instructionFiles(dir, context);
 
   const { budgets, problems } = projectBudgets(dir);
   for (const message of problems) report.warnings.push({ id: 'budgets-config', message });
@@ -259,7 +262,7 @@ function dbCheck(dir, { fix }) {
   const label = 'Project database';
   const fail = (detail, db = null) => ({ db, check: { id: 'db', ok: false, label, detail } });
   try {
-    const ignored = !ensureGitignored(dir, { write: fix, entry: `${DB_FILE}*` });
+    const ignored = !ensureGitignored(dir, { write: fix, entry: DB_IGNORE });
     if (!fix) {
       if (!existsSync(dbPath(dir))) return fail(`${DB_FILE} is missing: run \`jerome doctor\` to create it`);
       const version = peekVersion(dir);
@@ -287,7 +290,7 @@ function dbCheck(dir, { fix }) {
 // except in Jérôme's own repository, where the template is the source and not a copy.
 export function projectWarnings(dir) {
   const warnings = [];
-  const project = join(dir, 'PROJECT.md');
+  const project = join(dir, STATE.project);
   const content = existsSync(project) ? readFileSync(project, 'utf8') : '';
   if (isProvisional(content)) {
     warnings.push({
@@ -343,11 +346,11 @@ export function projectBudgets(dir) {
   }
   if (custom === undefined) return { budgets, problems };
   if (typeof custom !== 'object' || custom === null || Array.isArray(custom)) {
-    return { budgets, problems: ['.jerome: "budgets" must be an object such as { "PROJECT.md": 1200 }; the defaults apply.'] };
+    return { budgets, problems: ['.jerome/project.json: "budgets" must be an object such as { "PROJECT.md": 1200 }; the defaults apply.'] };
   }
   for (const [file, value] of Object.entries(custom)) {
-    if (!(file in BUDGETS)) problems.push(`.jerome: no budget applies to ${file}; budgets exist for ${Object.keys(BUDGETS).join(' and ')}.`);
-    else if (!Number.isInteger(value) || value <= 0) problems.push(`.jerome: the budget of ${file} must be a positive whole number of tokens; the default (${BUDGETS[file]}) applies.`);
+    if (!(file in BUDGETS)) problems.push(`.jerome/project.json: no budget applies to ${file}; budgets exist for ${Object.keys(BUDGETS).join(' and ')}.`);
+    else if (!Number.isInteger(value) || value <= 0) problems.push(`.jerome/project.json: the budget of ${file} must be a positive whole number of tokens; the default (${BUDGETS[file]}) applies.`);
     else budgets[file] = value;
   }
   return { budgets, problems };
@@ -355,16 +358,32 @@ export function projectBudgets(dir) {
 
 export function checkBudgets(dir, context, budgets = BUDGETS) {
   const root = realpathSync(dir);
+  const files = { [join(root, LEAD_FILE)]: 'jerome.md', [join(root, STATE.project)]: 'PROJECT.md' };
   return context.memoryFiles
-    .filter((f) => f.type === 'Project' && dirname(f.path) === root && basename(f.path) in budgets)
-    .map((f) => ({ file: basename(f.path), tokens: f.tokens, budget: budgets[basename(f.path)] }))
+    .filter((f) => f.path in files)
+    .map((f) => ({ file: files[f.path], tokens: f.tokens, budget: budgets[files[f.path]] }))
     .filter((f) => f.tokens > f.budget);
+}
+
+// The instructions loaded into every session and heartbeat (D88): Jérôme's own, and the project's, such as a
+// CLAUDE.md it had before adopting Jérôme. The project's are not Jérôme's to trim, but their cost is shown.
+export function instructionFiles(dir, context) {
+  const root = realpathSync(dir);
+  const lead = join(root, LEAD_FILE);
+  const project = join(root, STATE.project);
+  const out = { jerome: [], project: [] };
+  for (const f of context.memoryFiles) {
+    if (!f.path.startsWith(`${root}/`)) continue;
+    const rel = f.path.slice(root.length + 1);
+    (f.path === lead || f.path === project ? out.jerome : out.project).push({ file: rel, tokens: f.tokens });
+  }
+  return out;
 }
 
 export function printReport(report) {
   for (const check of report.checks) {
     if (check.id === 'project') {
-      if (!check.ok) console.error(`${report.project} is not a Jérôme project (${check.detail}).`);
+      if (!check.ok) console.error(check.detail);
     } else if (check.id === 'profile') {
       const changes = report.profile?.changes ?? [];
       const pending = report.profile?.pending ?? [];
@@ -382,6 +401,11 @@ export function printReport(report) {
     } else if (check.id === 'startup-context') {
       console.log(`${check.ok ? '✓' : '✗'} Startup context: ${check.detail}`);
       for (const s of report.context.leaks.skills) console.log(`    ✗ skill still loaded: ${s.name} (${s.source})`);
+      const ins = report.context.instructions;
+      if (ins?.project.length) {
+        const list = (l) => l.map((f) => `${f.file} ${f.tokens}`).join(' · ');
+        console.log(`    instructions in every session and heartbeat: Jérôme's ${list(ins.jerome)}; the project's own ${list(ins.project)} tokens`);
+      }
       for (const c of report.context.leaks.mcp) console.log(`    ✗ ${c.name}: ${c.tokens} tokens, without a project .mcp.json`);
     } else {
       console.log(`${check.ok ? '✓' : '✗'} ${check.label}${check.detail ? ` — ${check.detail}` : ''}`);

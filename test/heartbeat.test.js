@@ -19,7 +19,7 @@ function project(env = {}) {
   git('commit', '-q', '-m', 'init');
   const trust = (value) => writeFileSync(join(box.root, 'claude-config', '.claude.json'), JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: value } } }));
   trust(true);
-  const db = () => new DatabaseSync(join(dir, '.jerome.db'), { readOnly: true });
+  const db = () => new DatabaseSync(join(dir, '.jerome', 'jerome.db'), { readOnly: true });
   const lastRun = () => {
     const d = db();
     const r = d.prepare('SELECT * FROM runs ORDER BY id DESC LIMIT 1').get();
@@ -57,25 +57,25 @@ test('an untrusted project is skipped with one decision request, not one per hea
 
 test('uncommitted changes, a provisional PROJECT.md and an open interactive session skip the heartbeat', () => {
   const p = project();
-  writeFileSync(join(p.dir, 'CLAUDE.md'), 'changed\n');
+  writeFileSync(join(p.dir, '.claude', 'rules', 'jerome.md'), 'changed\n');
   p.run('heartbeat', 'demo');
-  assert.match(p.lastRun().reason, /uncommitted changes \(CLAUDE\.md\)/);
-  p.git('checkout', '--', 'CLAUDE.md');
+  assert.match(p.lastRun().reason, /uncommitted changes \(\.claude\/rules\/jerome\.md\)/);
+  p.git('checkout', '--', '.claude/rules/jerome.md');
 
   // digest.md is the lead agent's to append to: it never counts as uncommitted.
-  writeFileSync(join(p.dir, 'digest.md'), '- 2026-10-15 09:00 · did x\n');
-  p.git('add', 'digest.md');
+  writeFileSync(join(p.dir, '.jerome', 'digest.md'), '- 2026-10-15 09:00 · did x\n');
+  p.git('add', '.jerome/digest.md');
   p.git('commit', '-q', '-m', 'digest');
-  writeFileSync(join(p.dir, 'digest.md'), '- 2026-10-15 09:00 · did x\n- 2026-10-15 10:00 · did y\n');
+  writeFileSync(join(p.dir, '.jerome', 'digest.md'), '- 2026-10-15 09:00 · did x\n- 2026-10-15 10:00 · did y\n');
   // Nor does .jerome, which `jerome schedule` changes.
-  writeFileSync(join(p.dir, '.jerome'), readFileSync(join(p.dir, '.jerome'), 'utf8').replace('"files"', '"heartbeat": {},\n  "files"'));
+  writeFileSync(join(p.dir, '.jerome', 'project.json'), readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8').replace('"files"', '"heartbeat": {},\n  "files"'));
 
-  writeFileSync(join(p.dir, 'PROJECT.md'), '<!-- jerome:provisional -->\n# Provisional\n');
-  p.git('add', 'PROJECT.md');
+  writeFileSync(join(p.dir, '.jerome', 'PROJECT.md'), '<!-- jerome:provisional -->\n# Provisional\n');
+  p.git('add', '.jerome/PROJECT.md');
   p.git('commit', '-q', '-m', 'provisional');
   p.run('heartbeat', 'demo');
   assert.match(p.lastRun().reason, /PROJECT\.md is provisional/);
-  p.git('rm', '-q', 'PROJECT.md');
+  p.git('rm', '-q', '.jerome/PROJECT.md');
   p.git('commit', '-q', '-m', 'drop');
 
   p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'live' }), 'hook', 'session-start');
@@ -185,7 +185,7 @@ test('a decision request opened by the lead agent is linked to its run, and answ
 test('jerome digest puts the lead agent\'s lines and the figures together at no token cost', () => {
   const p = project();
   const today = new Date().toISOString().slice(0, 10);
-  writeFileSync(join(p.dir, 'digest.md'), `# Digest\n\n- 2020-01-01 09:00 · old work\n- ${today} 09:00 · wrote the parser · task/parser merged · none\n`);
+  writeFileSync(join(p.dir, '.jerome', 'digest.md'), `# Digest\n\n- 2020-01-01 09:00 · old work\n- ${today} 09:00 · wrote the parser · task/parser merged · none\n`);
   const before = p.calls();
   const r = p.run('digest', 'demo', '--since', '7d');
   assert.equal(r.status, 0, r.stderr);
@@ -201,7 +201,7 @@ test('jerome schedule writes a launchd job with absolute paths, keeps them out o
   const r = p.run('schedule', 'demo', 'daily', '--at', '07:30');
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /every day at 07:30, at most 500,000 tokens and 40 turns per run/);
-  const marker = JSON.parse(readFileSync(join(p.dir, '.jerome'), 'utf8'));
+  const marker = JSON.parse(readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8'));
   assert.deepEqual(marker.heartbeat, { every: 'daily', hour: 7, minute: 30, maxTokens: 500000, maxTurns: 40 });
   const plists = execFileSync('ls', [join(p.root, 'Library', 'LaunchAgents')], { encoding: 'utf8' }).trim().split('\n');
   assert.equal(plists.length, 1);
@@ -218,7 +218,7 @@ test('jerome schedule writes a launchd job with absolute paths, keeps them out o
 
   assert.match(p.run('schedule', '--list').stdout, /every day at 07:30/);
   assert.equal(p.run('schedule', 'demo', '--off').status, 0);
-  assert.equal(JSON.parse(readFileSync(join(p.dir, '.jerome'), 'utf8')).heartbeat, undefined);
+  assert.equal(JSON.parse(readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8')).heartbeat, undefined);
   assert.equal(p.run('schedule', 'demo', 'monthly').status, 2);
   assert.equal(p.run('schedule', 'demo', 'hourly', '--at', '75').status, 2);
 });
@@ -233,8 +233,8 @@ test('calendar windows start at local midnight and on Monday, and a project limi
   assert.equal(w.weekly.resetsAt.getTime(), new Date(2026, 9, 19).getTime());
 
   const p = project();
-  writeFileSync(join(p.dir, '.jerome'), readFileSync(join(p.dir, '.jerome'), 'utf8').replace('"files"', '"limits": { "daily": 0.01, "weekly": null },\n  "files"'));
-  const d = new DatabaseSync(join(p.dir, '.jerome.db'));
+  writeFileSync(join(p.dir, '.jerome', 'project.json'), readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8').replace('"files"', '"limits": { "daily": 0.01, "weekly": null },\n  "files"'));
+  const d = new DatabaseSync(join(p.dir, '.jerome', 'jerome.db'));
   d.prepare("INSERT INTO usage (request_id, agent, model, input, output, cache_read, at) VALUES ('r1', 'main', 'claude-opus-5-5', 1000, 1000, 10000, ?)").run(new Date(2026, 9, 18, 10).toISOString());
   const over = projectOver(projectStatus(p.dir, d, sunday));
   assert.match(over.reason, /^project limit: today ≈\$0\.03 \/ \$0\.01 API \(12k tokens\), resets at midnight$/);
@@ -246,7 +246,7 @@ test('calendar windows start at local midnight and on Monday, and a project limi
 test('a project over its limit pauses heartbeats with one notification, and they start again under the limit', () => {
   const p = project({ JEROME_NOTIFY: '', FAKE_TRIAGE: '{"work": false, "reason": "nothing"}' });
   const log = join(p.root, 'notifications.log');
-  const d = new DatabaseSync(join(p.dir, '.jerome.db'));
+  const d = new DatabaseSync(join(p.dir, '.jerome', 'jerome.db'));
   d.prepare("INSERT INTO usage (request_id, agent, model, input, output, cache_read, at) VALUES ('r1', 'main', 'claude-opus-5-5', 1000, 1000, 10000, ?)").run(new Date().toISOString());
   d.close();
   assert.equal(p.run('limits', 'demo', '--daily', '0.01').status, 0);
@@ -276,13 +276,13 @@ test('jerome limits sets global limits in account.json and project limits in .je
   assert.match(r.stdout, /^project today .* \/ \$5$/m);
   const account = JSON.parse(readFileSync(join(p.root, '.config', 'jerome', 'account.json'), 'utf8'));
   assert.deepEqual(account.limits, { five_hour: 70, seven_day: 75 });
-  assert.deepEqual(JSON.parse(readFileSync(join(p.dir, '.jerome'), 'utf8')).limits, { weekly: 30 });
+  assert.deepEqual(JSON.parse(readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8')).limits, { weekly: 30 });
   assert.equal(p.run('limits', 'demo', '--weekly', 'default').status, 0);
-  assert.equal(JSON.parse(readFileSync(join(p.dir, '.jerome'), 'utf8')).limits, undefined);
+  assert.equal(JSON.parse(readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8')).limits, undefined);
   assert.equal(p.run('limits', 'demo', '--weekly', '30').status, 0);
   assert.equal(p.run('limits', 'demo', '--five-hour', '170').status, 2);
   assert.equal(p.run('limits', 'demo', '--daily', '-1').status, 2);
-  writeFileSync(join(p.dir, '.jerome'), readFileSync(join(p.dir, '.jerome'), 'utf8').replace('"weekly": 30', '"weekly": "lots"'));
+  writeFileSync(join(p.dir, '.jerome', 'project.json'), readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8').replace('"weekly": 30', '"weekly": "lots"'));
   assert.ok(JSON.parse(p.run('doctor', 'demo', '--check', '--json').stdout).warnings.some((w) => w.id === 'limits-config'));
 });
 
@@ -301,7 +301,7 @@ test('a global limit pauses the heartbeats of every project, since account.json 
   assert.equal(box.run('limits', 'one', '--five-hour', '50').status, 0);
   for (const name of ['one', 'two']) {
     box.run('heartbeat', name);
-    const d = new DatabaseSync(join(box.root, name, '.jerome.db'), { readOnly: true });
+    const d = new DatabaseSync(join(box.root, name, '.jerome', 'jerome.db'), { readOnly: true });
     assert.equal(d.prepare('SELECT reason FROM runs ORDER BY id DESC').get().reason, 'global limit: 5h 59% ≥ 50%', name);
     d.close();
   }

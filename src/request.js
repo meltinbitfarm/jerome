@@ -5,11 +5,12 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { MARKER } from './template.js';
 import { openDb, DB_FILE } from './db.js';
+import { notProjectMessage } from './paths.js';
 
 export async function request(action, args, { dir: dirArg = '.', question, options, recommendation, env = process.env } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
-    console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+    console.error(notProjectMessage(dir));
     return 1;
   }
   const db = openDb(dir);

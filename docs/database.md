@@ -1,6 +1,6 @@
 # The project database
 
-Every Jérôme project has one SQLite database, `.jerome.db` at its root, for what happens in the project: runs, token usage, hook events and decision requests. It is kept out of git (`jerome doctor` adds `.jerome.db*` to `.gitignore`), and there is no global database.
+Every Jérôme project has one SQLite database, `.jerome/jerome.db` at its root, for what happens in the project: runs, token usage, hook events and decision requests. It is kept out of git (`jerome doctor` adds `.jerome/jerome.db*` to `.gitignore`), and there is no global database.
 
 ## Who writes it
 
@@ -54,4 +54,4 @@ The subscription is one, shared by every project, so its data is not in any proj
 }
 ```
 
-The status line and the scheduled runs write it, only when a value changes, through a temporary file and a rename, so a reader never sees half a file. Global limits are set with [`jerome limits`](commands/limits.md); per-project limits live in the project's `.jerome`, see [limits.md](limits.md).
+The status line and the scheduled runs write it, only when a value changes, through a temporary file and a rename, so a reader never sees half a file. Global limits are set with [`jerome limits`](commands/limits.md); per-project limits live in the project's `.jerome/project.json`, see [limits.md](limits.md).

@@ -13,7 +13,7 @@ The catalog ships with the template, inside the `project-team` skill (`.claude/s
 | researcher | sonnet | research on the web and in the project | Read, Grep, Glob, WebSearch, WebFetch, Write |
 | analyst | sonnet | analysis of code, data or documents, reviews | Read, Grep, Glob, Bash, Write |
 | clerk | haiku | mechanical work: counts, extractions, conversions, formatting | Read, Grep, Glob, Bash, Write |
-| documentarist | haiku | brings `docs/_pending.md` into `docs/` | Read, Edit, Write, Grep, Glob |
+| documentarist | haiku | brings `.jerome/docs-queue.md` into `docs/` | Read, Edit, Write, Grep, Glob |
 
 The model follows the kind of work, not a hierarchy: Opus where the result stays (code, lasting text), Sonnet for research and analysis, Haiku for mechanical work. The lead agent runs on whatever model you pick for the session.
 
@@ -22,7 +22,7 @@ Every agent:
 - declares its `model` and only the `tools` it needs;
 - sets `omitClaudeMd: true`, so it loads neither `CLAUDE.md` nor `PROJECT.md`: a subagent call costs about 1.1k input tokens instead of 2.5k (see [lead-agent.md](lead-agent.md#subagents)). The lead agent passes it file paths, not contents;
 - replies in **at most 150 words**, in short lines without nested lists: the outcome, the files it wrote, and what the lead agent must decide. Details go in the files it writes, or in `notes/YYYY-MM-DD-<agent>-<topic>.md`. The limit holds even when the task asks for more, and `CLAUDE.md` tells the lead agent not to ask for more;
-- appends one line to `docs/_pending.md` when it changes something relevant, for the documentarist (see [`jerome docs`](commands/docs.md)). The researcher and the analyst change nothing, so they never do;
+- appends one line to `.jerome/docs-queue.md` when it changes something relevant, for the documentarist (see [`jerome docs`](commands/docs.md)). The researcher and the analyst change nothing, so they never do;
 - holds the default limits and a `## Project limits` section in its own file.
 
 ## Building the team

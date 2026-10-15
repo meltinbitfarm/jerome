@@ -19,7 +19,7 @@ jerome schedule --off                            # stop
 | `--max-tokens` | 500,000 tokens per run, counted as in `jerome state` (cache included). Normal runs on a real project took 90,000 to 340,000. |
 | `--max-turns` | 40 turns per run |
 
-The schedule and the caps are saved in the project's `.jerome`. Raise the caps for a project that needs more.
+The schedule and the caps are saved in the project's `.jerome/project.json`. Raise the caps for a project that needs more.
 
 ## How it is started
 
@@ -34,12 +34,12 @@ Heartbeats run on macOS through launchd: `jerome schedule` writes a job to `~/Li
 3. **Checks**, each opening a decision request when you have to act, once until you answer it:
    - the folder is trusted in Claude Code, which otherwise ignores the project's allow rules;
    - `PROJECT.md` is not provisional;
-   - the working tree has no uncommitted changes (`digest.md` and `.jerome` excepted);
+   - the working tree has no uncommitted changes (`.jerome/digest.md` and `.jerome/project.json` excepted);
    - `jerome doctor` passes: setup, lean profile, hooks and permission rules. Its `/context` check uses no tokens.
 4. **Limits.** If a subscription window is at or over its global limit, or the project's spend today or this week is at or over its limit, it skips, at zero tokens, until the window resets; you get one notification per pause (see [limits.md](limits.md)). A reading older than 3 hours is mentioned in the reason; one whose window has reset since is ignored.
 5. **Nothing changed.** If neither the commits, `open.md`, `decisions.md`, `scope.md` nor the answered decision requests changed since a heartbeat found no work, it stops here at zero tokens.
 6. **Triage.** A call on Haiku, with no tools and outside the project, reads `open.md`, the success criteria, the latest commits, the decision requests and the latest digest lines, and answers whether there is one task the lead agent can do now without you. A task that depends on an open request or question is not one. About 5,000 tokens.
-7. **Lead agent.** Only then: a new session, never a resumed one, on Opus by default, with the task, the turn cap and the project's permission rules. It works on a branch, delegates the heavy work to the project's agents, merges into `main` when the tests pass with no conflicts, opens a decision request instead when they fail or there is a conflict, appends one line to `digest.md`, and ends on `main` with a clean tree. The token cap is enforced from the usage it streams: over the cap, the run is stopped.
+7. **Lead agent.** Only then: a new session, never a resumed one, on Opus by default, with the task, the turn cap and the project's permission rules. It works on a branch, delegates the heavy work to the project's agents, merges into `main` when the tests pass with no conflicts, opens a decision request instead when they fail or there is a conflict, appends one line to `.jerome/digest.md`, and ends on `main` with a clean tree. The token cap is enforced from the usage it streams: over the cap, the run is stopped.
 
 Long sessions are where the lead agent's usage grows: on one project it made about 90% of the tokens over a week. A heartbeat therefore always starts a new session, and keeps the lead agent's own work to deciding and delegating.
 
@@ -53,7 +53,7 @@ When you next open a session in the project, the lead agent is told about the op
 
 ## Digest
 
-At the end of each heartbeat the lead agent appends one line to `digest.md`:
+At the end of each heartbeat the lead agent appends one line to `.jerome/digest.md`:
 
 ```
 - 2026-10-15 14:24 · checked the rupture report for the rigid hook fields · hook-rigid-fields-rupture · R2

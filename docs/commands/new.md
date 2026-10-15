@@ -12,11 +12,11 @@ pbpaste | jerome new my-project --from-file -
 
 1. **Checks the setup first.** Node.js 24 or later, git, Claude Code, and a Claude Code login through a claude.ai subscription. If any check fails, the command stops and **nothing is created**.
 2. **Copies the template.** Only the paths listed in `template/MANIFEST` are copied. Jérôme's own development files never end up in a project.
-3. **Creates the `.jerome` marker** at the project root. Jérôme commands and the briefing skill use it to recognize a project. It records the Jérôme version and the template files as copied, which [`jerome update`](update.md) uses later.
+3. **Creates `.jerome/project.json`**, where Jérôme keeps its files (see [project-layout.md](../project-layout.md)). Jérôme commands and the briefing skill use it to recognize a project. It records the Jérôme version and the template files as copied, which [`jerome update`](update.md) uses later.
 4. **Writes the project files from the brief**, with `--from-file` (next section).
 5. **Initializes git** (`git init`, branch `main`). No commit is made.
 6. **Makes the default limits binding**: writes into `.claude/settings.json` the permission rules that deny pushing, publishing, deploying and sending email, and allow the safe local git operations and tests (see [agents.md](../agents.md#binding-limits)). The allow rules take effect once you open `claude` in the project and accept the trust dialog.
-7. **Creates the project database**, `.jerome.db`, kept out of git (see [database.md](../database.md)).
+7. **Creates the project database**, `.jerome/jerome.db`, kept out of git (see [database.md](../database.md)).
 8. **Writes the lean profile** into `.claude/settings.local.json`, adds that file to `.gitignore`, and verifies the profile, exactly as [`jerome doctor`](doctor.md) does.
 
 The template brings three skills: `project-brief` for the briefing, `project-team` with the agent catalog, and `docs`, run only when you type `/docs`. The project has no agents yet: the lead agent proposes them after the brief (see [agents.md](../agents.md)).
@@ -49,7 +49,7 @@ $ jerome new my-project
 ✓ Logged in with a subscription — you@example.com
 ✓ Project created in /Users/you/my-project
 ✓ Default limits — 70 permission rules added to .claude/settings.json
-✓ Project database — .jerome.db created (schema 1)
+✓ Project database — .jerome/jerome.db created (schema 1)
 ✓ Lean profile updated (22 changes):
     disableClaudeAiConnectors = true
     disableBundledSkills = true

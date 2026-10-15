@@ -1,6 +1,6 @@
 # `jerome docs [dir]`
 
-Brings the entries of the documentation queue, `docs/_pending.md`, into the project's documentation in `docs/`, with the documentarist agent on Haiku. `dir` defaults to the current directory.
+Brings the entries of the documentation queue, `.jerome/docs-queue.md`, into the project's documentation in `docs/`, with the documentarist agent on Haiku. `dir` defaults to the current directory.
 
 ```sh
 cd my-project
@@ -11,7 +11,7 @@ In a session, type `/docs` instead: the lead agent runs the same agent as a suba
 
 ## The queue
 
-Agents do not update the documentation while they work, which would cost tokens on every task. When one changes something relevant, it appends one line to `docs/_pending.md`:
+Agents do not update the documentation while they work, which would cost tokens on every task. When one changes something relevant, it appends one line to `.jerome/docs-queue.md`:
 
 ```
 - 2026-10-15 · developer · src/greet.js · Added greet(name), which returns an Italian greeting.

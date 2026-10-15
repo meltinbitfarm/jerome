@@ -11,11 +11,12 @@ import { MARKER } from './template.js';
 import { QUEUE, documentarist, queueEntries } from './agents.js';
 import { settingsPath } from './profile.js';
 import { openDb } from './db.js';
+import { notProjectMessage } from './paths.js';
 
 export async function docs(dirArg) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
-    console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+    console.error(notProjectMessage(dir));
     return 1;
   }
   const before = queueEntries(dir).length;
@@ -34,7 +35,7 @@ export async function docs(dirArg) {
   const tools = (agent.meta.tools || 'Read, Edit, Write, Grep, Glob').split(',').map((t) => t.trim()).filter(Boolean);
   const definition = { documentarist: { description: agent.meta.description ?? 'Documentarist', prompt: agent.body, tools, model } };
   // Absolute path rules start with `//`: the documentarist may write only inside the project's docs/.
-  const allowed = ['Read', 'Grep', 'Glob', `Edit(/${dir}/docs/**)`, `Write(/${dir}/docs/**)`];
+  const allowed = ['Read', 'Grep', 'Glob', `Edit(/${dir}/docs/**)`, `Write(/${dir}/docs/**)`, `Edit(/${join(dir, QUEUE)})`, `Write(/${join(dir, QUEUE)})`];
   const task = `The project folder is ${dir}. Bring the entries of ${join(dir, QUEUE)} into the documentation in ${join(dir, 'docs')}. Use absolute paths.`;
 
   const cwd = serviceFolder(dir);

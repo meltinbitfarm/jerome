@@ -1,6 +1,6 @@
 # `jerome digest [dir] [--since 7d]`
 
-What happened in a project over a period, at zero tokens: the lines the lead agent appends to `digest.md` at the end of each heartbeat, with the period's runs by kind and status, usage and its API equivalent, decision requests opened and still open, and commits on `main`.
+What happened in a project over a period, at zero tokens: the lines the lead agent appends to `.jerome/digest.md` at the end of each heartbeat, with the period's runs by kind and status, usage and its API equivalent, decision requests opened and still open, and commits on `main`.
 
 ```
 $ jerome digest --since 7d

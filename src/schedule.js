@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { homedir, userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { MARKER, readMarker, updateMarker } from './template.js';
+import { notProjectMessage } from './paths.js';
 
 export const EVERY = ['hourly', 'daily', 'weekly'];
 export const DEFAULT_CAPS = { maxTokens: 500_000, maxTurns: 40 };
@@ -36,7 +37,7 @@ export async function schedule(dirArg, { every, at, day, maxTokens, maxTurns, of
   }
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
-    console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+    console.error(notProjectMessage(dir));
     return 1;
   }
   const label = jobLabel(dir);

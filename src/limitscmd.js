@@ -4,6 +4,7 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { MARKER, updateMarker } from './template.js';
+import { notProjectMessage } from './paths.js';
 import { readAccount, writeAccount, accountPath } from './account.js';
 import { openDb, DB_FILE } from './db.js';
 import { globalLimits, projectStatus, projectLimitSettings, money, tokensText, limitText, DEFAULT_PROJECT_LIMITS } from './budget.js';
@@ -27,7 +28,7 @@ export async function limits(dirArg, options = {}) {
     }
     const projectOptions = Object.keys(PROJECT).filter((o) => options[o] !== undefined);
     if (projectOptions.length) {
-      if (!existsSync(join(dir, MARKER))) throw new Error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+      if (!existsSync(join(dir, MARKER))) throw new Error(notProjectMessage(dir));
       for (const option of projectOptions) {
         // "default" removes the project's own value, so the default applies again.
         if (String(options[option]) === 'default') {

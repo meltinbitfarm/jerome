@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { newProject } from './new.js';
+import { newProject, initProject } from './new.js';
 import { doctor } from './doctor.js';
 import { update } from './update.js';
 import { prompt } from './prompt.js';
@@ -17,6 +17,8 @@ import { limits } from './limitscmd.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
+    --from-file <path>    import a brief from a file, or from standard input with -
+  jerome init [dir]       bring Jérôme into an existing project, overwriting nothing (default: current folder)
     --from-file <path>    import a brief from a file, or from standard input with -
   jerome prompt           print the briefing instructions to paste into any chat
   jerome doctor [dir]     check the setup and restore the lean profile (default: current folder)
@@ -86,7 +88,7 @@ const OPTIONS = {
 };
 
 // The options each command accepts; any other option is a usage error.
-const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
+const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
   schedule: ['at', 'day', 'max-tokens', 'max-turns', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
 
 export async function main(argv) {
@@ -110,6 +112,9 @@ export async function main(argv) {
     case 'new':
       if (rest.length !== 1) return usageError('jerome new takes exactly one name.');
       return newProject(rest[0], { fromFile: parsed.values['from-file'] });
+    case 'init':
+      if (rest.length > 1) return usageError('jerome init takes at most one folder.');
+      return initProject(rest[0] ?? '.', { fromFile: parsed.values['from-file'] });
     case 'prompt':
       if (rest.length) return usageError('jerome prompt takes no arguments.');
       return prompt();

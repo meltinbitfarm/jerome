@@ -1,6 +1,6 @@
 # `jerome doctor [dir] [--check] [--json]`
 
-Checks the setup and restores the lean profile of a Jérôme project. `dir` defaults to the current directory and must contain the `.jerome` marker.
+Checks the setup and restores the lean profile of a Jérôme project. `dir` defaults to the current directory and must contain `.jerome/project.json`; for a project from before `.jerome/`, it says to run `jerome update`.
 
 ```sh
 cd my-project
@@ -22,12 +22,12 @@ Run it whenever you install a plugin, sync new skills from claude.ai, or move th
    - `PROJECT.md` is still provisional: the project was created from a text that is not a valid brief, and the lead agent has not converted it yet (see [new.md](new.md#importing-a-brief));
    - `PROJECT.md` still holds sections that belong in `scope.md` (Context, Out of scope, Success, Tools, Pace and usage), from before that file existed; the warning says how to migrate (see [lead-agent.md](../lead-agent.md#projects-from-before-scopemd));
    - an agent in `.claude/agents/` has no declared model (or `inherit`), or does not set `omitClaudeMd: true` (see [agents.md](../agents.md));
-   - the documentation queue, `docs/_pending.md`, holds more than 20 entries: run [`jerome docs`](docs.md) or `/docs`;
+   - the documentation queue, `.jerome/docs-queue.md`, holds more than 20 entries: run [`jerome docs`](docs.md) or `/docs`;
    - template files are behind the installed Jérôme version: run [`jerome update`](update.md) to see the changes. This check is skipped in Jérôme's own repository, which holds the template in `template/` rather than a copy: a warning that is always expected would only teach you to ignore warnings.
 2. **Makes the default limits binding**: adds to `.claude/settings.json` the permission rules that are missing, keeping every other setting and rule: deny for pushing, publishing, deploying and sending email, allow for the safe local git operations and the tests, ask for the forms that discard work (see [agents.md](../agents.md#binding-limits)). It also warns when Claude Code has not been told to trust the folder, since until then the allow rules are ignored. With `--check` a missing rule fails the `limits` check. Skipped in Jérôme's own repository.
 3. **Adds the hooks and the status line** that record usage and refuse chained repo-changing commands, next to the project's own (see [hooks.md](../hooks.md)). A status line already set by the project is never replaced: `doctor` warns instead. With `--check` a missing hook fails the `hooks` check. Skipped in Jérôme's own repository.
-4. **Checks the heartbeat job**, if the project has a schedule in `.jerome` (see [heartbeat.md](../heartbeat.md)): the launchd job must exist and be loaded, and the `node`, `jerome` and `claude` it runs must still be where they were, for example after switching Node version with nvm. Otherwise the `heartbeat` check fails and gives the command to reschedule.
-5. **Creates or migrates the project database**, `.jerome.db`, and adds `.jerome.db*` to `.gitignore` (see [database.md](../database.md)). With `--check` it only reads the schema version from the file header, without opening the database, and fails if the database is missing, behind, newer than this Jérôme, or not ignored by git.
+4. **Checks the heartbeat job**, if the project has a schedule in `.jerome/project.json` (see [heartbeat.md](../heartbeat.md)): the launchd job must exist and be loaded, and the `node`, `jerome` and `claude` it runs must still be where they were, for example after switching Node version with nvm. Otherwise the `heartbeat` check fails and gives the command to reschedule.
+5. **Creates or migrates the project database**, `.jerome/jerome.db`, and adds `.jerome/jerome.db*` to `.gitignore` (see [database.md](../database.md)). With `--check` it only reads the schema version from the file header, without opening the database, and fails if the database is missing, behind, newer than this Jérôme, or not ignored by git.
 6. **Runs the same setup checks as `jerome new`**: Node.js, git, Claude Code and subscription login.
 7. **Rebuilds the lean profile from what is installed now.**
    - It reads the installed plugins from `claude plugin list --json`.
@@ -38,7 +38,8 @@ Run it whenever you install a plugin, sync new skills from claude.ai, or move th
    - Any skill that is not a project skill, and any MCP tool without a project `.mcp.json`, counts as a leak.
    - Leaked skills that can be turned off are added to `skillOverrides`, and the check runs once more.
 9. **Reports two startup figures and checks the tools sent.** `/context`, run with `-p`, estimates the headless start; its total leaves out the "System tools (deferred)" row, which does not follow the deny rules, so that row is not added. The real figure comes from the latest session of the project, interactive or heartbeat, read from its transcript at no cost: the context its first call sent, with its date. From the same transcript `doctor` reads the tools Claude Code sent and the built-in agents it listed, and warns (`context-tools`) when a denied tool or agent is still there, or an unexpected tool with a definition over 2,000 characters appears, for example after Claude Code renamed a denied tool. A session older than the last change to `.claude/settings.json` is not checked.
-10. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` 680 tokens and `PROJECT.md` 800 by default, or the project's own budgets from `.jerome`. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
+10. **Shows the instructions loaded in every session.** If the project has its own `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md` or other rules, `doctor` shows their tokens next to `jerome.md`'s: they are paid at every call too (`context.instructions` in `--json`).
+11. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `.claude/rules/jerome.md` 680 tokens and `.jerome/PROJECT.md` 800 by default, or the project's own budgets from `.jerome`. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
 
 ## What it changes
 

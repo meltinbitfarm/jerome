@@ -245,6 +245,11 @@ Daily and weekly limits per project and global; the global ones are in % of the 
 - On claude-watch with a $0.10 daily limit: two heartbeats paused with the reason, one notification; `jerome state` showed `paused`; an interactive session started with the warning and replied normally; the status line showed the 5-hour window in yellow (57% of 70%), the 7-day one in green and the day in bold red; the viewer showed the day's limit in red. Back at the default, the next heartbeat went through and did real work (433,000 tokens): the hook payload rupture check reading `jerome deps`, merged with its tests. A 50% global limit paused claude-watch's heartbeat too; the second project of the test exists only in the test suite, since no other trusted project was at hand.
 - Found along the way: Haiku's two price tiers were applied to summed calls, which gave different amounts depending on the grouping ($3.35 and $3.39 for the same day); the tier is now decided per call.
 
+## After phase 9 — Project layout
+
+Jérôme's state moves into `.jerome/` and the lead agent's instructions into `.claude/rules/jerome.md` (D87), so a project's root stays its own; `jerome init` adopts an existing project without overwriting anything (D88); `jerome update` moves older projects once (D89).
+**Status: done (2026-10-15).** 123 tests with `npm test`, among them `init` on a project with its own CLAUDE.md, settings, skill and docs, and the move of an old project with its git history, database, agents and a changed CLAUDE.md. claude-watch moved on a branch and merged: same call cost once committed, its tests pass. Jérôme's own repository moved in a separate commit (D91).
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

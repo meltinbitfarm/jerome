@@ -1,11 +1,13 @@
-// The project database (D51, D54): `.jerome.db` at the project root, kept out of git, written only by the CLI
+// The project database (D51, D54, D87): `.jerome/jerome.db`, kept out of git, written only by the CLI
 // and the hooks (D56). The schema version is SQLite's `user_version`; numbered migrations in the package bring
 // it up to date, each in its own transaction.
 import { DatabaseSync } from 'node:sqlite';
-import { closeSync, existsSync, openSync, readSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { closeSync, existsSync, mkdirSync, openSync, readSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
-export const DB_FILE = '.jerome.db';
+import { DB_FILE } from './paths.js';
+
+export { DB_FILE };
 // The files SQLite keeps next to the database in WAL mode.
 export const DB_FILES = [DB_FILE, `${DB_FILE}-wal`, `${DB_FILE}-shm`];
 export const MIGRATIONS_DIR = join(import.meta.dirname, '..', 'migrations');
@@ -46,6 +48,7 @@ export function dbPath(dir) {
 export function openDb(dir, { create = false, migrate = true, readOnly = false } = {}) {
   const path = dbPath(dir);
   if (!existsSync(path) && !create) return null;
+  if (create) mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path, { readOnly });
   db.exec('PRAGMA busy_timeout = 5000');
   if (!readOnly) {
