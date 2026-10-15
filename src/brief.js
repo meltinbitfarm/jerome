@@ -8,7 +8,9 @@ const V2_SECTIONS = [
   'Open questions', 'Parked', 'Out of scope', 'Success',
 ];
 const OPTIONAL = new Set(['Tools', 'Pace and usage']);
-const PROJECT_SECTIONS = ['Goal', 'Context', 'Constraints', 'Agent limits', 'Tools', 'Pace and usage', 'Out of scope', 'Success'];
+// PROJECT.md, loaded at every turn, holds what the lead agent needs every turn; scope.md, read on demand, the rest (D36).
+const PROJECT_SECTIONS = ['Goal', 'Constraints', 'Agent limits'];
+export const SCOPE_SECTIONS = ['Context', 'Out of scope', 'Success', 'Tools', 'Pace and usage'];
 
 // brief/v1 had the same structure with Italian headings (references/brief-v2.md, "Reading brief/v1").
 const V1_HEADINGS = {
@@ -83,9 +85,10 @@ function excerpt(text) {
 export function projectFiles(brief) {
   const { meta, sections } = brief;
   const block = (s) => `## ${s}\n${sections[s] || 'none'}\n`;
-  const project = PROJECT_SECTIONS.filter((s) => !OPTIONAL.has(s) || sections[s]).map(block);
+  const present = (list) => list.filter((s) => !OPTIONAL.has(s) || sections[s]).map(block).join('\n');
   return {
-    'PROJECT.md': `# ${meta.name}\n\n${project.join('\n')}`,
+    'PROJECT.md': `# ${meta.name}\n\n${present(PROJECT_SECTIONS)}`,
+    'scope.md': `# Scope\n\n${present(SCOPE_SECTIONS)}`,
     'decisions.md': `# Decisions\n\n${sections.Decisions || 'none'}\n`,
     'open.md': `# Open\n\n${block('Open questions')}\n${block('Parked')}`,
   };
@@ -98,10 +101,15 @@ export function provisionalProject(reasons) {
 # Provisional project
 
 \`brief.md\` is not a valid brief/v2 (${reasons.join('; ')}).
-Before any other task, convert it with the project-brief skill ("PROJECT.md is provisional"): list the decisions you find and have the user confirm them in one block before recording anything, then write PROJECT.md, decisions.md and open.md, replacing this file. Leave brief.md as it is.
+Before any other task, convert it with the project-brief skill ("PROJECT.md is provisional"): list the decisions you find and have the user confirm them in one block before recording anything, then write PROJECT.md, scope.md, decisions.md and open.md, replacing this file. Leave brief.md as it is.
 `;
 }
 
 export function isProvisional(content) {
   return content.startsWith(PROVISIONAL_MARKER);
+}
+
+// Sections of a PROJECT.md written before D36 that now belong in scope.md.
+export function misplacedSections(content) {
+  return SCOPE_SECTIONS.filter((s) => new RegExp(`^## ${s}[ \\t]*$`, 'm').test(content));
 }

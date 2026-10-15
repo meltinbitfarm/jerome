@@ -16,9 +16,11 @@ test('new --from-file imports a valid brief into the project files', () => {
   writeFileSync(join(root, 'brief.txt'), BRIEF_V2);
   const r = run('new', 'demo', '--from-file', 'brief.txt');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /✓ Brief imported: PROJECT\.md, decisions\.md, open\.md and brief\.md/);
+  assert.match(r.stdout, /✓ Brief imported: PROJECT\.md, scope\.md, decisions\.md, open\.md and brief\.md/);
   const dir = join(root, 'demo');
   assert.match(readFileSync(join(dir, 'PROJECT.md'), 'utf8'), /^# Demo app\n/);
+  assert.doesNotMatch(readFileSync(join(dir, 'PROJECT.md'), 'utf8'), /## (Context|Success|Out of scope)/);
+  assert.match(readFileSync(join(dir, 'scope.md'), 'utf8'), /^# Scope\n\n## Context\n- Built for tests\./);
   assert.match(readFileSync(join(dir, 'decisions.md'), 'utf8'), /D1: Node only/);
   assert.match(readFileSync(join(dir, 'open.md'), 'utf8'), /Q1: which name\?/);
   assert.equal(readFileSync(join(dir, 'brief.md'), 'utf8'), BRIEF_V2);
@@ -94,6 +96,15 @@ test("doctor and update leave Jérôme's own repository alone", () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /Jérôme's own repository/);
   assert.equal(readFileSync(join(dir, 'CLAUDE.md'), 'utf8'), 'old lead agent\n');
+});
+
+test('doctor warns about a PROJECT.md with sections that belong in scope.md', () => {
+  const { root, run } = sandbox();
+  run('new', 'demo');
+  writeFileSync(join(root, 'demo', 'PROJECT.md'), '# Demo\n\n## Goal\nA demo.\n\n## Context\n- x\n\n## Success\n- y\n');
+  const w = JSON.parse(run('doctor', 'demo', '--check', '--json').stdout).warnings.find((x) => x.id === 'project-layout');
+  assert.deepEqual(w.sections, ['Context', 'Success']);
+  assert.match(w.message, /move Context, Success from PROJECT\.md to scope\.md/);
 });
 
 test('prompt prints the briefing instructions', () => {

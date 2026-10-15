@@ -77,7 +77,7 @@ function readBrief(path) {
   const from = brief.format === 'brief/v1' ? ' (brief/v1, headings mapped to brief/v2)' : '';
   return {
     files: { ...original, ...files },
-    message: `✓ Brief imported${from}: PROJECT.md, decisions.md, open.md and brief.md${ignored}${draft}`,
+    message: `✓ Brief imported${from}: PROJECT.md, scope.md, decisions.md, open.md and brief.md${ignored}${draft}`,
   };
 }
 

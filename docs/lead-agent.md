@@ -19,10 +19,13 @@ Every Jérôme project has one lead agent: the main Claude Code session you talk
 | File | When it is read |
 |---|---|
 | `CLAUDE.md` | Always, at startup |
-| `PROJECT.md` | Always, at startup, imported by `CLAUDE.md` with `@PROJECT.md` |
-| `decisions.md` | Before proposing an approach, or when a decision is cited |
+| `PROJECT.md` | Always, at startup, imported by `CLAUDE.md` with `@PROJECT.md`: goal, constraints, agent limits and project rules |
+| `scope.md` | Before proposing an approach, a plan or agents; before calling work done; when a request may be out of scope: context, out of scope, success criteria, tools, pace |
+| `decisions.md` | Before proposing an approach, a plan or agents, or when a decision is cited |
 | `open.md` | For status questions, or when an open or parked topic comes up |
 | `archive.md` | Only when a cited ID is not in the other files |
+
+`PROJECT.md` holds only what the lead agent needs at every turn, because it is paid at every call, heartbeats included. A carefully interviewed brief is long, and that is normal: nothing in it is dropped, the rest goes to `scope.md` and is paid only in the turns that read it. On a real brief (an app for climbing competitions), the old single `PROJECT.md` was 1,600 tokens, 592 of them for the success criteria alone; split, `PROJECT.md` is 617 tokens and `scope.md` about 1,000.
 
 To keep the files that are read on demand light, the lead agent moves closed entries from `open.md` and long-superseded decisions to `archive.md`. Their IDs stay the same.
 
@@ -38,13 +41,20 @@ To keep the files that are read on demand light, the lead agent moves closed ent
 
 The lead agent adds the section when the first rule comes up, and `CLAUDE.md` tells it never to write rules into itself. `PROJECT.md` is a state file that updates never touch, and it is already loaded at startup, so the rules cost nothing extra beyond their own lines. They count towards `PROJECT.md`'s budget.
 
+## Projects from before `scope.md`
+
+Projects created before `scope.md` existed have all the brief's sections in `PROJECT.md`. `jerome doctor` warns about it and names the sections to move. To migrate:
+
+1. run `jerome update`, so `CLAUDE.md` knows about `scope.md`;
+2. ask the lead agent: "move Context, Out of scope, Success, Tools, Pace and usage from PROJECT.md to scope.md, unchanged".
+
 ## A project started from free text
 
 When `jerome new --from-file` gets a text that is not a valid brief, it saves the text in `brief.md` and writes a provisional `PROJECT.md` whose only content is an instruction for the lead agent (see [new.md](commands/new.md#importing-a-brief)). Since `PROJECT.md` is loaded at startup, the lead agent sees it in the first session and, before any other task:
 
 1. converts `brief.md` with the `project-brief` skill;
 2. lists the decisions it found and asks you to confirm them in one block, because the text may come from another chat and hold proposals you never confirmed;
-3. writes `PROJECT.md`, `decisions.md` and `open.md`, replacing the provisional file, and leaves `brief.md` as the original text.
+3. writes `PROJECT.md`, `scope.md`, `decisions.md` and `open.md`, replacing the provisional file, and leaves `brief.md` as the original text.
 
 The instruction lives in `PROJECT.md` and not in `CLAUDE.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and scheduled runs (planned) will not start on it.
 
@@ -52,12 +62,21 @@ The instruction lives in `PROJECT.md` and not in `CLAUDE.md`, so it costs tokens
 
 | File | Budget | Current |
 |---|---:|---:|
-| `CLAUDE.md` | 600 tokens | 569 |
-| `PROJECT.md` | about 800 tokens | depends on the brief |
+| `CLAUDE.md` | 650 tokens | 604 |
+| `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
-`jerome doctor` warns when a file goes over its budget. It does not block anything.
+`jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome`:
 
-Measured on a project created with `jerome new`, with a 614-token `PROJECT.md`:
+```json
+{
+  "schema": "jerome.project/v1",
+  "budgets": { "PROJECT.md": 1200 }
+}
+```
+
+Only `CLAUDE.md` and `PROJECT.md` have budgets. Invalid entries are reported by `jerome doctor` and the defaults apply. `jerome update` keeps the field.
+
+Measured in phase 2 on a project created with `jerome new`, with a 614-token `PROJECT.md` and a 496-token `CLAUDE.md`:
 
 | | Without `CLAUDE.md` | With `CLAUDE.md` and `PROJECT.md` |
 |---|---:|---:|

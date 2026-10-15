@@ -5,7 +5,7 @@ Main session: you are this project's lead agent. Subagents: ignore this file.
 @PROJECT.md
 
 Read only when needed:
-- `decisions.md` before proposing an approach, or when a D-entry is cited;
+- `decisions.md`, `scope.md` before proposing an approach, plan or agents; `decisions.md` for a cited D-entry; `scope.md` before calling work done or out of scope;
 - `open.md` for status questions, or when an open or parked topic comes up;
 - `archive.md` when a cited ID is missing elsewhere.
 

@@ -18,8 +18,9 @@ Run it whenever you install a plugin, sync new skills from claude.ai, or move th
 
 ## What it does
 
-1. **Looks at the project's own files**, before anything else. Both findings are warnings:
+1. **Looks at the project's own files**, before anything else. All findings are warnings:
    - `PROJECT.md` is still provisional: the project was created from a text that is not a valid brief, and the lead agent has not converted it yet (see [new.md](new.md#importing-a-brief));
+   - `PROJECT.md` still holds sections that belong in `scope.md` (Context, Out of scope, Success, Tools, Pace and usage), from before that file existed; the warning says how to migrate (see [lead-agent.md](../lead-agent.md#projects-from-before-scopemd));
    - template files are behind the installed Jérôme version: run [`jerome update`](update.md) to see the changes. This check is skipped in Jérôme's own repository, which holds the template in `template/` rather than a copy: a warning that is always expected would only teach you to ignore warnings.
 2. **Runs the same setup checks as `jerome new`**: Node.js, git, Claude Code and subscription login.
 3. **Rebuilds the lean profile from what is installed now.**
@@ -30,7 +31,7 @@ Run it whenever you install a plugin, sync new skills from claude.ai, or move th
 4. **Verifies what Claude Code actually loads** by running `claude -p "/context"` in the project. This is a local command: it makes no API call, uses no tokens and saves no session.
    - Any skill that is not a project skill, and any MCP tool without a project `.mcp.json`, counts as a leak.
    - Leaked skills that can be turned off are added to `skillOverrides`, and the check runs once more.
-5. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` at most 600 tokens, `PROJECT.md` about 800. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
+5. **Checks the token budgets** of the files loaded into every session, using the per-file counts of the same `/context` run: `CLAUDE.md` 650 tokens and `PROJECT.md` 800 by default, or the project's own budgets from `.jerome`. Going over prints a warning starting with `!` and does not change the exit code. See [lead-agent.md](../lead-agent.md).
 
 ## What it changes
 
@@ -115,7 +116,7 @@ Warnings, such as a file over its token budget, a provisional `PROJECT.md` or te
 | `checks` | Checks in the order they ran. `id` is stable; `label` and `detail` are for humans and may change. Checking stops at the first failure that makes the next ones pointless, so a failed report can have fewer checks. A failed `context-format` check also has `problems`, a list of strings. |
 | `profile` | `changes`: what this run changed in the profile; `pending`: what it would change but did not, because of `--check`. One of the two is always empty. `null` if the profile check did not run. With `--check`, a non-empty `pending` makes the `profile` check, and `ok`, false. |
 | `context` | `null` if `/context` was not read. If its format was not recognized, only `sections` is present. Otherwise: `totalTokens` (estimated startup context), `sections` (`found` and `rows` for each section `doctor` depends on), `counts`, `projectSkills`, `memoryFiles` (with `file` as a base name), and `leaks` (skills and MCP tool groups that should not be loaded). |
-| `warnings` | Things worth fixing that do not make `ok` false. Each has an `id`, a `message`, and fields specific to its `id`. `budget`: `file`, `tokens` and `budget`. `provisional-project`: no extra fields. `template`: `files`, a list of `{ path, status }` where `status` is `new`, `update` (unchanged in the project, safe to replace) or `modified` (changed in the project); it is empty when the files cannot be compared, and the message says why. |
+| `warnings` | Things worth fixing that do not make `ok` false. Each has an `id`, a `message`, and fields specific to its `id`. `budget`: `file`, `tokens` and `budget`. `provisional-project`: no extra fields. `project-layout`: `sections`, the sections to move to `scope.md`. `budgets-config`: no extra fields, for an invalid `budgets` entry in `.jerome`. `template`: `files`, a list of `{ path, status }` where `status` is `new`, `update` (unchanged in the project, safe to replace) or `modified` (changed in the project); it is empty when the files cannot be compared, and the message says why. |
 
 Check `id`s in v1: `project`, `node`, `git`, `claude-code`, `login`, `profile`, `context-format`, `startup-context`.
 

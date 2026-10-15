@@ -58,7 +58,7 @@ Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes fr
 
 ## The lead agent
 
-The template's `CLAUDE.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to subagents on cheap models, and only drafts things it is not allowed to do, such as deploying. It is kept within 600 tokens, because it is loaded into every session. See [docs/lead-agent.md](docs/lead-agent.md).
+The template's `CLAUDE.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to subagents on cheap models, and only drafts things it is not allowed to do, such as deploying. It is kept within 650 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
 
 ## The briefing
 

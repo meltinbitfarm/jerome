@@ -63,11 +63,12 @@ When a brief is imported into a Jérôme project:
 
 | Brief sections | Project file |
 |---|---|
-| Goal, Context, Constraints, Agent limits, Tools, Pace and usage, Out of scope, Success | `PROJECT.md`, under `# <name>` |
+| Goal, Constraints, Agent limits | `PROJECT.md`, under `# <name>`: loaded at every turn |
+| Context, Out of scope, Success, Tools, Pace and usage | `scope.md`, under `# Scope`: read only when needed |
 | Decisions | `decisions.md`, under `# Decisions` |
 | Open questions, Parked | `open.md`, under `# Open` |
 
-The original brief stays in `brief.md` for reference. From then on, the living source is the three project files, not the brief.
+Every section lands in one of the files: nothing is dropped, however long the brief. The original brief stays in `brief.md` for reference. From then on, the living source is the project files, not the brief.
 
 The lead agent adds a `## Project rules` section to `PROJECT.md` for rules that apply to this project only. It never comes from the brief.
 

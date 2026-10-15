@@ -12,7 +12,7 @@ export const MARKER_SCHEMA = 'jerome.project/v1';
 export const MARKER = '.jerome';
 
 // Project state: never copied or overwritten from the template, even if a MANIFEST listed it (D30).
-export const STATE_FILES = ['PROJECT.md', 'decisions.md', 'open.md', 'archive.md', 'brief.md', MARKER, '.claude/settings.local.json'];
+export const STATE_FILES = ['PROJECT.md', 'scope.md', 'decisions.md', 'open.md', 'archive.md', 'brief.md', MARKER, '.claude/settings.local.json'];
 
 // Jérôme's own development repository is a Jérôme project too, but it holds the template in `template/`
 // instead of a copy at its root: template checks and updates do not apply there.
@@ -74,9 +74,17 @@ export function readMarker(dir) {
   return { ...data, files: data.files ?? {} };
 }
 
+// Rewrites the record of the template files. Other fields set in `.jerome`, such as `budgets` (D37), are kept.
 export function writeMarker(dir, files) {
+  let kept = {};
+  try {
+    kept = readMarker(dir);
+  } catch {
+    // An unreadable marker is replaced.
+  }
   const sorted = Object.fromEntries(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)));
-  writeFileSync(join(dir, MARKER), `${JSON.stringify({ schema: MARKER_SCHEMA, jerome: VERSION, files: sorted }, null, 2)}\n`);
+  const data = { ...kept, schema: MARKER_SCHEMA, jerome: VERSION, files: sorted };
+  writeFileSync(join(dir, MARKER), `${JSON.stringify(data, null, 2)}\n`);
 }
 
 // Compares a project with the installed template. For each template file, `files` in `.jerome` holds the hash

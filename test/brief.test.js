@@ -49,9 +49,8 @@ test('parseBrief tells an unknown format from free text', () => {
 
 test('projectFiles sorts the sections following the Import table', () => {
   const files = projectFiles(parseBrief(BRIEF_V2));
-  assert.match(files['PROJECT.md'], /^# Demo app\n\n## Goal\nA demo\.\n/);
-  assert.match(files['PROJECT.md'], /## Agent limits\n- L1: drafts only\./);
-  assert.doesNotMatch(files['PROJECT.md'], /## Tools|## Decisions|## Open questions/);
+  assert.equal(files['PROJECT.md'], '# Demo app\n\n## Goal\nA demo.\n\n## Constraints\n- V1: no network.\n\n## Agent limits\n- L1: drafts only.\n');
+  assert.equal(files['scope.md'], '# Scope\n\n## Context\n- Built for tests.\n\n## Out of scope\n- Mobile.\n\n## Success\n- Tests pass.\n');
   assert.equal(files['decisions.md'], '# Decisions\n\n- D1: Node only — fewer tools.\n');
   assert.equal(files['open.md'], '# Open\n\n## Open questions\n- Q1: which name?\n\n## Parked\nnone\n');
 });
@@ -93,4 +92,13 @@ test('parseBrief imports a brief with a chat preamble, and lists the text it lef
   assert.deepEqual(parseBrief(BRIEF_V2).ignored, []);
   // A horizontal rule in the preamble is not taken for the front matter.
   assert.equal(parseBrief(`Notes\n---\nmore\n---\n\n${BRIEF_V2}`).kind, 'brief');
+});
+
+test('no section of the brief is lost in the import (D37)', () => {
+  const full = BRIEF_V2.replace('## Open questions', '## Tools\n- Node 24.\n\n## Pace and usage\n- Weekly.\n\n## Open questions');
+  const brief = parseBrief(full);
+  const files = Object.values(projectFiles(brief)).join('\n');
+  for (const [name, body] of Object.entries(brief.sections)) {
+    assert.ok(files.includes(`## ${name}\n${body}`) || (name === 'Decisions' && files.includes(body)), `${name} is missing`);
+  }
 });

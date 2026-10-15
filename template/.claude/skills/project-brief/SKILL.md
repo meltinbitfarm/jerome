@@ -28,6 +28,6 @@ Then reply in 2–3 lines: where the brief is, how many decisions and open quest
 **PROJECT.md is provisional** (the CLI could not read `brief.md` as a valid brief and left an instruction to convert it):
 1. Read `brief.md`, the original text, and extract goal, context, constraints, decisions, open questions and the rest, following the format.
 2. The text may come from another chat and contain proposals the user never confirmed. List every decision you found and ask the user to confirm them in one block, or to say which ones to drop. Unconfirmed ones go under Open questions.
-3. Write PROJECT.md, decisions.md and open.md as described under "Import", replacing the provisional PROJECT.md. Leave `brief.md` as it is.
+3. Write PROJECT.md, scope.md, decisions.md and open.md as described under "Import", replacing the provisional PROJECT.md. Leave `brief.md` as it is.
 
 In both cases, propose the team of agents only afterwards, as a separate step for the user to approve.

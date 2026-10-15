@@ -9,7 +9,7 @@ jerome update                                # in the project folder
 
 ## What it touches
 
-Only the paths listed in the template's `MANIFEST`: today `CLAUDE.md`, the `project-brief` skill and the `MANIFEST` itself. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome` and `.claude/settings.local.json`.
+Only the paths listed in the template's `MANIFEST`: today `CLAUDE.md`, the `project-brief` skill and the `MANIFEST` itself. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome` and `.claude/settings.local.json`.
 
 Rules that belong to one project go in `PROJECT.md` under `## Project rules`, never in `CLAUDE.md` or other template files (see [lead-agent.md](../lead-agent.md#project-rules)). That way updates never conflict with them.
 
@@ -58,6 +58,7 @@ Without `--yes` and outside a terminal, nothing is written.
 
 - `schema` is the version of this file's format. Adding fields keeps it; renaming or removing fields bumps it.
 - `jerome` is the version that last wrote it.
+- `budgets`, optional, sets the project's own token budgets (see [lead-agent.md](../lead-agent.md#token-budget)). `jerome update` keeps it, like any field it does not manage.
 - `files` holds, for each template file, the hash of the template version the project file was last reconciled with. A project file with that hash is unchanged since then; any other hash means it was changed in the project. File dates are not used, because git and copies change them.
 
 Projects created before this file existed have an empty `.jerome`. For them, every template file that differs from the installed template counts as changed in the project, and the first `jerome update` writes the record.

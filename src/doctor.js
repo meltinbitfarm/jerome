@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks } from './checks.js';
-import { VERSION, templatePlan, behind, isJeromeRepo } from './template.js';
-import { isProvisional } from './brief.js';
+import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './template.js';
+import { isProvisional, misplacedSections } from './brief.js';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
   splitProfileKeys, ensureGitignored, inspectContext, findLeaks, overrideFor, parseTokens,
@@ -12,8 +12,9 @@ import {
 // Version of the `doctor --json` output. Adding fields keeps it; renaming or removing fields bumps it.
 export const DOCTOR_SCHEMA = 'jerome.doctor/v1';
 
-// Token budgets for the files loaded into every session (phase 2). Going over them only warns.
-export const BUDGETS = { 'CLAUDE.md': 600, 'PROJECT.md': 800 };
+// Token budgets for the files loaded into every session. Going over them only warns, and a project can
+// change them in `.jerome` under "budgets" (D37).
+export const BUDGETS = { 'CLAUDE.md': 650, 'PROJECT.md': 800 };
 
 export async function doctor(dirArg, { json = false, check = false } = {}) {
   const report = runDoctor(resolve(dirArg), { fix: !check });
@@ -101,13 +102,15 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
     detail: `${context.total} estimated tokens, project skills: ${projectSkills.join(', ') || 'none'}`,
   });
 
-  for (const f of checkBudgets(dir, context)) {
+  const { budgets, problems } = projectBudgets(dir);
+  for (const message of problems) report.warnings.push({ id: 'budgets-config', message });
+  for (const f of checkBudgets(dir, context, budgets)) {
     report.warnings.push({
       id: 'budget',
       file: f.file,
       tokens: f.tokens,
       budget: f.budget,
-      message: `${f.file}: ${f.tokens} tokens, over its ${f.budget}-token budget. It is loaded into every session: keep it short.`,
+      message: `${f.file}: ${f.tokens} tokens, over its ${f.budget}-token budget. It is loaded into every session: move what is not needed every turn to a file read on demand, or raise the budget in .jerome if it really is.`,
     });
   }
   return done();
@@ -119,11 +122,21 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
 export function projectWarnings(dir) {
   const warnings = [];
   const project = join(dir, 'PROJECT.md');
-  if (existsSync(project) && isProvisional(readFileSync(project, 'utf8'))) {
+  const content = existsSync(project) ? readFileSync(project, 'utf8') : '';
+  if (isProvisional(content)) {
     warnings.push({
       id: 'provisional-project',
       message: 'PROJECT.md is provisional: open a session with `claude` so the lead agent converts brief.md, with your confirmation, before any other task.',
     });
+  } else {
+    const sections = misplacedSections(content);
+    if (sections.length) {
+      warnings.push({
+        id: 'project-layout',
+        sections,
+        message: `PROJECT.md still holds ${sections.join(', ')}, which are loaded at every turn but belong in scope.md, read only when needed. To migrate, ask the lead agent: "move ${sections.join(', ')} from PROJECT.md to scope.md, unchanged". Run \`jerome update\` first if CLAUDE.md does not mention scope.md yet.`,
+      });
+    }
   }
   if (isJeromeRepo(dir)) return warnings;
   try {
@@ -141,11 +154,34 @@ export function projectWarnings(dir) {
   return warnings;
 }
 
-export function checkBudgets(dir, context) {
+// The budgets that apply to a project: the defaults, overridden by `"budgets"` in `.jerome` (D37).
+// Invalid entries are reported and ignored, never fatal.
+export function projectBudgets(dir) {
+  const budgets = { ...BUDGETS };
+  const problems = [];
+  let custom;
+  try {
+    custom = readMarker(dir).budgets;
+  } catch {
+    return { budgets, problems };
+  }
+  if (custom === undefined) return { budgets, problems };
+  if (typeof custom !== 'object' || custom === null || Array.isArray(custom)) {
+    return { budgets, problems: ['.jerome: "budgets" must be an object such as { "PROJECT.md": 1200 }; the defaults apply.'] };
+  }
+  for (const [file, value] of Object.entries(custom)) {
+    if (!(file in BUDGETS)) problems.push(`.jerome: no budget applies to ${file}; budgets exist for ${Object.keys(BUDGETS).join(' and ')}.`);
+    else if (!Number.isInteger(value) || value <= 0) problems.push(`.jerome: the budget of ${file} must be a positive whole number of tokens; the default (${BUDGETS[file]}) applies.`);
+    else budgets[file] = value;
+  }
+  return { budgets, problems };
+}
+
+export function checkBudgets(dir, context, budgets = BUDGETS) {
   const root = realpathSync(dir);
   return context.memoryFiles
-    .filter((f) => f.type === 'Project' && dirname(f.path) === root && basename(f.path) in BUDGETS)
-    .map((f) => ({ file: basename(f.path), tokens: f.tokens, budget: BUDGETS[basename(f.path)] }))
+    .filter((f) => f.type === 'Project' && dirname(f.path) === root && basename(f.path) in budgets)
+    .map((f) => ({ file: basename(f.path), tokens: f.tokens, budget: budgets[basename(f.path)] }))
     .filter((f) => f.tokens > f.budget);
 }
 
