@@ -49,6 +49,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome prompt`](docs/commands/prompt.md) | Prints the briefing instructions, to paste into any chat |
 | [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report |
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
+| [`jerome docs [dir]`](docs/commands/docs.md) | Brings the documentation queue into the project's docs, with the documentarist on Haiku |
 
 ## The lean profile
 
@@ -58,7 +59,11 @@ Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes fr
 
 ## The lead agent
 
-The template's `CLAUDE.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to subagents on cheap models, and only drafts things it is not allowed to do, such as deploying. It is kept within 650 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
+The template's `CLAUDE.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to the project's agents, and only drafts things it is not allowed to do, such as deploying. It is kept within 650 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
+
+## Agents and limits
+
+After the brief, the lead agent proposes a team from Jérôme's catalog (developer, writer, researcher, analyst, clerk, documentarist), each with a model chosen for its kind of work, and creates it only after you confirm. Agents skip `CLAUDE.md`, reply in a few lines and queue documentation changes for the documentarist. Pushing, publishing, deploying and sending email are denied by permission rules in the project's `.claude/settings.json`, for the lead agent and every subagent. See [docs/agents.md](docs/agents.md).
 
 ## The briefing
 
@@ -68,8 +73,8 @@ Every project starts from a brief in the `brief/v2` format. You can run the brie
 
 1. ~~Project creation and setup checks~~ (`jerome new`, `jerome doctor`)
 2. ~~Lead agent instructions in the project's `CLAUDE.md`~~
-3. Briefing anywhere and import of a brief (`jerome prompt`, `jerome new --from-file`), template updates (`jerome update`)
-4. Rules for creating subagents, including a documentation agent
+3. ~~Briefing anywhere and import of a brief (`jerome prompt`, `jerome new --from-file`), template updates (`jerome update`)~~
+4. Rules for creating subagents, including a documentation agent (`jerome docs`)
 5. SQLite databases, per project and global
 6. Usage tracking through hooks and the status line
 7. Read-only local viewer (`jerome view`)

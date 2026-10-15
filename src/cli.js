@@ -3,6 +3,7 @@ import { newProject } from './new.js';
 import { doctor } from './doctor.js';
 import { update } from './update.js';
 import { prompt } from './prompt.js';
+import { docs } from './docs.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -13,7 +14,8 @@ const USAGE = `Usage:
     --json                print a machine-readable report (schema jerome.doctor/v1)
   jerome update [dir]     bring the project's template files up to the installed version
     --check               only show what would change: write nothing
-    --yes                 apply without asking; files changed in the project are left as they are`;
+    --yes                 apply without asking; files changed in the project are left as they are
+  jerome docs [dir]       bring the entries of docs/_pending.md into the documentation, with the documentarist`;
 
 const OPTIONS = {
   help: { type: 'boolean', short: 'h' },
@@ -24,7 +26,7 @@ const OPTIONS = {
 };
 
 // The options each command accepts; any other option is a usage error.
-const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'] };
+const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [] };
 
 export async function main(argv) {
   let parsed;
@@ -56,6 +58,9 @@ export async function main(argv) {
     case 'update':
       if (rest.length > 1) return usageError('jerome update takes at most one folder.');
       return update(rest[0] ?? '.', { check: parsed.values.check, yes: parsed.values.yes });
+    case 'docs':
+      if (rest.length > 1) return usageError('jerome docs takes at most one folder.');
+      return docs(rest[0] ?? '.');
   }
 }
 

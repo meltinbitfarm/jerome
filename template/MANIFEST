@@ -1,6 +1,9 @@
 # Files owned by the Jérôme template (D17).
 # One path per line, relative to the project root. A folder covers all of its contents.
 # Only these files are copied at creation and synced on updates; this file itself stays in the package (D38):
-# project state (PROJECT.md, scope.md, decisions.md, open.md, brief.md, DB) is never listed.
+# project state (PROJECT.md, scope.md, decisions.md, open.md, brief.md, DB) and the project's own paths
+# (.claude/agents/, .claude/settings.json, docs/, notes/) are never listed.
 CLAUDE.md
 .claude/skills/project-brief/
+.claude/skills/project-team/
+.claude/skills/docs/

@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sandbox } from './sandbox.js';
+import { DENY_RULES } from '../src/limits.js';
 
 test('new creates the project with template, marker, git and lean profile', () => {
   const { root, run } = sandbox();
@@ -21,14 +22,22 @@ test('new creates the project with template, marker, git and lean profile', () =
   for (const devFile of ['PROJECT.md', 'decisions.md', 'open.md', 'PLAN.md', 'package.json']) {
     assert.ok(!existsSync(join(dir, devFile)), `${devFile} must not end up in the project`);
   }
+  // The default limits are binding: deny rules in the versioned settings.json (D46).
+  const shared = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
+  assert.deepEqual(shared, { permissions: { deny: DENY_RULES } });
+  assert.match(r.stdout, new RegExp(`✓ Default limits — ${DENY_RULES.length} deny rules added`));
+  // The catalog ships inside the project-team skill; the project's agents folder starts empty (D40, D42).
+  assert.ok(existsSync(join(dir, '.claude', 'skills', 'project-team', 'agents', 'documentarist.md')));
+  assert.ok(existsSync(join(dir, '.claude', 'skills', 'docs', 'SKILL.md')));
+  assert.ok(!existsSync(join(dir, '.claude', 'agents')));
   // The profile depends on the machine: it goes in the local settings, which git ignores (D21).
-  assert.ok(!existsSync(join(dir, '.claude', 'settings.json')));
+  assert.equal(shared.enabledPlugins, undefined);
   const settings = JSON.parse(readFileSync(join(dir, '.claude', 'settings.local.json'), 'utf8'));
   assert.deepEqual(settings.enabledPlugins, { 'shop@official': false, 'sito@synced': false });
   assert.equal(settings.skillOverrides['anthropic-skills:docx'], 'off');
   // plugin-authoring is not among the known sources: the /context check finds it and turns it off.
   assert.equal(settings.skillOverrides['plugin-authoring'], 'off');
-  assert.match(r.stdout, /project skills: project-brief/);
+  assert.match(r.stdout, /project skills: docs, project-brief, project-team/);
   const ignored = spawnSync('git', ['check-ignore', '.claude/settings.local.json'], { cwd: dir });
   assert.equal(ignored.status, 0, 'git must ignore the local settings');
 });
@@ -89,7 +98,7 @@ test('doctor moves a profile left in settings.json to the local settings', () =>
   const r = run('doctor', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /moved \d+ profile entries from settings\.json to settings\.local\.json/);
-  assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')), { permissions: { allow: ['Bash(ls)'] } });
+  assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')), { permissions: { allow: ['Bash(ls)'], deny: DENY_RULES } });
   assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.local.json'), 'utf8')), profile);
   assert.match(run('doctor', 'demo').stdout, /Lean profile already in place/);
 });
@@ -162,14 +171,15 @@ test('doctor --json: schema, checks, sections, counts and warnings, with a match
   assert.equal(report.mode, 'fix');
   assert.equal(report.ok, true);
   assert.deepEqual(report.checks.map((c) => c.id),
-    ['project', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
+    ['project', 'limits', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
   assert.ok(report.checks.every((c) => c.ok));
   assert.deepEqual(report.context.sections, {
     'Estimated usage by category': { found: true, rows: 1 },
-    Skills: { found: true, rows: 1 },
+    Skills: { found: true, rows: 3 },
     'Memory Files': { found: true, rows: 1 },
   });
-  assert.deepEqual(report.context.counts, { categories: 1, skills: 1, projectSkills: 1, memoryFiles: 1 });
+  assert.deepEqual(report.context.counts, { categories: 1, skills: 3, projectSkills: 3, memoryFiles: 1 });
+  assert.deepEqual(report.limits, { added: [], missing: [] });
   assert.equal(report.context.totalTokens, 12100);
   assert.deepEqual(report.warnings.map((w) => [w.id, w.file, w.tokens, w.budget]), [['budget', 'CLAUDE.md', 670, 650]]);
 });

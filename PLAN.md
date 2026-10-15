@@ -82,7 +82,7 @@ The same goes for `.claude/settings.local.json`: the CLI writes it, because the 
 
 ## Phase 2 — The lead agent in CLAUDE.md
 
-The template's CLAUDE.md defines the lead agent. It is loaded into every session and every heartbeat, so it has a budget of **600 tokens**; PROJECT.md, which it imports, has a target of about **800 tokens**. `jerome doctor` warns, without blocking, when either is over budget, using the per-file counts of `/context`.
+The template's CLAUDE.md defines the lead agent. It is loaded into every session and every heartbeat, so it has a budget of **600 tokens** (650 since D37); PROJECT.md, which it imports, has a target of about **800 tokens**. `jerome doctor` warns, without blocking, when either is over budget, using the per-file counts of `/context`.
 - At startup only PROJECT.md is loaded, through `@PROJECT.md`: no tool call, no extra turn. decisions.md and open.md are read when needed; `archive.md` only when a cited ID is not elsewhere.
 - It talks in the user's language, with at most one question per reply.
 - It cites entries by ID ("see D4") and does not reopen recorded decisions unless a concrete problem appears.
@@ -130,20 +130,26 @@ Existing projects receive template fixes with `jerome update`, and `jerome docto
 
 ## Phase 4 — Rules for creating subagents
 
-After the brief, the lead agent proposes the team and creates it only after Fabio approves. It starts from the catalog in templates/agents/ (D10). For each agent:
-- a model suited to the task (D5);
-- input as file paths and output as a short summary, with the details written to files (D4);
+After the brief, the lead agent proposes the team with the project-team skill and creates it only after Fabio approves (D42). It starts from the catalog inside the skill (D40). For each agent:
+- a model suited to the kind of work: Opus for code and writing that stays, Sonnet for research and analysis, Haiku for mechanical work and the documentation agent (D39);
+- input as file paths and output in at most 150 words, with the details written to files (D4, D41);
 - subagents only, never Agent Teams (D3);
 - if something relevant changes, one line appended to `docs/_pending.md` (D25);
-- `omitClaudeMd: true`, so it does not load the lead agent's CLAUDE.md and PROJECT.md (D27).
+- `omitClaudeMd: true`, so it does not load the lead agent's CLAUDE.md and PROJECT.md (D27), and the project's Agent limits copied into its file, kept in sync when they change (D45).
 
-Once the catalog exists, CLAUDE.md's delegation rule should point to the project's agents in `.claude/agents/`, within its 600-token budget.
+CLAUDE.md's delegation rule points to the project's agents in `.claude/agents/`, within its 650-token budget (D37, D44). The default limits become binding through deny rules in the project's `.claude/settings.json` (D46).
 **Service calls.** When the CLI launches `claude -p` for a task that is not the lead agent's, such as `jerome docs`, it starts from a service folder outside the project, with `--no-session-persistence`, `--settings` pointing to the project's `.claude/settings.local.json`, and `--add-dir` for the project when the task needs its files. This way the call does not load the lead agent's CLAUDE.md, leaves no transcript that would skew the usage figures, and runs with the lean profile. Checked on a test project: from a folder outside the project, without `--settings`, the call loads the user's plugins, skills and connectors (14.1k); with `--settings` it is 10.4k, with no CLAUDE.md, skills or MCP; with `--add-dir` CLAUDE.md stays out and only the project's skills come in. Claude Code creates an empty `memory` folder in `~/.claude/projects/` for every folder it starts from, so the service folder is one fixed path per project (for example under `~/.cache/jerome/`), emptied before each call, not a new temporary folder each time.
 
-The catalog includes the documentation agent on Haiku (D25). It is launched with `/docs` in a session or `jerome docs` headless, and integrates the queue into the project's documentation. `jerome doctor` warns when the queue exceeds 20 lines.
+The catalog includes the documentation agent on Haiku (D25). It is launched with `/docs` in a session or `jerome docs` headless, and integrates the queue into the project's documentation (D43). `jerome doctor` warns when the queue exceeds 20 lines.
 **Testable result:** on a test project the lead agent proposes a team, Fabio approves it, and a subagent runs a task. The lead agent receives a few lines of summary, the details are in files and the queue has one more line. After `jerome docs`, the documentation contains the change and the queue is empty.
 **Done when:** the agents created have their model declared, none uses the large model without reason, the returned summary stays within a limit set in the rules, the documentation agent runs on Haiku, and `doctor` warns above 20 lines without blocking.
 **Questions to settle first:** none.
+**Status: implemented (2026-10-15), waiting for Fabio's check.**
+- The project-team skill with the catalog (developer, writer, researcher, analyst, clerk, documentarist), the `/docs` skill, `jerome docs`, the deny rules written by `jerome doctor`, and the `limits` check and `agents`/`docs-queue` warnings of `doctor`; 64 tests with `npm test`. CLAUDE.md 635 tokens (budget 650); startup context of a new project 11.2k.
+- Deny rules tested on Claude Code 2.1.300: they block the main session, built-in and custom subagents, headless runs, compound commands and env prefixes, even with `--dangerously-skip-permissions`; `git -C . push` needed its own rule (D46).
+- claude-watch: `jerome update` and `doctor` added the two skills and 28 deny rules. "proponi il team di agenti dal brief" → developer (opus), analyst (sonnet), documentarist (haiku), with the other three left out for a reason each, and a decision request. After confirmation the lead agent copied L1 into each agent and recorded the team (claude-watch D25) only once the files existed. Claude Code protects `.claude/`, so headless writes there needed `--dangerously-skip-permissions`; in a session the user approves each file. The agents were listed in the next session.
+- The developer implemented claude-watch's D9 with 4 tests and queued one line; the analyst reviewed it. Replies first ran to 190–250 words, with the lead agent asking for 8 lines and details in /tmp: the rules now say 150 words, no nested lists, details in `notes/`, and the lead agent must not ask for more. With the final wording (150 words, confirmed by Fabio), a Sonnet review replied in 137 words with details in `notes/`; the developer (Opus), rerun on a small fix with the lead agent itself asking for 150 words, replied in 175 words with a nested list, still over the limit. The rule alone does not hold for every agent: phase 6 hooks should measure each reply's length per agent.
+- `jerome docs` on claude-watch: the project's documentarist (haiku) created `docs/version-check.md` in 23 seconds and emptied the queue.
 
 ## Phase 5 — SQLite databases and migrations
 

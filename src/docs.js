@@ -1,0 +1,78 @@
+// `jerome docs`: runs the documentarist headless on the documentation queue (D25, D43), as a service call:
+// from a fixed service folder outside the project, so it loads neither CLAUDE.md nor PROJECT.md and leaves
+// no transcript, with the project's lean profile, and with write access only to the project's docs/.
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
+import { basename, join, resolve } from 'node:path';
+import { runClaude } from './claude.js';
+import { MARKER } from './template.js';
+import { QUEUE, documentarist, queueEntries } from './agents.js';
+import { settingsPath } from './profile.js';
+
+export async function docs(dirArg) {
+  const dir = resolve(dirArg);
+  if (!existsSync(join(dir, MARKER))) {
+    console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
+    return 1;
+  }
+  const before = queueEntries(dir).length;
+  if (!before) {
+    console.log(`✓ ${QUEUE} has no entries: the documentation is up to date.`);
+    return 0;
+  }
+  const settings = settingsPath(dir);
+  if (!existsSync(settings)) {
+    console.error(`${settings} is missing: run \`jerome doctor\` first, so the call runs with the lean profile.`);
+    return 1;
+  }
+
+  const agent = documentarist(dir);
+  const model = agent.meta.model || 'haiku';
+  const tools = (agent.meta.tools || 'Read, Edit, Write, Grep, Glob').split(',').map((t) => t.trim()).filter(Boolean);
+  const definition = { documentarist: { description: agent.meta.description ?? 'Documentarist', prompt: agent.body, tools, model } };
+  // Absolute path rules start with `//`: the documentarist may write only inside the project's docs/.
+  const allowed = ['Read', 'Grep', 'Glob', `Edit(/${dir}/docs/**)`, `Write(/${dir}/docs/**)`];
+  const task = `The project folder is ${dir}. Bring the entries of ${join(dir, QUEUE)} into the documentation in ${join(dir, 'docs')}. Use absolute paths.`;
+
+  const cwd = serviceFolder(dir);
+  console.log(`Documentarist (${model}${agent.own ? '' : ', from the catalog'}) on ${before} ${before === 1 ? 'entry' : 'entries'}...`);
+  let out;
+  try {
+    out = runClaude([
+      '-p', task,
+      '--agents', JSON.stringify(definition), '--agent', 'documentarist', '--model', model,
+      '--tools', tools.join(','), '--allowedTools', ...allowed,
+      '--add-dir', dir, '--settings', settings,
+      '--no-session-persistence', '--output-format', 'json',
+    ], { cwd, timeout: 600_000 });
+  } catch (err) {
+    console.error(err.message);
+    return 1;
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+
+  let result;
+  try {
+    result = JSON.parse(out);
+  } catch {
+    console.error('The documentarist did not return a readable result.');
+    return 1;
+  }
+  console.log(String(result.result ?? '').trim());
+  const after = queueEntries(dir).length;
+  console.log(`${after ? '!' : '✓'} ${QUEUE}: ${before - after} of ${before} ${before === 1 ? 'entry' : 'entries'} integrated${after ? `, ${after} left` : ''}`);
+  return result.is_error ? 1 : 0;
+}
+
+// One fixed folder per project, emptied before each call: Claude Code keeps a memory folder in ~/.claude/projects/
+// for every folder it starts from, so a new temporary folder each time would leave a new one behind.
+export function serviceFolder(dir) {
+  const cache = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
+  const id = createHash('sha256').update(dir).digest('hex').slice(0, 8);
+  const folder = join(cache, 'jerome', 'service', `${basename(dir)}-${id}`);
+  rmSync(folder, { recursive: true, force: true });
+  mkdirSync(folder, { recursive: true });
+  return folder;
+}

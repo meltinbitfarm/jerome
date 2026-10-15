@@ -24,8 +24,8 @@ Read only when needed:
 
 ## Delegating
 - Subagents only (Agent tool), never agent teams.
-- Pass file paths, not contents. Get a few lines back, details in a file.
-- Cheapest model that fits: haiku for search and repetitive work, sonnet otherwise; the large model only for you.
+- Pass file paths, not contents. Agents reply in at most 150 words, details in project files (`notes/`), never /tmp; don't ask for more.
+- Delegate to the agents in `.claude/agents/`. Create or change agents and their models only with the project-team skill, after the user confirms.
 
 ## Limits
 Follow PROJECT.md's agent limits. By default, drafts and proposals only: never send, publish, deploy, merge to main, buy or email.

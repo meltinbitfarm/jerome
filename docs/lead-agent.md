@@ -62,7 +62,7 @@ The instruction lives in `PROJECT.md` and not in `CLAUDE.md`, so it costs tokens
 
 | File | Budget | Current |
 |---|---:|---:|
-| `CLAUDE.md` | 650 tokens | 604 |
+| `CLAUDE.md` | 650 tokens | 635 |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
 `jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome`:
@@ -89,12 +89,14 @@ So the lead agent's instructions and the project summary add about 1.4k tokens t
 
 Claude Code also loads `CLAUDE.md`, and the files it imports, into subagents. In the same test project a trivial subagent call cost 2,518 input tokens with it and 1,142 without. For this reason:
 
-- the agents that Jérôme's catalog will provide set `omitClaudeMd: true` and skip the file entirely;
+- the agents of Jérôme's catalog set `omitClaudeMd: true` and skip the file entirely; the project's limits are copied into each agent's own file instead (see [agents.md](agents.md));
 - built-in subagents still load it, and its second line tells them to ignore it.
+
+`CLAUDE.md` only says to delegate to the agents in `.claude/agents/` and to create or change them with the `project-team` skill after you confirm. How to pick the team and models lives in the skill, read only when needed.
 
 ## Service calls
 
-Some runs are not the lead agent's work, for example the documentation agent behind `jerome docs`. When the CLI launches `claude -p` for them, it:
+Some runs are not the lead agent's work, for example the documentation agent behind [`jerome docs`](commands/docs.md). When the CLI launches `claude -p` for them, it:
 
 - starts from a service folder outside the project, so the lead agent's `CLAUDE.md` is not loaded;
 - passes `--settings` with the project's `.claude/settings.local.json`, so the lean profile still applies. Without it, a folder outside the project gets every plugin, skill and connector you have installed: 14.1k tokens instead of 10.4k on the test machine;

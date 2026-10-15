@@ -15,7 +15,10 @@ pbpaste | jerome new my-project --from-file -
 3. **Creates the `.jerome` marker** at the project root. Jérôme commands and the briefing skill use it to recognize a project. It records the Jérôme version and the template files as copied, which [`jerome update`](update.md) uses later.
 4. **Writes the project files from the brief**, with `--from-file` (next section).
 5. **Initializes git** (`git init`, branch `main`). No commit is made.
-6. **Writes the lean profile** into `.claude/settings.local.json`, adds that file to `.gitignore`, and verifies the profile, exactly as [`jerome doctor`](doctor.md) does.
+6. **Makes the default limits binding**: writes into `.claude/settings.json` the permission rules that deny pushing, publishing, deploying and sending email (see [agents.md](../agents.md#binding-limits)).
+7. **Writes the lean profile** into `.claude/settings.local.json`, adds that file to `.gitignore`, and verifies the profile, exactly as [`jerome doctor`](doctor.md) does.
+
+The template brings three skills: `project-brief` for the briefing, `project-team` with the agent catalog, and `docs`, run only when you type `/docs`. The project has no agents yet: the lead agent proposes them after the brief (see [agents.md](../agents.md)).
 
 ## Importing a brief
 
@@ -44,12 +47,13 @@ $ jerome new my-project
 ✓ Claude Code installed — 2.1.299 (Claude Code)
 ✓ Logged in with a subscription — you@example.com
 ✓ Project created in /Users/you/my-project
+✓ Default limits — 28 deny rules added to .claude/settings.json
 ✓ Lean profile updated (22 changes):
     disableClaudeAiConnectors = true
     disableBundledSkills = true
     enabledPlugins.some-plugin@marketplace = false
     …
-✓ Startup context: 10.4k estimated tokens, project skills: project-brief
+✓ Startup context: 11.2k estimated tokens, project skills: project-brief, project-team
 
 Ready: cd my-project && claude
 ```

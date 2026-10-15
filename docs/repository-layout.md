@@ -9,7 +9,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 ├── template/            what ends up in every project
 │   ├── MANIFEST         the paths copied into projects and kept in sync (not copied itself)
 │   ├── CLAUDE.md        the lead agent's instructions
-│   └── .claude/skills/  the project-brief skill (canonical copy)
+│   └── .claude/skills/  project-brief, project-team (with the agent catalog) and docs
 ├── docs/                this documentation
 ├── PROJECT.md           ┐
 ├── decisions.md         │ Jérôme's own project state and development notes;
@@ -24,10 +24,12 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 
 - `jerome new` copies only the paths listed in `template/MANIFEST`, and [`jerome update`](commands/update.md) touches only those paths, so a project's own state is never overwritten: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome`, the local settings and the database. A MANIFEST that listed one of them would be refused.
 - Project-specific rules for the lead agent go in `PROJECT.md` under `## Project rules`, never in template files, so updates never conflict with them (see [lead-agent.md](lead-agent.md#project-rules)).
-- Two files are not in the template because the CLI creates them in each project:
+- The project's own paths are never in the MANIFEST either, even when they start from Jérôme: the agents in `.claude/agents/`, created from the catalog with your approval, `.claude/settings.json`, `docs/` and `notes/` (see [agents.md](agents.md)).
+- Three files are not in the template because the CLI creates them in each project:
   - `.jerome`, a JSON file that records the Jérôme version and the template files the project was last reconciled with (see [update.md](commands/update.md#the-jerome-file));
-  - `.claude/settings.local.json`, with the lean profile, which depends on the machine and is kept out of git (see [lean-profile.md](lean-profile.md)).
-- The root `.claude/skills/project-brief` is a symlink to the template copy. Developing Jérôme and using Jérôme share one version of the skill.
+  - `.claude/settings.local.json`, with the lean profile, which depends on the machine and is kept out of git (see [lean-profile.md](lean-profile.md));
+  - `.claude/settings.json`, versioned, with the deny rules that make the default limits binding (see [agents.md](agents.md#binding-limits)).
+- The root `.claude/skills/` holds symlinks to the template's skills. Developing Jérôme and using Jérôme share one version of each.
 
 ## The package
 

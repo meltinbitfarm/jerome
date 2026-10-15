@@ -3,6 +3,8 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks } from './checks.js';
 import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './template.js';
 import { isProvisional, misplacedSections } from './brief.js';
+import { DENY_RULES, missingDenyRules, addDenyRules } from './limits.js';
+import { agentWarnings, queueWarning } from './agents.js';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
   splitProfileKeys, ensureGitignored, inspectContext, findLeaks, overrideFor, parseTokens,
@@ -29,7 +31,7 @@ export async function doctor(dirArg, { json = false, check = false } = {}) {
 export function runDoctor(dir, { setup = true, fix = true } = {}) {
   const report = {
     schema: DOCTOR_SCHEMA, ok: false, jerome: VERSION, mode: fix ? 'fix' : 'check', project: dir,
-    checks: [], profile: null, context: null, warnings: [],
+    checks: [], limits: null, profile: null, context: null, warnings: [],
   };
   const done = () => {
     report.ok = report.checks.every((c) => c.ok);
@@ -40,6 +42,11 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
   report.checks.push({ id: 'project', ok: isProject, label: 'Jérôme project', detail: isProject ? dir : 'the .jerome marker is missing' });
   if (!isProject) return done();
   report.warnings.push(...projectWarnings(dir));
+  const limits = limitsCheck(dir, { fix });
+  if (limits) {
+    report.limits = { added: limits.added, missing: limits.missing };
+    report.checks.push(limits.check);
+  }
 
   if (setup) {
     const results = setupChecks();
@@ -116,8 +123,31 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
   return done();
 }
 
+// The deny rules that make the default agent limits binding (D46), in the versioned settings.json.
+// With fix they are added where missing; with --check a missing rule fails the check.
+// Jérôme's own repository is skipped: its pushes are part of its development, decided by the user.
+function limitsCheck(dir, { fix }) {
+  if (isJeromeRepo(dir)) return null;
+  const label = 'Default limits';
+  try {
+    if (fix) {
+      const added = addDenyRules(dir);
+      const detail = added.length ? `${added.length} deny ${added.length === 1 ? 'rule' : 'rules'} added to .claude/${SHARED_SETTINGS}` : `${DENY_RULES.length} deny rules in place`;
+      return { added, missing: [], check: { id: 'limits', ok: true, label, detail } };
+    }
+    const missing = missingDenyRules(dir);
+    const detail = missing.length
+      ? `${missing.length} deny ${missing.length === 1 ? 'rule' : 'rules'} missing from .claude/${SHARED_SETTINGS}: run \`jerome doctor\` to add ${missing.length === 1 ? 'it' : 'them'}`
+      : `${DENY_RULES.length} deny rules in place`;
+    return { added: [], missing, check: { id: 'limits', ok: missing.length === 0, label, detail } };
+  } catch (err) {
+    return { added: [], missing: [], check: { id: 'limits', ok: false, label, detail: err.message } };
+  }
+}
+
 // Warnings about the project's own files, which need neither the setup nor Claude Code:
-// a PROJECT.md still provisional (D35) and template files behind the installed version (D30),
+// a PROJECT.md still provisional (D35), agents without a declared model or loading CLAUDE.md (D41),
+// a documentation queue over its limit (D43) and template files behind the installed version (D30),
 // except in Jérôme's own repository, where the template is the source and not a copy.
 export function projectWarnings(dir) {
   const warnings = [];
@@ -138,6 +168,9 @@ export function projectWarnings(dir) {
       });
     }
   }
+  warnings.push(...agentWarnings(dir));
+  const queue = queueWarning(dir);
+  if (queue) warnings.push(queue);
   if (isJeromeRepo(dir)) return warnings;
   try {
     const files = behind(templatePlan(dir)).map(({ path, status }) => ({ path, status }));

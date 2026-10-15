@@ -13,6 +13,9 @@ export const MARKER = '.jerome';
 
 // Project state: never copied or overwritten from the template, even if a MANIFEST listed it (D30).
 export const STATE_FILES = ['PROJECT.md', 'scope.md', 'decisions.md', 'open.md', 'archive.md', 'brief.md', MARKER, '.claude/settings.local.json'];
+// Other paths that belong to the project, even when they started from the template: the agents created from
+// the catalog (D42), the settings with the deny rules (D46), the documentation and its queue, the agents' notes.
+export const PROJECT_PATHS = ['.claude/agents', '.claude/settings.json', 'docs', 'notes'];
 
 // Jérôme's own development repository is a Jérôme project too, but it holds the template in `template/`
 // instead of a copy at its root: template checks and updates do not apply there.
@@ -33,13 +36,13 @@ export function readManifest(templateDir) {
     .map((entry) => {
       const clean = normalize(entry).replace(/\/$/, '');
       if (clean.startsWith('..') || clean.startsWith('/')) throw new Error(`Invalid path in MANIFEST: ${entry}`);
-      if (isState(clean)) throw new Error(`The MANIFEST lists a project state path, which the template never touches: ${entry}`);
+      if (isState(clean)) throw new Error(`The MANIFEST lists a path that belongs to the project, which the template never touches: ${entry}`);
       return clean;
     });
 }
 
 function isState(path) {
-  return STATE_FILES.some((s) => s === path || s.startsWith(`${path}/`)) || path === '.git' || path.startsWith('.git/');
+  return [...STATE_FILES, ...PROJECT_PATHS, '.git'].some((s) => s === path || s.startsWith(`${path}/`) || path.startsWith(`${s}/`));
 }
 
 // The files covered by the MANIFEST, as paths relative to `dir`. A folder entry covers every file in it.

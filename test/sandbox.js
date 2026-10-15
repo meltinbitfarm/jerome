@@ -19,6 +19,12 @@ case "$1" in
     fi;;
   plugin) echo '[{"id": "shop@official"}, {"id": "sito@synced"}]';;
   -p)
+    # A service call (jerome docs): record where it ran and with which arguments, then empty the queue it was given.
+    case " $* " in *" --agent "*)
+      pwd -P > "$HOME/service-cwd"; printf '%s\n' "$@" > "$HOME/service-args"
+      while [ "$#" -gt 0 ]; do [ "$1" = "--add-dir" ] && : > "$2/docs/_pending.md"; shift; done
+      echo '{"type": "result", "is_error": false, "result": "Integrated the entries."}'; exit 0;;
+    esac
     S="$(cat .claude/settings.json .claude/settings.local.json 2>/dev/null)"
     echo "## Context Usage"; echo; echo "**Tokens:** 12.1k / 1m (1%)"; echo
     echo "### Estimated usage by category"; echo; echo "| Category | Tokens | Percentage |"; echo "|---|---|---|"

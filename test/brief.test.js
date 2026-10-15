@@ -76,9 +76,9 @@ test('a MANIFEST that lists project state is refused', () => {
   const dir = mkdtempSync(join(tmpdir(), 'jerome-manifest-'));
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'MANIFEST'), 'CLAUDE.md\nPROJECT.md\n');
-  assert.throws(() => readManifest(dir), /project state path/);
+  assert.throws(() => readManifest(dir), /belongs to the project/);
   writeFileSync(join(dir, 'MANIFEST'), '.claude/\n');
-  assert.throws(() => readManifest(dir), /project state path/);
+  assert.throws(() => readManifest(dir), /belongs to the project/);
 });
 
 test('parseBrief imports a brief with a chat preamble, and lists the text it left out', () => {
@@ -101,5 +101,13 @@ test('no section of the brief is lost in the import (D37)', () => {
   const files = Object.values(projectFiles(brief)).join('\n');
   for (const [name, body] of Object.entries(brief.sections)) {
     assert.ok(files.includes(`## ${name}\n${body}`) || (name === 'Decisions' && files.includes(body)), `${name} is missing`);
+  }
+});
+
+test('a MANIFEST that lists the project agents or settings.json is refused', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jerome-manifest-'));
+  for (const entry of ['.claude/agents/', '.claude/agents/developer.md', '.claude/settings.json', 'docs/_pending.md']) {
+    writeFileSync(join(dir, 'MANIFEST'), `CLAUDE.md\n${entry}\n`);
+    assert.throws(() => readManifest(dir), /belongs to the project/, entry);
   }
 });
