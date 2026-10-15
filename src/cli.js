@@ -12,6 +12,7 @@ import { schedule, EVERY } from './schedule.js';
 import { heartbeat } from './heartbeat.js';
 import { request } from './request.js';
 import { digest } from './digest.js';
+import { deps } from './deps.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -46,6 +47,8 @@ const USAGE = `Usage:
                           open or close a decision request
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
+  jerome deps             what Jérôme depends on in Claude Code
+    --json                machine-readable (schema jerome.deps/v1), for tools that watch Claude Code releases
   jerome hook <event>     run by Claude Code's hooks: ${HOOK_EVENTS.join(', ')}
   jerome statusline       run by Claude Code's status line`;
 
@@ -74,7 +77,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation'], digest: ['since'] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation'], digest: ['since'], deps: ['json'] };
 
 export async function main(argv) {
   let parsed;
@@ -138,6 +141,9 @@ export async function main(argv) {
     case 'digest':
       if (rest.length > 1) return usageError('jerome digest takes at most one folder.');
       return digest(rest[0] ?? '.', { since: parsed.values.since ?? '7d' });
+    case 'deps':
+      if (rest.length) return usageError('jerome deps takes no arguments.');
+      return deps({ json: parsed.values.json });
     case 'hook':
       // Hooks never fail a session: even a wrong event name exits with 0.
       if (rest.length !== 1 || !HOOK_EVENTS.includes(rest[0])) return 0;

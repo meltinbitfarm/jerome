@@ -2,6 +2,7 @@
 
 Based on PROJECT.md and decisions.md (D1–D27). Each phase has a result Fabio can try by hand and a definition of "done". The next phase starts only when the previous one is done.
 Per D24, every phase's "done" also includes up-to-date English documentation (README.md and docs/), even where the phase does not say so.
+Per D77, it also includes an up-to-date list of what Jérôme depends on in Claude Code, in `src/deps.js` (`jerome deps --json`): every field, flag, file or behaviour the phase starts using, with its decisions. `test/deps.test.js` fails when the code reads a field the list lacks.
 
 ## Phase 0 — Separate Jérôme's development from the template
 

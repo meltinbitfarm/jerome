@@ -55,6 +55,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it |
 | [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
 | [`jerome digest [dir]`](docs/commands/digest.md) | What happened recently, at zero tokens |
+| [`jerome deps [--json]`](docs/commands/deps.md) | Lists what Jérôme depends on in Claude Code, for tools that watch Claude Code releases |
 | [`jerome docs [dir]`](docs/commands/docs.md) | Brings the documentation queue into the project's docs, with the documentarist on Haiku |
 
 ## The lean profile
