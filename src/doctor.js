@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { setupChecks } from './checks.js';
 import { startProgress } from './progress.js';
@@ -7,6 +7,7 @@ import { isProvisional, misplacedSections } from './brief.js';
 import { RULE_COUNT, missingRules, addRules, isTrusted } from './limits.js';
 import { agentWarnings, queueWarning } from './agents.js';
 import { planHooks, applyHooks } from './hookconfig.js';
+import { latestSession, toolProblems } from './session-shape.js';
 import { heartbeatProblems, rescheduleCommand } from './schedule.js';
 import { openDb, dbPath, schemaVersion, peekVersion, applyMigrations, LATEST, DB_FILE } from './db.js';
 import {
@@ -117,12 +118,21 @@ export async function runDoctor(dir, { setup = true, fix = true } = {}) {
     },
   };
   const lean = leaks.skills.length === 0 && leaks.mcp.length === 0;
+  // Two figures (D81): /context's estimate, which with -p counts the headless tool set, and the real first call of
+  // the latest session, read from its transcript.
+  const last = lastSessionReport(dir);
+  report.context.lastSession = last.session;
+  report.context.tools = last.tools;
+  const real = last.session
+    ? `; first call of the latest session (${last.session.kind}, ${shortDate(last.session.at)}): ${last.session.tokens.toLocaleString('en')} tokens`
+    : '; no session yet to measure the first call';
   report.checks.push({
     id: 'startup-context',
     ok: lean,
     label: 'Startup context',
-    detail: `${context.total} estimated tokens, project skills: ${projectSkills.join(', ') || 'none'}`,
+    detail: `${context.total} estimated headless (/context)${real}; project skills: ${projectSkills.join(', ') || 'none'}`,
   });
+  if (last.warning) report.warnings.push(last.warning);
 
   const { budgets, problems } = projectBudgets(dir);
   for (const message of problems) report.warnings.push({ id: 'budgets-config', message });
@@ -159,6 +169,51 @@ function limitsCheck(dir, { fix }) {
   } catch (err) {
     return { added: [], missing: [], check: { id: 'limits', ok: false, label, detail: err.message } };
   }
+}
+
+// The latest session's real first call, and the tools it was sent, checked against the deny rules (D80, D81).
+// A session older than the last change to settings.json says nothing about the current rules: not checked.
+function lastSessionReport(dir) {
+  let found;
+  try {
+    found = latestSession(dir);
+  } catch {
+    return { session: null, tools: null, warning: null };
+  }
+  if (!found) return { session: null, tools: null, warning: null };
+  let kind = 'session';
+  const db = existsSync(dbPath(dir)) ? openDb(dir, { readOnly: true, migrate: false }) : null;
+  try {
+    kind = db?.prepare('SELECT kind FROM runs WHERE session_id = ?').get(found.sessionId)?.kind ?? kind;
+  } catch {
+    // An older schema: the kind stays generic.
+  } finally {
+    db?.close();
+  }
+  const session = { sessionId: found.sessionId, kind, tokens: found.firstCall.tokens, at: found.firstCall.at };
+  const shared = settingsPath(dir, SHARED_SETTINGS);
+  const changed = existsSync(shared) ? statSync(shared).mtimeMs : 0;
+  if (found.firstCall.at && Date.parse(found.firstCall.at) < changed) {
+    return { session, tools: { checked: false, reason: 'the latest session started before the last change to .claude/settings.json' }, warning: null };
+  }
+  const problems = toolProblems(found);
+  if (!problems) return { session, tools: { checked: false, reason: 'the transcript has no record of the request' }, warning: null };
+  const tools = { checked: true, sent: found.tools, ...problems };
+  const parts = [];
+  if (problems.deniedSent.length) parts.push(`denied tools still sent: ${problems.deniedSent.join(', ')}`);
+  if (problems.deniedAgents.length) parts.push(`denied agents still listed: ${problems.deniedAgents.join(', ')}`);
+  if (problems.unexpected.length) parts.push(`unexpected tools: ${problems.unexpected.map((t) => `${t.name} (${t.chars.toLocaleString('en')} characters)`).join(', ')}`);
+  const warning = parts.length
+    ? { id: 'context-tools', ...problems, message: `The latest session sent more than the deny rules allow: ${parts.join('; ')}. Claude Code may have renamed or added a tool: check \`jerome deps\` and the deny rules.` }
+    : null;
+  return { session, tools, warning };
+}
+
+function shortDate(iso) {
+  if (!iso) return 'unknown date';
+  const d = new Date(iso);
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // The hooks and status line that record usage and refuse chained repo-changing commands (D59-D61), in the

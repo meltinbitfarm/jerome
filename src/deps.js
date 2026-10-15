@@ -85,6 +85,12 @@ export const DEPS = [
   d('transcript', 'Agent input.prompt', 'the task given to a subagent', { presence: 'sometimes', documented: false, decisions: ['D67'], phase: 7, code: ['src/delegations.js'] }),
   d('transcript', 'SubagentHandback input.message', 'the reply of a subagent in the background', { presence: 'sometimes', documented: false, decisions: ['D62', 'D67'], phase: 6, code: ['src/hooks.js', 'src/delegations.js'] }),
   d('transcript', 'message.content (first user line)', 'a subagent\'s task when no Agent call matches', { event: 'user', presence: 'sometimes', documented: false, decisions: ['D67'], phase: 7, code: ['src/delegations.js'] }),
+  d('transcript', '<config>/projects/<path with every other character as ->/', 'a project\'s transcripts, for the latest session', { kind: 'file', documented: false, decisions: ['D81'], phase: 8, code: ['src/session-shape.js'] }),
+  d('transcript', 'api-request-shape: shape.tools[].name', 'the tools really sent, checked against the deny rules', { event: 'api-request-shape', documented: false, decisions: ['D81'], phase: 8, code: ['src/session-shape.js'], note: 'recorded once per session, at its first request' }),
+  d('transcript', 'attachment: attachment.type agent_listing_delta, rendered', 'the agents listed to the model, checked against the deny rules', { event: 'attachment', presence: 'sometimes', documented: false, decisions: ['D81'], phase: 8, code: ['src/session-shape.js'] }),
+  ...['Agent', 'Bash', 'Edit', 'Read', 'Write', 'Skill', 'ToolSearch', 'DeferredToolPlaceholder', 'advisor'].map((tool) =>
+    d('tool', tool, 'expected in every request; another tool over 2,000 characters is reported', { kind: 'expected-tool', presence: 'sometimes', documented: false, decisions: ['D81'], phase: 8, code: ['src/session-shape.js'] })),
+  d('context', '| System tools (deferred) |', 'not added to the estimate: it does not follow the deny rules', { kind: 'section', presence: 'sometimes', documented: false, decisions: ['D81'], phase: 8, code: ['src/profile.js'] }),
   d('subagent-meta', 'agentType', 'the subagent\'s name, in agent-<id>.meta.json', { documented: false, decisions: ['D59', 'D67'], phase: 6, code: ['src/hooks.js', 'src/delegations.js'] }),
   d('subagent-meta', 'description', 'delegations', { presence: 'sometimes', documented: false, decisions: ['D67'], phase: 7, code: ['src/delegations.js'] }),
   d('subagent-meta', 'toolUseId', 'links the subagent to its Agent call', { documented: false, decisions: ['D67'], phase: 7, code: ['src/delegations.js'] }),

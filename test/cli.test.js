@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sandbox } from './sandbox.js';
 import { DENY_RULES, ASK_RULES, ALLOW_RULES, RULE_COUNT } from '../src/limits.js';
@@ -296,4 +296,33 @@ test('doctor --check --json lists pending changes, matches the exit code, and wr
   assert.equal(report.profile.pending.length, 3);
   assert.equal(report.checks.find((c) => c.id === 'profile').ok, false);
   assert.deepEqual(snapshot(dir), before);
+});
+
+test('doctor reports the real first call of the latest session and checks the tools it was sent', () => {
+  const { root, run } = sandbox();
+  assert.equal(run('new', 'demo').status, 0);
+  const dir = realpathSync(join(root, 'demo'));
+  const folder = join(root, 'claude-config', 'projects', dir.replace(/[^A-Za-z0-9]/g, '-'));
+  mkdirSync(folder, { recursive: true });
+  const at = new Date(Date.now() + 60_000).toISOString();
+  const tool = (name, size = 100) => ({ name, description: 'x'.repeat(size) });
+  const session = (tools, agents) => [
+    { type: 'api-request-shape', shape: { system: [], tools } },
+    { type: 'attachment', attachment: { type: 'agent_listing_delta' }, rendered: [{ content: `Available agents:\n${agents.map((a) => `- ${a}: does things`).join('\n')}` }] },
+    { type: 'assistant', requestId: 'r1', timestamp: at, message: { usage: { input_tokens: 5, cache_read_input_tokens: 11000, cache_creation_input_tokens: 369, output_tokens: 3 } } },
+  ].map((e) => JSON.stringify(e)).join('\n');
+
+  writeFileSync(join(folder, 'ok.jsonl'), session([tool('Bash'), tool('Read')], ['general-purpose', 'Explore']));
+  let report = JSON.parse(run('doctor', 'demo', '--check', '--json').stdout);
+  assert.equal(report.context.lastSession.tokens, 11374);
+  assert.equal(report.context.lastSession.kind, 'session');
+  assert.match(report.checks.find((c) => c.id === 'startup-context').detail, /headless \(\/context\); first call of the latest session \(session, .+\): 11,374 tokens/);
+  assert.equal(report.context.tools.checked, true);
+  assert.ok(!report.warnings.some((w) => w.id === 'context-tools'));
+
+  // A denied tool still sent, a denied agent still listed, and an unknown large tool (a rename, say).
+  writeFileSync(join(folder, 'z-later.jsonl'), session([tool('Bash'), tool('Artifact'), tool('ArtifactPublisher', 30000)], ['Plan', 'Explore']));
+  report = JSON.parse(run('doctor', 'demo', '--check', '--json').stdout);
+  const w = report.warnings.find((x) => x.id === 'context-tools');
+  assert.deepEqual([w.deniedSent, w.deniedAgents, w.unexpected.map((t) => t.name)], [['Artifact'], ['Plan'], ['ArtifactPublisher']]);
 });
