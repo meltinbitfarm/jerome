@@ -12,6 +12,23 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { readSettings, writeSettings, SHARED_SETTINGS } from './profile.js';
 
+// Tools and built-in agents a Jérôme project never uses, whose definitions Claude Code sends with every call (D80).
+// Denying a whole tool removes it from the request: measured on claude-watch, the first interactive call went from
+// 30,907 tokens to 12,011 with the six tools denied (Artifact alone: 12,337), and a -p call from 13,927 to 11,006.
+export const CONTEXT_DENY_RULES = [
+  'Artifact',
+  'SendFeedback',
+  'ScheduleWakeup',
+  'ReportFindings',
+  'ListAgents',
+  'AskUserQuestion',
+  // Built-in agents listed to the model; general-purpose and Explore stay, for projects without a team yet.
+  'Agent(claude)',
+  'Agent(claude-code-guide)',
+  'Agent(Plan)',
+  'Agent(statusline-setup)',
+];
+
 export const DENY_RULES = [
   // Pushing: `git push` and `git -C <dir> push`, also inside compound commands (`cd x && git push`).
   'Bash(git push *)',
@@ -46,6 +63,7 @@ export const DENY_RULES = [
   'Bash(sendmail *)',
   'Bash(mail *)',
   'Bash(mailx *)',
+  ...CONTEXT_DENY_RULES,
 ];
 
 export const ALLOW_RULES = [

@@ -133,6 +133,11 @@ export const DEPS = [
   d('settings', 'disableBundledSkills', 'lean profile', { kind: 'setting', decisions: ['D21'], phase: 1, code: ['src/profile.js'] }),
   d('settings', 'enabledPlugins.<id>', 'lean profile: false turns a plugin off', { kind: 'setting', decisions: ['D21'], phase: 1, code: ['src/profile.js'] }),
   d('settings', 'skillOverrides.<name>', 'lean profile: "off"; synced skills as anthropic-skills:<name>', { kind: 'setting', decisions: ['D14', 'D21'], phase: 1, code: ['src/profile.js'] }),
+  d('settings', 'permissions.deny with a whole tool name removes its definition from the request', 'tools Jérôme never uses, out of every call', { kind: 'behaviour', documented: false, decisions: ['D80'], phase: 8, code: ['src/limits.js'] }),
+  ...['Artifact', 'SendFeedback', 'ScheduleWakeup', 'ReportFindings', 'ListAgents', 'AskUserQuestion'].map((tool) =>
+    d('tool', tool, 'denied: a renamed tool would come back into every call unnoticed', { kind: 'tool-name', documented: false, decisions: ['D80'], phase: 8, code: ['src/limits.js'] })),
+  ...['claude', 'claude-code-guide', 'Plan', 'statusline-setup'].map((agent) =>
+    d('tool', `Agent(${agent})`, 'built-in agent denied, out of the agent listing', { kind: 'agent-name', documented: false, decisions: ['D80'], phase: 8, code: ['src/limits.js'] })),
   d('settings', 'permissions.deny, ask, allow', 'Bash(<prefix> *) rules; deny, then ask, then allow; deny holds for subagents, headless and bypass', { kind: 'setting', decisions: ['D46', 'D48'], phase: 4, code: ['src/limits.js'] }),
   d('files', '<config>/skills/synced/<account>/<skill>/SKILL.md', 'skills synced from claude.ai', { kind: 'file', documented: false, decisions: ['D21'], phase: 1, code: ['src/profile.js'] }),
   d('files', '~/.claude.json projects.<path>.hasTrustDialogAccepted', 'trust; allow rules are ignored without it', { kind: 'file', documented: false, decisions: ['D48', 'D73'], phase: 4, code: ['src/limits.js'] }),

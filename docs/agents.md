@@ -63,6 +63,22 @@ Each rule is written as `Bash(<command>)`. Tested on Claude Code 2.1.300, the ru
 
 They are a safety net for the common commands, not a sandbox. A command they do not list, such as an unusual form of `git` or a deploy tool not in the table, still relies on the written limits. Buying, and sending email through a connector, cannot be expressed as rules at all.
 
+### Tools a project never uses
+
+Claude Code sends the definition of every tool with every call. Some are never used in a Jérôme project, and one of them is large: the definition of `Artifact`, which publishes pages to claude.ai, is about 12,000 tokens. A deny rule on a whole tool removes it from the request, so the project denies these too:
+
+| Denied | Why not needed |
+|---|---|
+| `Artifact` | publishing pages to claude.ai |
+| `SendFeedback` | feedback drafts about Claude Code |
+| `ScheduleWakeup` | `/loop`; Jérôme schedules heartbeats instead |
+| `ReportFindings` | code-review reports; bundled skills are off in the lean profile |
+| `ListAgents` | messaging other local sessions |
+| `AskUserQuestion` | the lead agent ends with a decision request in text instead |
+| `Agent(claude)`, `Agent(claude-code-guide)`, `Agent(Plan)`, `Agent(statusline-setup)` | built-in agents listed to the model; `general-purpose` and `Explore` stay, for projects without a team yet |
+
+Measured on a real project, the first call of an interactive session went from 30,907 tokens to 11,374, and a `claude -p` call from 13,927 to 10,789. Every later call of a session sends that context again, so the saving repeats on each one. If Claude Code renames one of these tools, the rule stops matching without any error: they are listed in [`jerome deps`](commands/deps.md), so a tool watching Claude Code releases sees the change.
+
 ### Allowed and asked
 
 The safe local operations of a task are allowed, so that Claude Code's auto mode never takes them for something else: a merge into `main` blocked as if it were a deploy, or even a `git status` blocked.
