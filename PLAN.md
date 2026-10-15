@@ -39,7 +39,7 @@ What to check:
 **Testable result:** a short note with the available fields, where they are and a real example of each. Fabio reads it and sees where the viewer's numbers will come from.
 **Done when:** the note exists, the source of usage data is recorded as a decision, and docs/ explains in English where the data comes from and why the lean profile exists (D24). The schema of phase 5 depends on that decision.
 **Questions to settle first:** none.
-**Status: done (2026-10-14).** Note in notes/usage-probe.md, decision D20. It also turned out that:
+**Status: done (2026-10-14).** Note in .jerome/notes/usage-probe.md, decision D20. It also turned out that:
 - the status line receives the subscription % too;
 - the fixed startup cost drops from ~29k to ~12k tokens by turning off unused plugins, claude.ai connectors and skills per project.
 
