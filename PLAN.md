@@ -174,7 +174,12 @@ Two more uses of the hooks:
 - a `PreToolUse` hook refuses Bash commands that chain operations changing the repository (`git commit … && git merge …`), as a second protection behind the CLAUDE.md rule (D49);
 - the length of each subagent's reply is measured per agent, since the 150-word limit (D41) is exceeded by Opus agents at times.
 **Done when:** every run and every subagent leaves a log line (D13, first level), and tracking requires no tool call from the model.
-**Questions to settle first:** none. The risk around usage data was already checked in phase 0.5.
+**Questions to settle first:** none.
+**Status: done (2026-10-15).**
+- `jerome hook <event>` on SessionStart, SubagentStop and Stop (async), SessionEnd and PreToolUse (D59), `jerome statusline` (D60), the chained-command check (D61), reply lengths with `jerome state --replies` (D62), run kinds and the `service` run of `jerome docs` (D63); `doctor` writes the hooks and the status line and checks them (`hooks`); 87 tests with `npm test`.
+- Interactive session on claude-watch, driven in tmux: the analyst counted lines in the background, `git branch x && git branch -d x` was refused with the D49 reason and nothing ran, and the status line showed `5h 32% · 7d 20% · today ≈$2.41 API`, with the windows written once to `account.json`. After `/exit`: run closed with `prompt_input_exit`, usage 3 + 2 calls, 95,783 + 10,161 tokens, exactly as an independent count of the transcripts. Hooks took 18-24 ms each.
+- `claude -p` run on claude-watch: the async Stop was cancelled at teardown, SessionEnd read the 3 calls left, and the totals matched again (28,505 + 9,092 tokens).
+- Found along the way: a background subagent replies through `SubagentHandback`, so `last_assistant_message` is empty and the reply length is read from the transcript (D62); a subagent transcript without its meta file keeps the name SubagentStop recorded; `doctor`'s own `/context` call was recorded as an empty run, so Jérôme's checks now run with `JEROME_HOOKS=off`.
 
 ## Phase 7 — Read-only viewer
 

@@ -76,5 +76,7 @@ export function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
   const run = (...args) => call({}, '', args);
   // runInput passes text on standard input, e.g. a brief for `--from-file -`.
   const runInput = (input, ...args) => call({}, input, args);
-  return { root, run, runWith, runInput };
+  // runWithInput does both, e.g. a hook payload with CLAUDE_PROJECT_DIR set.
+  const runWithInput = (extra, input, ...args) => call(extra, input, args);
+  return { root, run, runWith, runInput, runWithInput };
 }

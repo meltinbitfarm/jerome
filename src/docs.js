@@ -9,6 +9,7 @@ import { runClaude } from './claude.js';
 import { MARKER } from './template.js';
 import { QUEUE, documentarist, queueEntries } from './agents.js';
 import { settingsPath } from './profile.js';
+import { openDb } from './db.js';
 
 export async function docs(dirArg) {
   const dir = resolve(dirArg);
@@ -61,6 +62,7 @@ export async function docs(dirArg) {
     return 1;
   }
   console.log(String(result.result ?? '').trim());
+  recordServiceRun(dir, result, agent.meta.name ?? 'documentarist');
   const after = queueEntries(dir).length;
   console.log(`${after ? '!' : '✓'} ${QUEUE}: ${before - after} of ${before} ${before === 1 ? 'entry' : 'entries'} integrated${after ? `, ${after} left` : ''}`);
   return result.is_error ? 1 : 0;
@@ -75,4 +77,32 @@ export function serviceFolder(dir) {
   rmSync(folder, { recursive: true, force: true });
   mkdirSync(folder, { recursive: true });
   return folder;
+}
+
+// Service calls leave no transcript and run outside the project, so its hooks never see them: the CLI records the
+// run itself, with one usage row per model from the result (D56, D63). Recording never fails the command.
+export function recordServiceRun(dir, result, agent, now = new Date()) {
+  let db;
+  try {
+    db = openDb(dir);
+    if (!db) return;
+    const at = now.toISOString();
+    db.exec('BEGIN IMMEDIATE');
+    const runId = db.prepare("INSERT INTO runs (kind, started_at, ended_at, status) VALUES ('service', ?, ?, ?)")
+      .run(new Date(now.getTime() - (result.duration_ms ?? 0)).toISOString(), at, result.is_error ? 'failed' : 'done').lastInsertRowid;
+    for (const [model, u] of Object.entries(result.modelUsage ?? {})) {
+      db.prepare(`INSERT INTO usage (request_id, run_id, agent, model, input, output, cache_read, cache_write_1h, at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(`service:${runId}:${model}`, runId, agent, model, u.inputTokens ?? 0,
+        u.outputTokens ?? 0, u.cacheReadInputTokens ?? 0, u.cacheCreationInputTokens ?? 0, at);
+    }
+    db.exec('COMMIT');
+  } catch {
+    try {
+      db?.exec('ROLLBACK');
+    } catch {
+      // Nothing to roll back.
+    }
+  } finally {
+    db?.close();
+  }
 }

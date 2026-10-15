@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { join } from 'node:path';
 import { sandbox } from './sandbox.js';
 import { DENY_RULES, ASK_RULES, ALLOW_RULES, RULE_COUNT } from '../src/limits.js';
+import { HOOKS, STATUSLINE } from '../src/hookconfig.js';
 
 test('new creates the project with template, marker, git and lean profile', () => {
   const { root, run } = sandbox();
@@ -24,7 +25,11 @@ test('new creates the project with template, marker, git and lean profile', () =
   }
   // The default limits are binding: deny rules in the versioned settings.json (D46).
   const shared = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
-  assert.deepEqual(shared, { permissions: { deny: DENY_RULES, ask: ASK_RULES, allow: ALLOW_RULES } });
+  assert.deepEqual(shared.permissions, { deny: DENY_RULES, ask: ASK_RULES, allow: ALLOW_RULES });
+  // The hooks and the status line that record usage (D59, D60).
+  assert.deepEqual(Object.keys(shared.hooks), HOOKS.map((h) => h.event));
+  assert.deepEqual(shared.statusLine, STATUSLINE);
+  assert.match(r.stdout, /✓ Hooks and status line — 6 changes/);
   assert.match(r.stdout, new RegExp(`✓ Default limits — ${RULE_COUNT} permission rules added`));
   // The fake Claude config has no .claude.json, so trust cannot be told and nothing is said about it.
   assert.doesNotMatch(r.stdout, /trust dialog/);
@@ -100,7 +105,7 @@ test('doctor moves a profile left in settings.json to the local settings', () =>
   const r = run('doctor', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /moved \d+ profile entries from settings\.json to settings\.local\.json/);
-  assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')), { permissions: { allow: ['Bash(ls)', ...ALLOW_RULES], deny: DENY_RULES, ask: ASK_RULES } });
+  assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')), { permissions: { allow: ['Bash(ls)', ...ALLOW_RULES], deny: DENY_RULES, ask: ASK_RULES }, hooks: JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')).hooks, statusLine: STATUSLINE });
   assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.local.json'), 'utf8')), profile);
   assert.match(run('doctor', 'demo').stdout, /Lean profile already in place/);
 });
@@ -173,7 +178,7 @@ test('doctor --json: schema, checks, sections, counts and warnings, with a match
   assert.equal(report.mode, 'fix');
   assert.equal(report.ok, true);
   assert.deepEqual(report.checks.map((c) => c.id),
-    ['project', 'limits', 'db', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
+    ['project', 'limits', 'hooks', 'db', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
   assert.deepEqual(report.db, { version: 1, latest: 1, applied: [] });
   assert.ok(report.checks.every((c) => c.ok));
   assert.deepEqual(report.context.sections, {

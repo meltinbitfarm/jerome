@@ -56,7 +56,7 @@ pbpaste | jerome new my-project --from-file -
 
 Out of the box, every Claude Code session loads the descriptions of all your installed plugins, synced skills and claude.ai connectors. On the test machine that was about 29k tokens before the first word. Jérôme projects turn all of that off in their own `.claude/settings.local.json`, which git ignores, and keep only the project's skills, which brings startup down to about 12k tokens. Your user settings are not touched.
 
-Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes from: [docs/usage-data.md](docs/usage-data.md); where it is kept: [docs/database.md](docs/database.md).
+Details: [docs/lean-profile.md](docs/lean-profile.md). Where usage data comes from: [docs/usage-data.md](docs/usage-data.md); how it is recorded: [docs/hooks.md](docs/hooks.md); where it is kept: [docs/database.md](docs/database.md).
 
 ## The lead agent
 
@@ -77,7 +77,7 @@ Every project starts from a brief in the `brief/v2` format. You can run the brie
 3. ~~Briefing anywhere and import of a brief (`jerome prompt`, `jerome new --from-file`), template updates (`jerome update`)~~
 4. Rules for creating subagents, including a documentation agent (`jerome docs`)
 5. ~~A SQLite database per project, read with `jerome state`~~
-6. Usage tracking through hooks and the status line
+6. ~~Usage tracking through hooks and the status line~~
 7. Read-only local viewer (`jerome view`)
 8. Scheduled headless runs, with a lock and a budget per run
 9. Daily and weekly limits with automatic pause

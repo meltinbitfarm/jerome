@@ -123,7 +123,8 @@ export function ensureGitignored(dir, { write = true, entry = `.claude/${LOCAL_S
 // What Claude Code actually loads in that folder, according to `/context`.
 // It is a local command: it makes no API call and, without persistence, leaves no transcript.
 export function inspectContext(dir) {
-  const out = runClaude(['-p', '/context', '--no-session-persistence'], { cwd: dir, timeout: 120_000 });
+  // The check is not a session of the project: its hooks must not record it as a run (D59).
+  const out = runClaude(['-p', '/context', '--no-session-persistence'], { cwd: dir, timeout: 120_000, env: { JEROME_HOOKS: 'off' } });
   return parseContext(out);
 }
 

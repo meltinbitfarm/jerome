@@ -6,7 +6,7 @@ Every Jérôme project has one SQLite database, `.jerome.db` at its root, for wh
 
 Only the CLI and the hooks. The model never runs SQL and never touches the file: tracking costs no tokens. The one exception is planned for scheduled runs: the lead agent will open and close decision requests with `jerome request`, where the CLI writes and the model only passes the text. Hooks never make a session fail: on an error they exit quietly and record an `error` event if they can.
 
-The lead agent reads the database with [`jerome state`](commands/state.md).
+The hooks that write it are described in [hooks.md](hooks.md). The lead agent reads the database with [`jerome state`](commands/state.md).
 
 ## Tables
 
@@ -54,4 +54,4 @@ The subscription is one, shared by every project, so its data is not in any proj
 }
 ```
 
-The status line and the scheduled runs will write it, only when a value changes, through a temporary file and a rename, so a reader never sees half a file. Per-project limits will live in the project's `.jerome`, next to its token budgets.
+The status line and the scheduled runs write it, only when a value changes, through a temporary file and a rename, so a reader never sees half a file. Per-project limits will live in the project's `.jerome`, next to its token budgets.

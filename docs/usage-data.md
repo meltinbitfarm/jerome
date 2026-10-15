@@ -1,6 +1,6 @@
 # Where usage data comes from
 
-Jérôme tracks token usage per project, per agent and per run, plus how much of the subscription's usage windows is used. These are the sources Claude Code exposes, and the ones Jérôme uses. The database and the transcript reader exist; the hooks that run the reader after each session come with phase 6.
+Jérôme tracks token usage per project, per agent and per run, plus how much of the subscription's usage windows is used. These are the sources Claude Code exposes, and the ones Jérôme uses. The hooks run the reader after each turn, subagent and session (see [hooks.md](hooks.md)).
 
 ## Token usage: session transcripts
 

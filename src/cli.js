@@ -5,6 +5,8 @@ import { update } from './update.js';
 import { prompt } from './prompt.js';
 import { docs } from './docs.js';
 import { state } from './state.js';
+import { hook, HOOK_EVENTS } from './hooks.js';
+import { statusline } from './statusline.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -20,7 +22,10 @@ const USAGE = `Usage:
   jerome state [dir]      show usage, runs and open decision requests, compactly (what the lead agent reads)
     --runs <n>            how many recent runs to list (default 3)
     --agent <name>        only one agent's usage
-    --json                print a machine-readable report (schema jerome.state/v1)`;
+    --json                print a machine-readable report (schema jerome.state/v1)
+    --replies             subagents' reply lengths over the last 7 days, per agent
+  jerome hook <event>     run by Claude Code's hooks: ${HOOK_EVENTS.join(', ')}
+  jerome statusline       run by Claude Code's status line`;
 
 const OPTIONS = {
   help: { type: 'boolean', short: 'h' },
@@ -30,10 +35,11 @@ const OPTIONS = {
   'from-file': { type: 'string' },
   runs: { type: 'string' },
   agent: { type: 'string' },
+  replies: { type: 'boolean' },
 };
 
 // The options each command accepts; any other option is a usage error.
-const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent'] };
+const ALLOWED = { new: ['from-file'], prompt: [], doctor: ['json', 'check'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [] };
 
 export async function main(argv) {
   let parsed;
@@ -69,8 +75,14 @@ export async function main(argv) {
       if (rest.length > 1) return usageError('jerome state takes at most one folder.');
       const runs = parsed.values.runs === undefined ? 3 : Number(parsed.values.runs);
       if (!Number.isInteger(runs) || runs < 0) return usageError('--runs takes a whole number.');
-      return state(rest[0] ?? '.', { json: parsed.values.json, runs, agent: parsed.values.agent ?? null });
+      return state(rest[0] ?? '.', { json: parsed.values.json, runs, agent: parsed.values.agent ?? null, replies: parsed.values.replies });
     }
+    case 'hook':
+      // Hooks never fail a session: even a wrong event name exits with 0.
+      if (rest.length !== 1 || !HOOK_EVENTS.includes(rest[0])) return 0;
+      return hook(rest[0]);
+    case 'statusline':
+      return statusline();
     case 'docs':
       if (rest.length > 1) return usageError('jerome docs takes at most one folder.');
       return docs(rest[0] ?? '.');

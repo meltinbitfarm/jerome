@@ -10,7 +10,7 @@ import { readAccount, WINDOWS } from './account.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
 
-export async function state(dirArg, { json = false, runs = 3, agent = null } = {}) {
+export async function state(dirArg, { json = false, runs = 3, agent = null, replies = false } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
     console.error(`${dir} is not a Jérôme project (the ${MARKER} marker is missing).`);
@@ -18,7 +18,7 @@ export async function state(dirArg, { json = false, runs = 3, agent = null } = {
   }
   let report;
   try {
-    report = readState(dir, { runs, agent });
+    report = readState(dir, { runs, agent, replies });
   } catch (err) {
     console.error(err instanceof DbTooNewError ? err.message : `Cannot read the project state: ${err.message}`);
     return 1;
@@ -31,7 +31,7 @@ export async function state(dirArg, { json = false, runs = 3, agent = null } = {
   return 0;
 }
 
-export function readState(dir, { runs = 3, agent = null, now = new Date(), account = readAccount() } = {}) {
+export function readState(dir, { runs = 3, agent = null, replies = false, now = new Date(), account = readAccount() } = {}) {
   const db = openDb(dir);
   if (!db) return null;
   try {
@@ -54,7 +54,7 @@ export function readState(dir, { runs = 3, agent = null, now = new Date(), accou
       FROM runs r ORDER BY r.started_at DESC LIMIT ?`).all(runs);
     const requests = db.prepare(`SELECT id, question, opened_at FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
 
-    return {
+    const report = {
       schema: STATE_SCHEMA,
       project: basename(dir),
       at: now.toISOString(),
@@ -66,9 +66,37 @@ export function readState(dir, { runs = 3, agent = null, now = new Date(), accou
       runs: recent.map((r) => ({ id: r.id, kind: r.kind, status: r.status, startedAt: r.started_at, reason: r.reason, tokens: r.tokens })),
       requests: requests.map((r) => ({ id: r.id, question: r.question, openedAt: r.opened_at })),
     };
+    if (replies) report.replies = replyStats(db, week, agent);
+    return report;
   } finally {
     db.close();
   }
+}
+
+// Reply lengths of the subagents over the period (D62), from the subagent-stop events, per agent.
+export const REPLY_LIMIT = 150;
+
+function replyStats(db, since, agent) {
+  const rows = db.prepare(`SELECT agent, data FROM events WHERE kind = 'subagent-stop' AND at >= ?${agent ? ' AND agent = ?' : ''}`)
+    .all(...(agent ? [since, agent] : [since]));
+  const by = new Map();
+  for (const r of rows) {
+    let words;
+    try {
+      words = JSON.parse(r.data).words;
+    } catch {
+      continue;
+    }
+    if (typeof words !== 'number') continue;
+    (by.get(r.agent) ?? by.set(r.agent, []).get(r.agent)).push(words);
+  }
+  return [...by].map(([name, w]) => ({
+    agent: name,
+    replies: w.length,
+    average: Math.round(w.reduce((a, b) => a + b, 0) / w.length),
+    max: Math.max(...w),
+    over: w.filter((x) => x > REPLY_LIMIT).length,
+  })).sort((a, b) => a.agent.localeCompare(b.agent));
 }
 
 // Sums usage rows: tokens of every kind, the API-equivalent price, and whether some model had no known price.
@@ -112,7 +140,10 @@ export function formatState(s) {
     lines.push(`window  ${parts.join(' · ')} (${latest.source}, ${when(latest.readAt, now)})${limits.length ? ` · global limits ${limits.join(' / ')}` : ''}`);
   } else lines.push('window  no reading yet');
   if (!s.agent) lines.push(`agents  7d: ${s.agents.length ? s.agents.map((a) => `${a.agent} ${n(a.tokens)}`).join(' · ') : 'none'}`);
-  lines.push(`runs    ${s.runs.length ? `last ${s.runs.length}: ${s.runs.map((r) => `${when(r.startedAt, now)} ${r.kind} ${r.status}${r.reason ? ` (${r.reason})` : ''} ${n(r.tokens)}`).join(' · ')}` : 'none'}`);
+  lines.push(`runs    ${s.runs.length ? `last ${s.runs.length}: ${s.runs.map((r) => `${when(r.startedAt, now)} ${r.kind} ${r.status}${r.reason && r.status !== 'done' ? ` (${r.reason})` : ''} ${n(r.tokens)}`).join(' · ')}` : 'none'}`);
+  if (s.replies) {
+    lines.push(`replies 7d: ${s.replies.length ? s.replies.map((r) => `${r.agent} avg ${r.average}w max ${r.max} (${r.over}/${r.replies} over ${REPLY_LIMIT})`).join(' · ') : 'none recorded'}`);
+  }
   lines.push(`open    ${s.requests.length ? s.requests.map((r) => `R${r.id} ${r.question} (${when(r.openedAt, now)})`).join(' · ') : 'no decision requests'}`);
   return lines.join('\n');
 }

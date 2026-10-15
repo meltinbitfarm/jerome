@@ -5,6 +5,7 @@ import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './templ
 import { isProvisional, misplacedSections } from './brief.js';
 import { RULE_COUNT, missingRules, addRules, isTrusted } from './limits.js';
 import { agentWarnings, queueWarning } from './agents.js';
+import { planHooks, applyHooks } from './hookconfig.js';
 import { openDb, dbPath, schemaVersion, peekVersion, applyMigrations, LATEST, DB_FILE } from './db.js';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
@@ -32,7 +33,7 @@ export async function doctor(dirArg, { json = false, check = false } = {}) {
 export function runDoctor(dir, { setup = true, fix = true } = {}) {
   const report = {
     schema: DOCTOR_SCHEMA, ok: false, jerome: VERSION, mode: fix ? 'fix' : 'check', project: dir,
-    checks: [], limits: null, db: null, profile: null, context: null, warnings: [],
+    checks: [], limits: null, hooks: null, db: null, profile: null, context: null, warnings: [],
   };
   const done = () => {
     report.ok = report.checks.every((c) => c.ok);
@@ -47,6 +48,12 @@ export function runDoctor(dir, { setup = true, fix = true } = {}) {
   if (limits) {
     report.limits = { added: limits.added, missing: limits.missing };
     report.checks.push(limits.check);
+  }
+  const hooks = hooksCheck(dir, { fix });
+  if (hooks) {
+    report.hooks = hooks.hooks;
+    report.checks.push(hooks.check);
+    if (hooks.warning) report.warnings.push(hooks.warning);
   }
   const db = dbCheck(dir, { fix });
   report.db = db.db;
@@ -147,6 +154,26 @@ function limitsCheck(dir, { fix }) {
     return { added: [], missing, check: { id: 'limits', ok: missing.length === 0, label, detail } };
   } catch (err) {
     return { added: [], missing: [], check: { id: 'limits', ok: false, label, detail: err.message } };
+  }
+}
+
+// The hooks and status line that record usage and refuse chained repo-changing commands (D59-D61), in the
+// versioned settings.json. Like the permission rules, they are added with fix and fail --check when missing.
+// Jérôme's own repository is skipped, as for the permission rules.
+function hooksCheck(dir, { fix }) {
+  if (isJeromeRepo(dir)) return null;
+  const label = 'Hooks and status line';
+  try {
+    const plan = fix ? applyHooks(dir) : planHooks(dir);
+    const warning = plan.statusline === 'other'
+      ? { id: 'statusline', message: 'The project has its own status line, so interactive sessions do not record the subscription windows: make it call `jerome statusline`, which runs your own user status line and appends its part.' }
+      : null;
+    const hooks = { changes: fix ? plan.changes : [], pending: fix ? [] : plan.changes };
+    const n = plan.changes.length;
+    if (fix) return { hooks, warning, check: { id: 'hooks', ok: true, label, detail: n ? `${n} ${n === 1 ? 'change' : 'changes'} to .claude/${SHARED_SETTINGS}` : 'in place' } };
+    return { hooks, warning, check: { id: 'hooks', ok: n === 0, label, detail: n ? `${n} ${n === 1 ? 'change' : 'changes'} needed: run \`jerome doctor\`` : 'in place' } };
+  } catch (err) {
+    return { hooks: null, warning: null, check: { id: 'hooks', ok: false, label, detail: err.message } };
   }
 }
 
