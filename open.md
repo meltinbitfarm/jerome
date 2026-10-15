@@ -6,6 +6,7 @@
 - Q3: Default heartbeat frequency and budget per run.
 - Q4: Is the earlier design (drag-and-drop graph, Company hierarchy) dropped, or is it a later phase?
 - Q5: Stack for the minimal CLI and the viewer. CLI part superseded (see D19); the viewer part is still open.
+- Q6: (resolved by D32) (from D30) Where project customizations of the lead agent's instructions live: a section of PROJECT.md, or a dedicated file imported by the template's CLAUDE.md with `@`.
 
 ## Parked
 - P1: Telegram / Claude Code Channels to talk to the lead agent, with outgoing notifications through scripts — once the core works.

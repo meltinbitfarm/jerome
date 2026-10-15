@@ -108,12 +108,15 @@ The template's CLAUDE.md defines the lead agent. It is loaded into every session
 
 Both flows of D15 work inside a project created from the template:
 - from the PC, the briefing with the project-brief skill in Claude Code writes the files right away;
-- from the phone, the brief saved in MementoVault is imported on the PC by the CLI with `jerome new <name> --from-vault <slug>` (D22), without the model.
+- from the phone, the brief saved in MementoVault is imported on the PC by the CLI with `jerome new <name> --from-vault <slug>` (D22), without the model;
+- a brief made elsewhere and saved as a file, or copied to the clipboard, is imported with `jerome new <name> --from-file <path|->` (D29).
 
-The CLI reads the token from `~/.config/jerome/`, downloads the `brief` document, checks `format: brief/v2` (or the older brief/v1) and sorts the sections into the three files following the "Import" table in `references/brief-v2.md` (D26). The skill's Import section points to the CLI.
+Existing projects receive template fixes with `jerome update`, and `jerome doctor` warns when they are behind (D30).
+
+The CLI reads URL and token from `~/.config/jerome/mementovault.json`, finds the document titled "Brief" in the project's collection (D31), checks `format: brief/v2` (or the older brief/v1) and sorts the sections into the three files following the "Import" table in `references/brief-v2.md` (D26). The skill's Import section points to the CLI.
 **Testable result:** from a brief saved on the phone, a single command leads to a project with the lead agent ready (Success 1). Redoing the briefing on Jérôme's original idea leads to the same decisions (Success 2).
-**Done when:** both Success criteria pass, and a brief in a format other than brief/v2 or brief/v1 is rejected with a message.
-**Questions to settle first:** none. Still to verify which route the CLI takes (D22): MementoVault's REST endpoint, if there is one for reading a document, otherwise the MCP endpoint called over HTTP with the token.
+**Done when:** both Success criteria pass, a brief in a format other than brief/v2 or brief/v1 is rejected with a message, `--from-file` works from a file and from standard input, and `jerome update` brings claude-watch up to date without touching its state files.
+**Questions to settle first:** none. Q6 is resolved by D32, and the route to MementoVault is verified (D31): MCP over HTTP, since there is no REST API for documents.
 
 ## Phase 4 — Rules for creating subagents
 

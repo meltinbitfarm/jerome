@@ -26,11 +26,23 @@ Every Jérôme project has one lead agent: the main Claude Code session you talk
 
 To keep the files that are read on demand light, the lead agent moves closed entries from `open.md` and long-superseded decisions to `archive.md`. Their IDs stay the same.
 
+## Project rules
+
+`CLAUDE.md` comes from the template, and template files are replaced when the project is updated to a newer Jérôme version. Rules that belong to one project only, such as conventions, tools to prefer or things to avoid, go in `PROJECT.md` under a `## Project rules` section, one line per rule:
+
+```markdown
+## Project rules
+- Use pnpm, never npm.
+- Tests run with `pnpm test` before every commit proposal.
+```
+
+The lead agent adds the section when the first rule comes up, and `CLAUDE.md` tells it never to write rules into itself. `PROJECT.md` is a state file that updates never touch, and it is already loaded at startup, so the rules cost nothing extra beyond their own lines. They count towards `PROJECT.md`'s budget.
+
 ## Token budget
 
 | File | Budget | Current |
 |---|---:|---:|
-| `CLAUDE.md` | 600 tokens | 536 |
+| `CLAUDE.md` | 600 tokens | 569 |
 | `PROJECT.md` | about 800 tokens | depends on the brief |
 
 `jerome doctor` warns when a file goes over its budget. It does not block anything.

@@ -34,6 +34,25 @@ mkdir -p dist && (cd template/.claude/skills && zip -r -X ../../../dist/project-
 
 Then upload `project-brief.zip` in the Skills section of your claude.ai settings. If you uploaded an earlier version, replace it. With a store connected on claude.ai, a brief saved from the phone can be imported later on the PC.
 
+## Connecting the CLI to MementoVault
+
+To import a brief saved in MementoVault with `jerome new <name> --from-vault <slug>` (in progress, phase 3), the CLI needs the URL of your MementoVault MCP endpoint and a token. Create a workspace token in MementoVault just for Jérôme, so you can revoke it on its own, then write `~/.config/jerome/mementovault.json`:
+
+```json
+{
+  "url": "https://your-mementovault.example/mcp",
+  "token": "cv_ws_..."
+}
+```
+
+and make it readable only by you:
+
+```sh
+chmod 600 ~/.config/jerome/mementovault.json
+```
+
+The token never goes in a project. MementoVault tokens have no read-only mode, but the CLI only lists and reads documents. It finds the brief as the document titled "Brief" in the project's collection, because document slugs are unique across the whole workspace: a second project's brief may have the slug `brief-2`.
+
 ## Format
 
 The format is `brief/v2`, described in [`references/brief-v2.md`](../template/.claude/skills/project-brief/references/brief-v2.md). Briefs in the older `brief/v1` format, which had Italian section headings, are still accepted on import.
