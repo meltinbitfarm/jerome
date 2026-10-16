@@ -271,3 +271,28 @@ test('a stop of Claude Code\'s own helpers, with no agent type, is not counted a
   assert.deepEqual(events.map((e) => [e.agent, JSON.parse(e.data).internal ?? false]), [[null, true], ['developer', false]]);
   assert.match(run('state', 'demo', '--replies').stdout, /^replies 7d: developer avg 1w max 1 \(0\/1 over 150\)$/m);
 });
+
+test('a session started by /clear or forked is a new run, with the open requests, and its copied calls are not counted twice', () => {
+  const { root, dir, transcripts, hookCall, db } = project();
+  const main = join(transcripts, 's1.jsonl');
+  writeFileSync(main, line('m1') + line('m2'));
+  hookCall('session-start', { source: 'startup', transcript_path: main });
+  const write = new DatabaseSync(sandboxDb(root, dir));
+  write.prepare("INSERT INTO requests (opened_at, question) VALUES (?, 'Which page next?')").run(new Date().toISOString());
+  write.close();
+  // /clear ends the session and starts another, with a new session id.
+  hookCall('session-end', { reason: 'clear', transcript_path: main });
+  const clear = hookCall('session-start', { source: 'clear', session_id: 's2', transcript_path: join(transcripts, 's2.jsonl') });
+  assert.match(clear.stdout, /Which page next\?/);
+  // A fork gets its own session id and a transcript that starts with the calls of the session it came from.
+  const fork = join(transcripts, 's3.jsonl');
+  writeFileSync(fork, line('m1') + line('m2') + line('f1'));
+  const forked = hookCall('session-start', { source: 'fork', session_id: 's3', transcript_path: fork });
+  assert.match(forked.stdout, /Which page next\?/);
+  hookCall('session-end', { reason: 'other', session_id: 's3', transcript_path: fork });
+  const d = db();
+  assert.deepEqual(d.prepare('SELECT session_id, status FROM runs ORDER BY id').all().map((r) => [r.session_id, r.status]), [['s1', 'done'], ['s2', 'running'], ['s3', 'done']]);
+  assert.equal(d.prepare('SELECT count(*) n FROM usage').get().n, 3);
+  assert.deepEqual(d.prepare("SELECT data FROM events WHERE kind = 'session-start' ORDER BY id").all().map((e) => JSON.parse(e.data).source), ['startup', 'clear', 'fork']);
+  d.close();
+});

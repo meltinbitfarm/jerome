@@ -4,7 +4,7 @@ Jérôme records what happens in a project through Claude Code's hooks, so the m
 
 | Event | Runs | What it does |
 |---|---|---|
-| `SessionStart` | synchronously | opens the session's run (or reopens it on resume), applies the [retention policy](database.md#retention), and in an interactive session gives the lead agent the decision requests that scheduled runs left open, in full |
+| `SessionStart` | synchronously | opens the session's run, or reopens it on resume; `/clear` and a fork start a session with a new id, so a run of their own, and the calls a fork copies from its original are counted once, applies the [retention policy](database.md#retention), and in an interactive session gives the lead agent the decision requests that scheduled runs left open, in full |
 | `SubagentStop` | in the background | reads the subagent's transcript, and records the length of its reply |
 | `Stop` | in the background | reads the new lines of the session's transcript |
 | `SessionEnd` | synchronously, up to 10 seconds | reads whatever is left in the session's and subagents' transcripts, and closes the run with its reason |
