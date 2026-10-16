@@ -370,11 +370,14 @@ test('the triage chooses among the areas due; paused areas, open requests and pa
   p.runWith({ FAKE_TRIAGE: '{"work": true, "area": "marketing", "task": "Write a post"}' }, 'heartbeat', 'demo');
   run = p.lastRun();
   assert.deepEqual([run.status, run.reason], ['failed', 'triage: the triage chose the area "marketing", which is not due']);
+  // The verdict is kept with its run, the refused one too (D110).
+  assert.deepEqual(JSON.parse(run.triage), { work: true, area: 'marketing', task: 'Write a post', reason: null, milestone: false });
   assert.doesNotMatch(triages().pop(), /### marketing/);
 
   // A triage with no work still records the subscription window its stream carries.
   p.runWith({ FAKE_TRIAGE: '{"work": false, "reason": "nothing ready"}', FAKE_TRIAGE_WINDOW: '0.33' }, 'heartbeat', 'demo');
   assert.equal(p.lastRun().reason, 'no work: nothing ready');
+  assert.equal(JSON.parse(p.lastRun().triage).reason, 'nothing ready');
   const account = JSON.parse(readFileSync(join(p.root, '.config', 'jerome', 'account.json'), 'utf8'));
   assert.deepEqual([account.windows.five_hour.used, account.windows.five_hour.source], [33, 'triage']);
 

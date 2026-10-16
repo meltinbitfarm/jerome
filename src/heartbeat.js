@@ -111,6 +111,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     if (last?.fingerprint === fingerprint && last.verdict === 'no work') return finish('done', `no changes since the last heartbeat${note}`);
 
     const triage = await runTriage(dir, run, env, plan);
+    if (triage.verdict) saveVerdict(dir, run, triage.verdict);
     if (triage.error) return finish('failed', `triage: ${triage.error}${note}`);
     if (!triage.work) {
       writeLast(dir, { fingerprint, verdict: 'no work', at: now.toISOString() });
@@ -184,6 +185,15 @@ function capDetail(once, byAgent) {
   const split = Object.entries(byAgent ?? {}).sort((a, b) => b[1] - a[1]).map(([agent, t]) => `${agent} ${n(t)}`).join(', ');
   const parts = [once ? 'this run' : null, split || null].filter(Boolean);
   return parts.length ? ` (${parts.join('; ')})` : '';
+}
+
+function saveVerdict(dir, run, verdict) {
+  const db = openDb(dir);
+  try {
+    db.prepare('UPDATE runs SET triage = ? WHERE id = ?').run(JSON.stringify(verdict), run.id);
+  } finally {
+    db.close();
+  }
 }
 
 function setRunArea(dir, run, area) {
@@ -397,12 +407,15 @@ async function runTriage(dir, run, env, plan) {
   } catch {
     return { error: 'the triage did not answer with JSON' };
   }
+  // The verdict as given, kept with the run (D110), even when it is refused below.
+  const kept = { work: v.work === true, area: v.area ?? null, task: v.task ?? null, reason: v.reason ?? null, milestone: v.milestone === true };
+  const given = Object.fromEntries(Object.entries(kept).map(([k, x]) => [k, typeof x === 'string' ? x.slice(0, 300) : x]));
   const work = v.work === true && Boolean(v.task);
   // With one area the choice is made; with several, an area that is not due is not taken on trust.
   const area = plan.due.length === 1 ? plan.due[0].name : String(v.area ?? '');
-  if (work && !plan.due.some((a) => a.name === area)) return { error: `the triage chose ${area ? `the area "${area.slice(0, 40)}", which is not due` : 'no area'}` };
+  if (work && !plan.due.some((a) => a.name === area)) return { verdict: given, error: `the triage chose ${area ? `the area "${area.slice(0, 40)}", which is not due` : 'no area'}` };
   const task = String(v.task ?? '').slice(0, 300);
-  return { work, area, task: v.milestone === true ? `${task} (check the milestone's criteria)` : task, reason: String(v.reason ?? '').slice(0, 300) };
+  return { verdict: given, work, area, task: v.milestone === true ? `${task} (check the milestone's criteria)` : task, reason: String(v.reason ?? '').slice(0, 300) };
 }
 
 export function triagePrompt({ plan, open = '', gitLog = '', requests = [], digestLines = [] }) {

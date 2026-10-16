@@ -58,7 +58,7 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
     const agents = new Map();
     for (const r of periods.week) agents.set(r.agent, total([agents.get(r.agent) ?? total([]), totals([r])]));
 
-    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
+    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area, triage FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
     const perRun = db.prepare(`SELECT agent, model, ${TIER_SQL} long_prompt, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model, long_prompt`);
     const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at, area FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
     const areas = areaUsage(dir, db, since.week, requests);
@@ -88,7 +88,7 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
         const usage = perRun.all(r.id);
         const t = totals(usage);
         return {
-          id: r.id, sessionId: r.session_id, kind: r.kind, area: r.area, status: r.status, startedAt: r.started_at, endedAt: r.ended_at,
+          id: r.id, sessionId: r.session_id, kind: r.kind, area: r.area, triage: parseJson(r.triage), status: r.status, startedAt: r.started_at, endedAt: r.ended_at,
           durationMs: r.ended_at ? Date.parse(r.ended_at) - Date.parse(r.started_at) : null, reason: r.reason,
           tokens: t.tokens, calls: t.calls, apiUsd: t.apiUsd, unpriced: t.unpriced, agents: [...new Set(usage.map((u) => u.agent))],
         };
@@ -266,6 +266,14 @@ function when(iso, now, full = false) {
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   if (full) return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
   return startOfLocalDay(d).getTime() === startOfLocalDay(now).getTime() ? time : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${time}`;
+}
+
+function parseJson(text) {
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
 }
 
 // Whether a window has reset since it was read: its reading is then out of date.

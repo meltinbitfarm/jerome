@@ -314,7 +314,7 @@ function renderRuns(d) {
       el('td', {}, el('span', { class: 'muted' }, open ? '▾ ' : '▸ '), when(r.startedAt)),
       el('td', {}, r.kind),
       withAreas ? el('td', { class: r.area ? 'cyan' : 'muted' }, r.area ?? '—') : null,
-      el('td', {}, el('span', { class: r.status }, `${MARKS[r.status] ?? '✗'} ${r.status}`), r.reason && r.status !== 'done' ? el('span', { class: 'muted' }, ` ${r.reason}`) : ''),
+      el('td', { title: r.triage ? `triage: ${r.triage.reason ?? ''}` : null }, el('span', { class: r.status }, `${MARKS[r.status] ?? '✗'} ${r.status}`), r.reason && r.status !== 'done' ? el('span', { class: 'muted' }, ` ${r.reason}`) : ''),
       el('td', { class: 'num' }, duration(r.durationMs)),
       el('td', { class: 'num' }, n(r.tokens)),
       el('td', { class: 'num' }, usd(r)),
@@ -353,6 +353,12 @@ function runDetail(r) {
   if (!x) return el('div', { class: 'muted' }, 'loading…');
   if (x.error) return el('div', { class: 'error' }, `error: ${x.error}`);
   const parts = [];
+  // The triage's verdict (D110): why this run worked on that area, or found nothing to do.
+  if (r.triage) {
+    const t = r.triage;
+    parts.push(el('div', {}, el('span', { class: 'muted' }, 'triage '), t.work ? `${t.area ? `${t.area} · ` : ''}${t.task ?? ''}${t.milestone ? ' · milestone check' : ''}` : 'no work',
+      t.reason ? el('span', { class: 'muted' }, ` — ${t.reason}`) : ''));
+  }
   parts.push(el('div', {}, el('span', { class: 'muted' }, 'usage  '), x.usage.length ? x.usage.map((u) => `${u.agent} (${u.model}) ${u.calls} calls ${n(u.tokens)}`).join(' · ') : 'none recorded'));
   for (const e of x.events) {
     parts.push(el('div', { class: e.kind === 'error' ? 'error' : 'warn' }, `${when(e.at)} ${e.kind === 'blocked' ? `refused chain (D49): ${(e.data?.subcommands ?? []).join(' + ')}` : `hook error: ${e.data?.message ?? ''}`}${e.agent && e.agent !== 'main' ? ` · ${e.agent}` : ''}`));

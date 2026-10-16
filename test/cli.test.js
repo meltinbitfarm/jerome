@@ -1,4 +1,5 @@
 // Tests of `jerome new` and `jerome doctor` with a fake `claude` on the PATH: no calls to the real Claude Code.
+import { LATEST } from '../src/db.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -180,7 +181,7 @@ test('doctor --json: schema, checks, sections, counts and warnings, with a match
   assert.deepEqual(report.checks.map((c) => c.id),
     ['project', 'limits', 'hooks', 'db', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
   assert.match(report.db.path, /\/\.local\/share\/jerome\/projects\/demo-[0-9a-f]{12}\/jerome\.db$/);
-  assert.deepEqual(report.db, { version: 2, latest: 2, applied: [], path: report.db.path, relinked: null });
+  assert.deepEqual(report.db, { version: LATEST, latest: LATEST, applied: [], path: report.db.path, relinked: null });
   assert.ok(report.checks.every((c) => c.ok));
   assert.deepEqual(report.context.sections, {
     'Estimated usage by category': { found: true, rows: 1 },

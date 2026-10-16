@@ -22,7 +22,7 @@ The hooks that write it are described in [hooks.md](hooks.md). The lead agent re
 
 | Table | One row per |
 |---|---|
-| `runs` | session or run: kind (`interactive`, `heartbeat`, `service`), start and end, status (`running`, `done`, `failed`, `blocked`, `stopped`), reason, and the [area](areas.md) a heartbeat worked on |
+| `runs` | session or run: kind (`interactive`, `heartbeat`, `service`), start and end, status (`running`, `done`, `failed`, `blocked`, `stopped`), reason, the [area](areas.md) a heartbeat worked on, and its triage's verdict |
 | `usage` | API call, keyed by `request_id`: agent, model, input, output, cache reads, cache writes (5 minutes and 1 hour), time |
 | `usage_daily` | day, agent and model, summing `usage` rows older than 90 days |
 | `transcript_reads` | transcript, with how far it has been read |

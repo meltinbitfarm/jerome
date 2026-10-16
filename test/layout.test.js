@@ -1,5 +1,6 @@
 // Tests of the .jerome/ layout (D87-D89): what a new project looks like, `jerome init` on an existing project,
 // and the move of a project from the layout before D87.
+import { LATEST } from '../src/db.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -215,7 +216,7 @@ test('a database still in .jerome/ moves out of the working tree with jerome upd
   assert.ok(!existsSync(join(dir, '.jerome', 'jerome.db')));
   assert.deepEqual(readdirSync(dirname(stored)).sort(), ['jerome.db', 'record.json'], 'nothing left from the check of the copy');
   assert.deepEqual(countRows(stored), rows);
-  assert.equal(run('doctor', 'demo', '--check').stdout.match(/Project database — (.*)/)[1], 'schema 2');
+  assert.equal(run('doctor', 'demo', '--check').stdout.match(/Project database — (.*)/)[1], `schema ${LATEST}`);
 });
 
 test('the worktrees of a clone share its database, two clones have one each', () => {
@@ -258,7 +259,7 @@ test('a project that moved is relinked only with a choice, or with --yes when it
   assert.match(run('heartbeat', 'moved').stdout + run('heartbeat', 'moved').stderr, /not started/);
 
   const r = run('doctor', 'moved', '--yes');
-  assert.match(r.stdout, /✓ Project database — relinked from .*\/demo \(schema 2\)/);
+  assert.match(r.stdout, new RegExp(`✓ Project database — relinked from .*/demo \\(schema ${LATEST}\\)`));
   assert.equal(new DatabaseSync(sandboxDb(root, moved), { readOnly: true }).prepare('SELECT count(*) n FROM runs').get().n, 1);
   assert.doesNotMatch(r.stdout, /no longer holds a Jérôme project/);
 });
