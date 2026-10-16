@@ -421,10 +421,22 @@ test('caps given to one heartbeat by hand replace those of the project for that 
   const before = marker();
   p.runWith({ FAKE_LEAD_CALLS: '5', FAKE_LEAD_SLEEP: '0.05' }, 'heartbeat', 'demo', '--max-tokens', '2500');
   assert.equal(p.lastRun().status, 'stopped');
-  assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 2,500 \(this run\)$/);
+  assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 2,500 \(this run; main \dk\)$/);
   p.runWith({ FAKE_LEAD_RESULT: 'error_max_turns' }, 'heartbeat', 'demo', '--max-turns', '7');
   assert.equal(p.lastRun().reason, 'turn cap: 7 turns (this run)');
   assert.match(p.calls().split(/^-p /m).filter((c) => c.includes('--max-turns')).pop(), /--max-turns 7 /);
   assert.equal(marker(), before, 'project.json is not touched');
   assert.equal(p.run('heartbeat', 'demo', '--max-tokens', 'lots').status, 2);
+});
+
+test('the token cap counts the subagents too, from their transcripts, when the stream does not carry them (D109)', () => {
+  const p = project({ FAKE_TRIAGE: '{"work": true, "task": "Read the docs"}', JEROME_METER_MS: '50' });
+  p.runWith({ FAKE_LEAD_CALLS: '20', FAKE_LEAD_SLEEP: '0.2', FAKE_SUB_TOKENS: '50000' }, 'heartbeat', 'demo', '--max-tokens', '120000');
+  const run = p.lastRun();
+  assert.equal(run.status, 'stopped');
+  assert.match(run.reason, /^token cap: [\d,]+ tokens over 120,000 \(this run; researcher 1\d\dk, main \dk\)$/);
+  // Stopped after a few calls, not after the twenty the stream alone would have allowed.
+  const d = p.db();
+  assert.ok(d.prepare("SELECT count(*) n FROM usage WHERE run_id = ? AND agent = 'main'").get(run.id).n < 10);
+  d.close();
 });

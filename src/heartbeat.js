@@ -28,6 +28,8 @@ import { serviceFolder, recordResultUsage } from './docs.js';
 import { DIGEST } from './digest.js';
 import { STATE, isLegacy } from './paths.js';
 import { areaPlan } from './areas.js';
+import { transcriptMeter } from './meter.js';
+import { n } from './state.js';
 
 const INTERACTIVE_HOURS = 12;
 
@@ -123,7 +125,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     writeLast(dir, { fingerprint: projectFingerprint(dir), verdict: 'work', at: new Date().toISOString() });
     const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
     for (const r of opened) notify(env, basename(dir), `Decision request R${r.id}: ${r.question}`);
-    if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${once(maxTokens)}${note}`);
+    if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${capDetail(maxTokens !== null, lead.byAgent)}${note}`);
     if (lead.subtype === 'error_max_turns') return finish('stopped', `turn cap: ${caps.maxTurns} turns${once(maxTurns)}${note}`);
     if (lead.error) return finish('failed', `${lead.error}${note}`);
     return finish('done', `${plan.implicit ? '' : `${area.name}: `}${triage.task}${note}`);
@@ -144,6 +146,13 @@ function startRun(dir, now) {
   } finally {
     db.close();
   }
+}
+
+// " (this run; main 58k, developer 110k)": whether the cap was given for this run, and who used the tokens.
+function capDetail(once, byAgent) {
+  const split = Object.entries(byAgent ?? {}).sort((a, b) => b[1] - a[1]).map(([agent, t]) => `${agent} ${n(t)}`).join(', ');
+  const parts = [once ? 'this run' : null, split || null].filter(Boolean);
+  return parts.length ? ` (${parts.join('; ')})` : '';
 }
 
 function setRunArea(dir, run, area) {
@@ -403,7 +412,10 @@ Task chosen by the triage: ${task}${where}
 }
 
 // The lead agent in a new session (never resumed: long sessions are where its usage grows), with the turn cap
-// passed to Claude Code and the token cap enforced here, from the usage in the stream.
+// passed to Claude Code and the token cap enforced here (D109): from the usage in the stream and, every few seconds,
+// from the session's transcripts, subagents included; the larger count decides.
+const METER_MS = Number(process.env.JEROME_METER_MS) || 3000;
+
 function runLead(dir, run, task, caps, model, env, area) {
   return new Promise((done) => {
     const child = spawn('claude', ['-p', leadPrompt(task, area), '--model', model, '--max-turns', String(caps.maxTurns),
@@ -412,7 +424,22 @@ function runLead(dir, run, task, caps, model, env, area) {
       env: { ...env, JEROME_RUN_KIND: 'heartbeat', JEROME_SESSION_ID: run.sessionId },
     });
     const usage = new Map();
-    const state = { tokens: 0, capped: false, subtype: null, error: null };
+    const state = { tokens: 0, byAgent: {}, capped: false, subtype: null, error: null };
+    const meter = transcriptMeter(run.sessionId);
+    let streamed = 0;
+    let measured = { total: 0, byAgent: {} };
+    const check = () => {
+      state.tokens = Math.max(streamed, measured.total);
+      state.byAgent = measured.total >= streamed ? measured.byAgent : { main: streamed };
+      if (state.tokens > caps.maxTokens && !state.capped) {
+        state.capped = true;
+        child.kill('SIGTERM');
+      }
+    };
+    const timer = setInterval(() => {
+      measured = meter.read();
+      check();
+    }, METER_MS);
     const progress = startProgress(`lead agent: ${task}`);
     let stderr = '';
     child.stderr.on('data', (c) => { stderr = (stderr + c).slice(-2000); });
@@ -429,11 +456,8 @@ function runLead(dir, run, task, caps, model, env, area) {
         const tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
         const key = e.message.id ?? `${usage.size}`;
         usage.set(key, Math.max(usage.get(key) ?? 0, tokens));
-        state.tokens = [...usage.values()].reduce((a, b) => a + b, 0);
-        if (state.tokens > caps.maxTokens && !state.capped) {
-          state.capped = true;
-          child.kill('SIGTERM');
-        }
+        streamed = [...usage.values()].reduce((a, b) => a + b, 0);
+        check();
       } else if (e.type === 'rate_limit_event') {
         recordRateLimit(e.rate_limit_info, 'heartbeat');
       } else if (e.type === 'result') {
@@ -442,11 +466,13 @@ function runLead(dir, run, task, caps, model, env, area) {
       }
     });
     child.on('error', (err) => {
+      clearInterval(timer);
       progress.stop();
       state.error = err.message;
       done(state);
     });
     child.on('close', (code) => {
+      clearInterval(timer);
       progress.stop();
       if (!state.capped && !state.subtype && code !== 0) state.error = `claude exited with code ${code}: ${stderr.trim().split('\n').pop() ?? ''}`;
       done(state);

@@ -7,7 +7,7 @@ One scheduled run, as launchd starts it: lock, checks, global limits, the zero-t
 | `--max-tokens <n>` | token cap for this run only, in place of the project's |
 | `--max-turns <n>` | turn cap for this run only, in place of the project's |
 
-They change neither `.jerome/project.json` nor the launchd job: a run stopped on one of them says so, as in `token cap: 61,204 tokens over 50,000 (this run)`. Use them to try an area at a small cost, or to see the caps stop a real run.
+They change neither `.jerome/project.json` nor the launchd job: a run stopped on one of them says so, as in `token cap: 61,204 tokens over 50,000 (this run; main 21k, developer 40k)`. Use them to try an area at a small cost, or to see the caps stop a real run.
 
 It prints one line, which launchd appends to the job's log:
 

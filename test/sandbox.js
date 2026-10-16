@@ -43,6 +43,12 @@ case "$1" in
         u="{\\"input_tokens\\":10,\\"output_tokens\\":90,\\"cache_read_input_tokens\\":$(( \${FAKE_LEAD_TOKENS:-1000} - 100 )),\\"cache_creation_input_tokens\\":0}"
         echo "{\\"type\\":\\"assistant\\",\\"message\\":{\\"id\\":\\"m$i\\",\\"usage\\":$u}}"
         echo "{\\"type\\":\\"assistant\\",\\"requestId\\":\\"req-$sid-$i\\",\\"timestamp\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"message\\":{\\"model\\":\\"claude-opus-5-5\\",\\"usage\\":$u}}" >> "$t"
+        # FAKE_SUB_TOKENS: a researcher subagent works alongside, in its own transcript only, never in the stream.
+        if [ -n "$FAKE_SUB_TOKENS" ]; then
+          sd="$(dirname "$t")/$sid/subagents"; mkdir -p "$sd"
+          echo '{"agentType":"researcher","requestShape":"foreground"}' > "$sd/agent-s1.meta.json"
+          echo "{\\"type\\":\\"assistant\\",\\"requestId\\":\\"sub-$sid-$i\\",\\"timestamp\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"message\\":{\\"model\\":\\"claude-sonnet-5-5\\",\\"usage\\":{\\"input_tokens\\":0,\\"output_tokens\\":0,\\"cache_read_input_tokens\\":$FAKE_SUB_TOKENS}}}" >> "$sd/agent-s1.jsonl"
+        fi
         [ -n "$FAKE_LEAD_SLEEP" ] && sleep "$FAKE_LEAD_SLEEP"
         i=$((i + 1))
       done
