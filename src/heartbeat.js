@@ -120,14 +120,18 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     setRunArea(dir, run, area.name);
 
     const before = openRequests(dir);
+    const startBranch = currentBranch(dir);
     const lead = await runLead(dir, run, triage.task, caps, settings.model ?? 'opus', env, plan.implicit ? null : area);
     closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
     writeLast(dir, { fingerprint: projectFingerprint(dir), verdict: 'work', at: new Date().toISOString() });
     const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
     for (const r of opened) notify(env, basename(dir), `Decision request R${r.id}: ${r.question}`);
-    if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${capDetail(maxTokens !== null, lead.byAgent)}${note}`);
-    if (lead.subtype === 'error_max_turns') return finish('stopped', `turn cap: ${caps.maxTurns} turns${once(maxTurns)}${note}`);
-    if (lead.error) return finish('failed', `${lead.error}${note}`);
+    // A lead agent stopped halfway may leave the tree on its branch (D112): tidied here, or handed to the user.
+    const stopped = lead.capped || lead.subtype === 'error_max_turns' || lead.error;
+    const tidy = stopped ? tidyTree(dir, startBranch) : { text: '', request: null };
+    if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${capDetail(maxTokens !== null, lead.byAgent)}${tidy.text}${note}`, tidy.request);
+    if (lead.subtype === 'error_max_turns') return finish('stopped', `turn cap: ${caps.maxTurns} turns${once(maxTurns)}${tidy.text}${note}`, tidy.request);
+    if (lead.error) return finish('failed', `${lead.error}${tidy.text}${note}`, tidy.request);
     return finish('done', `${plan.implicit ? '' : `${area.name}: `}${triage.task}${note}`);
   } finally {
     releaseLock(lock);
@@ -146,6 +150,33 @@ function startRun(dir, now) {
   } finally {
     db.close();
   }
+}
+
+function currentBranch(dir) {
+  const r = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir, encoding: 'utf8' });
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+// After a stopped run (D112): with a clean tree, back to the branch the run started from, naming the branch left
+// and deleting it only when it holds no commits of its own; with changes, nothing is touched and the user decides.
+function tidyTree(dir, start) {
+  const git = (...args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+  const branch = currentBranch(dir);
+  const dirty = uncommitted(dir);
+  if (dirty?.length || git('status', '--porcelain').stdout.split('\n').some((l) => l.startsWith('??') && !l.includes(DIGEST))) {
+    return {
+      text: `; uncommitted changes left on ${branch}`,
+      request: { question: `A heartbeat stopped halfway on branch ${branch} and left uncommitted changes in ${dir}: keep them (commit on the branch) or discard them? Heartbeats skip until the tree is clean.`, recommendation: 'Look at the changes in a session: commit them on the branch if they are worth keeping.' },
+    };
+  }
+  if (!start || !branch || branch === start) return { text: '', request: null };
+  const ahead = Number(git('rev-list', '--count', `${start}..${branch}`).stdout.trim()) || 0;
+  if (git('switch', '-q', start).status !== 0) return { text: `; left on branch ${branch}`, request: null };
+  if (!ahead) {
+    git('branch', '-q', '-D', branch);
+    return { text: `; branch ${branch} left, no commits: removed, back on ${start}`, request: null };
+  }
+  return { text: `; branch ${branch} left, ${ahead} ${ahead === 1 ? 'commit' : 'commits'}: kept, back on ${start}`, request: null };
 }
 
 // " (this run; main 58k, developer 110k)": whether the cap was given for this run, and who used the tokens.

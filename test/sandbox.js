@@ -39,6 +39,10 @@ case "$1" in
     case " $* " in *" --max-turns "*)
       sid=""; prev=""; for a in "$@"; do [ "$prev" = "--session-id" ] && sid="$a"; prev="$a"; done
       t="$CLAUDE_CONFIG_DIR/projects/-fake/$sid.jsonl"; mkdir -p "$(dirname "$t")"
+      # FAKE_LEAD_BRANCH: it works on a branch, with a commit (FAKE_LEAD_COMMIT) or uncommitted changes (FAKE_LEAD_DIRTY).
+      [ -n "$FAKE_LEAD_BRANCH" ] && git switch -q -c "$FAKE_LEAD_BRANCH"
+      [ -n "$FAKE_LEAD_COMMIT" ] && echo x > fake.txt && git add fake.txt && git -c user.email=t@example.com -c user.name=t commit -q -m wip
+      [ -n "$FAKE_LEAD_DIRTY" ] && echo y > dirty.txt
       i=1; while [ "$i" -le "\${FAKE_LEAD_CALLS:-2}" ]; do
         u="{\\"input_tokens\\":10,\\"output_tokens\\":90,\\"cache_read_input_tokens\\":$(( \${FAKE_LEAD_TOKENS:-1000} - 100 )),\\"cache_creation_input_tokens\\":0}"
         echo "{\\"type\\":\\"assistant\\",\\"message\\":{\\"id\\":\\"m$i\\",\\"usage\\":$u}}"

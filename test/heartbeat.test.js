@@ -440,3 +440,19 @@ test('the token cap counts the subagents too, from their transcripts, when the s
   assert.ok(d.prepare("SELECT count(*) n FROM usage WHERE run_id = ? AND agent = 'main'").get(run.id).n < 10);
   d.close();
 });
+
+test('a stopped run goes back to the branch it started from, and leaves uncommitted changes to the user (D112)', () => {
+  const p = project({ FAKE_TRIAGE: '{"work": true, "task": "Half a task"}', FAKE_LEAD_RESULT: 'error_max_turns' });
+  const branch = () => execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: p.dir, encoding: 'utf8' }).trim();
+  const start = branch();
+  p.runWith({ FAKE_LEAD_BRANCH: 'task/empty' }, 'heartbeat', 'demo');
+  assert.equal(p.lastRun().reason, `turn cap: 40 turns; branch task/empty left, no commits: removed, back on ${start}`);
+  assert.equal(branch(), start);
+  p.runWith({ FAKE_LEAD_BRANCH: 'task/some', FAKE_LEAD_COMMIT: '1' }, 'heartbeat', 'demo');
+  assert.equal(p.lastRun().reason, `turn cap: 40 turns; branch task/some left, 1 commit: kept, back on ${start}`);
+  assert.equal(branch(), start);
+  p.runWith({ FAKE_LEAD_BRANCH: 'task/dirty', FAKE_LEAD_DIRTY: '1' }, 'heartbeat', 'demo');
+  assert.equal(p.lastRun().reason, 'turn cap: 40 turns; uncommitted changes left on task/dirty');
+  assert.equal(branch(), 'task/dirty');
+  assert.match(p.requests().pop().question, /stopped halfway on branch task\/dirty and left uncommitted changes/);
+});
