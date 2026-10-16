@@ -218,7 +218,7 @@ areas   development beta 7d 5.1M ≈$4.20 API · marketing pre-launch 7d 900k �
 - **Limits.** Heartbeats pause, at zero tokens, when a subscription window reaches its global limit, or the project's spend today or this week reaches its own; they start again by themselves when the window resets. Your sessions are never blocked: you are warned. See [limits.md](limits.md).
 - **Pausing an area.** Set its `Pace` to `paused` (ask the lead agent): heartbeats leave it alone until you change it back.
 - **Updates.** `jerome update` brings the template's files, such as the lead agent's instructions and the skills, to the installed version, without touching the project's state or agents.
-- **All your projects.** `jerome projects`, from any folder, lists every project on the machine with what needs you first: open requests, a heartbeat that failed, stopped or is blocked until you act, a limit close to being reached, a scheduled heartbeat that has not run. `jerome projects --view` shows it in the browser, and opens each project's viewer. See [`jerome projects`](commands/projects.md).
+- **All your projects.** `jerome projects`, from any folder, lists every project on the machine with what needs you first: open requests, a heartbeat that failed, stopped at its cap or is blocked until you act, a scheduled heartbeat that has not run. `jerome projects --view` shows it in the browser, and opens each project's viewer. See [`jerome projects`](commands/projects.md).
 - **Checks.** `jerome doctor` checks the setup and restores the lean profile; it also reports what is wrong in `areas.md`.
 - **Settings.** Every value above, and the models of the agents and of the lead agent, with where it lives and how to change it: [configuration.md](configuration.md).
 

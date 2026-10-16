@@ -8,15 +8,14 @@ import { basename, join } from 'node:path';
 import { stores, describeStore, storeSummary } from './store.js';
 import { readState, n, dollars } from './state.js';
 import { readAccount } from './account.js';
-import { globalLimits, money, limitText } from './budget.js';
+import { globalLimits } from './budget.js';
 import { readMarker } from './template.js';
 import { describe, jobLabel, launchAgentsDir } from './schedule.js';
-import { needsYou } from './heartbeat.js';
+import { needsYou, oneRunCap } from './heartbeat.js';
 
 export const PROJECTS_SCHEMA = 'jerome.projects/v1';
 const INTERVAL_MS = { hourly: 3_600_000, daily: 86_400_000, weekly: 7 * 86_400_000 };
-const ATTENTION_LEVELS = new Set(['warn', 'high', 'over']);
-const LIMIT_NAMES = { daily: 'today', weekly: 'this week' };
+const NEAR_LEVELS = new Set(['warn', 'high', 'over']);
 export const ORPHAN_HINT = 'If the project moved, run `jerome doctor` in its new folder to relink it; if it is gone, `jerome forget <key>` removes the database after a backup.';
 
 export function readProjects({ now = new Date(), account = safeAccount() } = {}) {
@@ -88,10 +87,8 @@ function attention(row, dir, now) {
   const reasons = [];
   if (row.requests.length) reasons.push(`${row.requests.length} open decision ${row.requests.length === 1 ? 'request' : 'requests'}: ${row.requests.map((r) => `R${r.id}`).join(', ')}`);
   const h = row.lastHeartbeat;
-  if (h && (h.status === 'failed' || h.status === 'stopped' || (h.status === 'blocked' && needsYou(h.reason)))) reasons.push(`heartbeat ${h.status}: ${h.reason}`);
-  for (const [name, w] of Object.entries(row.projectLimits ?? {})) {
-    if (ATTENTION_LEVELS.has(w.level)) reasons.push(`project limit ${LIMIT_NAMES[name]}: ${money(w.usd)} of ${limitText(w.limit)} API`);
-  }
+  // A limit is not a reason: it shows with the limits, and reaching it pauses heartbeats by itself.
+  if (h && (h.status === 'failed' || (h.status === 'stopped' && !oneRunCap(h.reason)) || (h.status === 'blocked' && needsYou(h.reason)))) reasons.push(`heartbeat ${h.status}: ${h.reason}`);
   const late = lateHeartbeat(row, dir, now);
   if (late) reasons.push(late);
   return reasons;
@@ -140,7 +137,7 @@ export function formatProjects(p) {
   const lines = [`jerome projects · ${count} ${count === 1 ? 'project' : 'projects'}${needing ? `, ${needing} ${needing === 1 ? 'needs' : 'need'} you` : ''}`];
   const windows = Object.entries(p.windows);
   if (windows.length) {
-    lines.push(`account ${windows.map(([name, w]) => `${name === 'five_hour' ? '5h' : '7d'} ${w.stale ? 'no reading since its reset' : `${w.used}%${w.limit !== null ? `/${w.limit}%` : ''}${ATTENTION_LEVELS.has(w.level) ? ` (${w.level})` : ''}`}`).join(' · ')}`);
+    lines.push(`account ${windows.map(([name, w]) => `${name === 'five_hour' ? '5h' : '7d'} ${w.stale ? 'no reading since its reset' : `${w.used}%${w.limit !== null ? `/${w.limit}%` : ''}${NEAR_LEVELS.has(w.level) ? ` (${w.level})` : ''}`}`).join(' · ')}`);
   } else lines.push('account no reading of the subscription windows yet');
   if (!count && !p.orphans.length) {
     lines.push('', 'No project on this machine yet: `jerome new <name>` creates one, `jerome init` brings Jérôme into an existing one.');

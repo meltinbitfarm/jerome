@@ -5,7 +5,7 @@ Shows every Jérôme project on this machine, from any folder, with the ones tha
 ```
 $ jerome projects
 jerome projects · 3 projects, 1 needs you
-account 5h 34%/70% · 7d 81%/75% (warn)
+account 5h 34%/70% · 7d 61%/75%
 
 ! listo  ~/Projects/listo
     1 open decision request: R4
@@ -27,11 +27,12 @@ account 5h 34%/70% · 7d 81%/75% (warn)
 A project comes first, with its reasons, when:
 
 - it has **open decision requests**;
-- its last heartbeat **failed**, or was **stopped** by its token or turn cap;
+- its last heartbeat **failed**, or was **stopped** by the project's token or turn cap. A cap given for that run only (`jerome heartbeat --max-tokens`, `this run` in the reason) is a trial of yours, and is not listed;
 - its last heartbeat was **blocked** by something only you can clear: uncommitted changes, a folder not trusted in Claude Code, a provisional `PROJECT.md`, `jerome doctor` failing, or no commit yet. A lock, an open session or a pause for a limit clear by themselves and are not listed here; a pause shows in the limits;
-- its spend today or this week is at **75% or more of its limit** (the `warn` level, as in the viewer and the status line);
 - its database **cannot be read**, or needs `jerome doctor` for its schema;
 - it has a heartbeat scheduled but **none ran in twice its interval**: `no heartbeat for 3 days (scheduled every day at 09:00)`. With no heartbeat at all, the time since the launchd job was written counts.
+
+A limit near or reached is not listed either: it shows with the limits, in `jerome state` and in each project's viewer, and once reached it pauses heartbeats by itself.
 
 The other projects follow, the most recently active first. The subscription windows belong to the account, not to a project: they are shown once, at the top.
 

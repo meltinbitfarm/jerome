@@ -274,6 +274,8 @@ function releaseLock(path) {
 // these projects first (D114). A lock, an open session and a limit pause clear by themselves.
 const NEEDS_YOU = [/^the folder is not trusted/, /^PROJECT\.md is provisional/, /^not a git repository/, /^uncommitted changes/, /^jerome doctor failed/];
 export const needsYou = (reason) => NEEDS_YOU.some((r) => r.test(String(reason ?? '')));
+// A stop by a cap given for that run only (D108): a manual trial, not something to call the user for.
+export const oneRunCap = (reason) => /^(token|turn) cap: .*\(this run[;)]/.test(String(reason ?? ''));
 
 // The checks that cost nothing, in order. Each failure has a reason and, when the user must act, a decision request.
 async function checks(dir, now) {

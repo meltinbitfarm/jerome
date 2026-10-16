@@ -25,7 +25,7 @@ const ago = (ms) => new Date(Date.now() - ms).toISOString();
 let viewer;
 
 // A project with a database: its marker, then its runs as [status, reason, startedAt] heartbeats.
-function project(name, { marker = {}, heartbeats = [], request = null } = {}) {
+function project(name, { marker = {}, heartbeats = [], request = null, tokens = 0 } = {}) {
   const dir = join(root, name);
   mkdirSync(join(dir, '.jerome'), { recursive: true });
   writeFileSync(join(dir, '.jerome', 'project.json'), JSON.stringify({ schema: 'jerome.project/v1', ...marker }));
@@ -33,6 +33,7 @@ function project(name, { marker = {}, heartbeats = [], request = null } = {}) {
   for (const [status, reason, at] of heartbeats) {
     db.prepare("INSERT INTO runs (kind, started_at, ended_at, status, reason) VALUES ('heartbeat', ?, ?, ?, ?)").run(at, at, status, reason);
   }
+  if (tokens) db.prepare("INSERT INTO usage (request_id, agent, model, input, output, cache_read, at) VALUES ('u1', 'main', 'claude-opus-5-5', ?, 0, 0, ?)").run(tokens, ago(60_000));
   if (request) db.prepare('INSERT INTO requests (opened_at, question) VALUES (?, ?)').run(ago(HOUR), request);
   db.close();
   return dir;
@@ -46,6 +47,9 @@ before(async () => {
   project('waiting', { request: 'merge task/x: tests fail', heartbeats: [['blocked', 'locked: another heartbeat of this project is running', ago(HOUR)]] });
   project('dirty', { heartbeats: [['blocked', 'uncommitted changes (a.txt)', ago(HOUR)]] });
   project('capped', { heartbeats: [['stopped', 'token cap: 600,000 tokens over 500,000', ago(HOUR)]] });
+  // A cap given for one run is a manual trial; a limit shows with the limits, and pauses heartbeats by itself.
+  project('trial', { heartbeats: [['stopped', 'token cap: 168,021 tokens over 150,000 (this run; main 58k, developer 114k)', ago(4 * HOUR)]] });
+  project('spent', { tokens: 1_000_000 });
   project('late', { marker: { heartbeat: { every: 'daily', hour: 9, minute: 0 } }, heartbeats: [['done', 'main: a task', ago(74 * HOUR)]] });
   // Scheduled long ago and never run: the job file's age stands for when.
   const never = project('never', { marker: { heartbeat: { every: 'hourly', minute: 15 } } });
@@ -65,7 +69,7 @@ before(async () => {
 
 after(() => viewer?.server.close());
 
-test('the projects that need the user come first, each with its reasons; a lock or a pause is not one', () => {
+test('the projects that need the user come first, each with its reasons; a lock, a pause, a limit or a one-run cap is not one', () => {
   const p = readProjects();
   assert.equal(p.schema, 'jerome.projects/v1');
   const reasons = Object.fromEntries(p.projects.map((x) => [x.name, x.attention]));
@@ -75,16 +79,19 @@ test('the projects that need the user come first, each with its reasons; a lock 
   assert.deepEqual(reasons.waiting, ['1 open decision request: R1']);
   assert.deepEqual(reasons.dirty, ['heartbeat blocked: uncommitted changes (a.txt)']);
   assert.deepEqual(reasons.capped, ['heartbeat stopped: token cap: 600,000 tokens over 500,000']);
+  assert.deepEqual(reasons.trial, []);
+  assert.deepEqual(reasons.spent, []);
+  assert.notEqual(p.projects.find((x) => x.name === 'spent').projectLimits.daily.level, 'ok', 'the limit is reached, and only shown');
   assert.deepEqual(reasons.late, ['no heartbeat for 3 days (scheduled every day at 09:00)']);
   assert.deepEqual(reasons.never, ['no heartbeat in the 5 hours since it was scheduled (every hour at :15)']);
   assert.match(reasons.old[0], /schema 1 of \d+: run `jerome doctor`/);
   const order = p.projects.map((x) => x.name);
-  const firstCalm = Math.min(...['calm', 'locked', 'paused'].map((name) => order.indexOf(name)));
+  const firstCalm = Math.min(...['calm', 'locked', 'paused', 'trial', 'spent'].map((name) => order.indexOf(name)));
   for (const name of ['waiting', 'dirty', 'capped', 'late', 'never', 'old']) assert.ok(order.indexOf(name) < firstCalm, `${name} comes before the projects that need nothing`);
   // Among the rest, the latest activity first.
-  assert.deepEqual(order.slice(firstCalm), ['calm', 'locked', 'paused']);
+  assert.deepEqual(order.slice(firstCalm), ['calm', 'locked', 'paused', 'trial', 'spent']);
   assert.deepEqual(p.orphans.map((o) => o.key.replace(/-\w+$/, '')), ['gone']);
-  assert.equal(stores().length, 10, 'nothing is removed');
+  assert.equal(stores().length, 12, 'nothing is removed');
 });
 
 test('a row carries the last heartbeat, the requests and the 7-day usage', () => {
@@ -97,7 +104,7 @@ test('a row carries the last heartbeat, the requests and the 7-day usage', () =>
 
 test('the text shows the reasons, a table and the databases without a project', () => {
   const text = formatProjects(readProjects());
-  assert.match(text, /^jerome projects · 9 projects, 6 need you/);
+  assert.match(text, /^jerome projects · 11 projects, 6 need you/);
   assert.match(text, /! dirty {2}\S+\/dirty\n {4}heartbeat blocked: uncommitted changes \(a\.txt\)/);
   assert.match(text, /PROJECT +AREAS +REQ +LAST HEARTBEAT +7 DAYS +FOLDER/);
   assert.match(text, / {2}calm +— +0 +1 hour ago done/);
@@ -125,7 +132,7 @@ test('--view serves the overview and each project\'s viewer under /p/<key>/, by 
   assert.match(page.body, /<style>[\s\S]*prefers-color-scheme: dark/, 'the stylesheet is put inline');
   assert.doesNotMatch(page.body, /innerHTML|insertAdjacentHTML|outerHTML/);
   const data = JSON.parse((await get('/api/projects')).body);
-  assert.equal(data.projects.length, 9);
+  assert.equal(data.projects.length, 11);
   const calm = data.projects.find((x) => x.name === 'calm');
   const redirect = await get(`/p/${calm.key}`);
   assert.equal(redirect.status, 302);
@@ -151,5 +158,5 @@ test('state and view outside a project point to jerome projects; projects takes 
   assert.equal(run('projects', '--port', '8000').status, 2);
   const json = run('projects', '--json');
   assert.equal(json.status, 0);
-  assert.equal(JSON.parse(json.stdout).projects.length, 9);
+  assert.equal(JSON.parse(json.stdout).projects.length, 11);
 });
