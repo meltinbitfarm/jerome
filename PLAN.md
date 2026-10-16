@@ -256,16 +256,20 @@ A project is a product or an initiative, not a codebase (D94): its fronts of wor
 **Done when:** the tests pass; a project with two areas runs heartbeats in both by priority and pace, opens a milestone request and records its answer; existing projects without `areas.md` work as before; `docs/guide.md` explains the use from the idea to the next milestone, with the example of a web app that opens a marketing area after its MVP, and the README links it from "How it works".
 **Questions to settle first:** none. Parked: limits per area (P4), the area briefing from claude.ai (P5).
 **Status: in place and tested (2026-10-16), to try on a real project.** `.jerome/areas.md` read at zero tokens (src/areas.js), migration 002 (`runs.area`, `requests.area`), the triage among the areas due with its choice checked (D100), usage per area (D101) in `jerome state` and the viewer (D102), brief/v3 with the import of its areas and one area `main` from brief/v2 and v1 (D98), the area briefing in project-brief (D97), project-team area by area (D104), `jerome.md` at 679 tokens of 680 measured with /context (D103), doctor's `areas` warnings; with them, reset windows are no longer shown as current and the triage records the windows of its stream (D105). 134 tests with `npm test`, among them three areas with paces, a pause and a request that holds its area. The new triage prompt answered with a valid area on real Haiku (about 4,500 tokens). `docs/guide.md` and `docs/areas.md` written, the README has "How it works".
-- Still to do for real: two areas on a real project, with heartbeats in both, a milestone request and its answer recorded.
+- Tried for real on claude-watch (2026-10-16), with two areas: development (v1, daily, priority 1) and research (baseline, weekly, priority 2, its researcher reading the Claude Code docs). The first heartbeat's triage found no task in development and chose research; the researcher wrote the baseline and a report, and the lead agent opened R3 for a page it could not read, tied to research. The second heartbeat left research out, waiting for R3, and worked on development. R3 was answered in a session, the baseline was closed and the routine milestone opened (claude-watch D35-D37): research now follows its pages with `Trigger: watch` (D111), the first check due from 2026-10-23. A milestone request opened by a heartbeat itself has not happened yet.
+- Found along the way and fixed: the token cap did not count the subagents (D109), a stopped run left the tree on its branch (D112), the triage's verdict was not kept (D110), a heartbeat cannot write `.claude/` (agents and permission rules are a session's job), `jerome deps` was not allowed by default (D107), a new schedule dropped the heartbeats' model (D106), caps for one run by hand (D108), and the lean profile turned off plugins a project enables itself (D113).
 - First useful result of claude-watch's research area (2026-10-16): the hooks page lists SessionStart sources `clear` and `fork` besides those Jérôme declared; checked in `src/hooks.js`, both already open a run of their own and get the open requests, and a fork's copied calls are counted once, now covered by a test and declared in `jerome deps`.
 
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
 - installing from GitHub and running `jerome new` on a clean machine (a new macOS user or a virtual machine), without the plugins, skills or connectors of Fabio's account;
-- README and docs/ aligned with all closed phases (D24);
-- no personal data in the versioned files or in the git history.
-- a real heartbeat stopped by its caps, for example with a low `--max-tokens` on claude-watch, and a merge refused for failing tests (phase 8 covers them with tests only).
+- README and docs/ aligned with all closed phases (D24), to check again before the release;
+- no personal data in the versioned files or in the git history;
+- a real heartbeat stopped by its turn cap (`jerome heartbeat --max-turns`, D108);
+- a real merge refused because the tests fail (phase 8 covers it with tests only).
+
+Done: the token cap, for real on claude-watch on 2026-10-16: a heartbeat run with `--max-tokens 150000` stopped at 168,021 tokens, counting the developer subagent's 114,000 beside the lead agent's 58,000; it left the tree on its branch, which led to D112. Before that, a run of 529,000 tokens had gone past its 500,000 cap because the stream had not carried the researcher's usage, which led to D109.
 
 ## Open questions by phase
 
