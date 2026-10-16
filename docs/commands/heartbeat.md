@@ -1,6 +1,13 @@
-# `jerome heartbeat [dir]`
+# `jerome heartbeat [dir] [--max-tokens <n>] [--max-turns <n>]`
 
 One scheduled run, as launchd starts it: lock, checks, global limits, the zero-token check, the triage, and only then the lead agent within its caps. See [heartbeat.md](../heartbeat.md) for every step. You can run it by hand to try a project's heartbeat.
+
+| Option | Effect |
+|---|---|
+| `--max-tokens <n>` | token cap for this run only, in place of the project's |
+| `--max-turns <n>` | turn cap for this run only, in place of the project's |
+
+They change neither `.jerome/project.json` nor the launchd job: a run stopped on one of them says so, as in `token cap: 61,204 tokens over 50,000 (this run)`. Use them to try an area at a small cost, or to see the caps stop a real run.
 
 It prints one line, which launchd appends to the job's log:
 

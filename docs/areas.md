@@ -55,7 +55,7 @@ D12: development: MVP done → beta — sign-up and shared lists work, deployed 
 
 ## The area briefing
 
-The `project-brief` skill has a second mode, for an existing project: to add an area, or to open an area's next milestone with new criteria when they need a conversation. Ask the lead agent, for example "let's add a marketing area" or "let's plan the beta". It asks only what the project files do not say (goal, milestone, criteria, folder, pace, priority, any limit of the area's own), lists its proposals for you to confirm, then updates `areas.md` and `scope.md`, records the decisions, and proposes the agents the area needs with the `project-team` skill. Nothing is created before you confirm. The area briefing runs in Claude Code only.
+The `project-brief` skill has a second mode, for an existing project: to add an area, or to open an area's next milestone with new criteria when they need a conversation. Ask the lead agent, for example "let's add a marketing area" or "let's plan the beta". It asks only what the project files do not say (goal, milestone, criteria, folder, pace, priority, any limit of the area's own), lists its proposals for you to confirm, then updates `areas.md` and `scope.md`, records the decisions, and proposes the agents the area needs with the `project-team` skill. Nothing is created before you confirm. The area briefing runs in Claude Code only, in a session: Claude Code protects the `.claude/` folder, so new agents and permission rules are written there with your approval, and a heartbeat cannot write them at all.
 
 ## Heartbeats
 

@@ -52,6 +52,8 @@ const USAGE = `Usage:
     --off                 remove the project's schedule
     --list                list the scheduled projects
   jerome heartbeat [dir]  one scheduled run, as launchd starts it
+    --max-tokens <n>, --max-turns <n>
+                          caps for this run only, in place of the project's
   jerome request open --question <q> [--options <o>] [--recommendation <r>] [--area <name>]
   jerome request answer <id> <answer> | drop <id>
                           open or close a decision request
@@ -100,7 +102,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation', 'area'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns'], request: ['question', 'options', 'recommendation', 'area'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
 
 export async function main(argv) {
   let parsed;
@@ -160,9 +162,19 @@ export async function main(argv) {
       if (!v.off && !every) return usageError(`jerome schedule needs how often: ${EVERY.join(', ')}.`);
       return schedule(dirs[0] ?? '.', { every, at: v.at, day: v.day, maxTokens: v['max-tokens'], maxTurns: v['max-turns'], model: v.model, off: v.off });
     }
-    case 'heartbeat':
+    case 'heartbeat': {
       if (rest.length > 1) return usageError('jerome heartbeat takes at most one folder.');
-      return heartbeat(rest[0] ?? '.');
+      const cap = (name) => {
+        const raw = parsed.values[name];
+        if (raw === undefined) return null;
+        const value = Number(raw);
+        return Number.isInteger(value) && value > 0 ? value : NaN;
+      };
+      const maxTokens = cap('max-tokens');
+      const maxTurns = cap('max-turns');
+      if (Number.isNaN(maxTokens) || Number.isNaN(maxTurns)) return usageError('--max-tokens and --max-turns take positive whole numbers.');
+      return heartbeat(rest[0] ?? '.', { maxTokens, maxTurns });
+    }
     case 'request': {
       const [action, ...args] = rest;
       if (!['open', 'answer', 'drop'].includes(action)) return usageError('jerome request takes open, answer or drop.');

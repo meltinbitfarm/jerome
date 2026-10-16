@@ -35,7 +35,7 @@ function cacheDir(...parts) {
   return join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'jerome', ...parts);
 }
 
-export async function heartbeat(dirArg, { env = process.env, now = new Date() } = {}) {
+export async function heartbeat(dirArg, { env = process.env, now = new Date(), maxTokens = null, maxTurns = null } = {}) {
   const dir = resolve(dirArg);
   const log = (line) => console.log(`${new Date().toISOString()} ${basename(dir)} ${line}`);
   if (isLegacy(dir) && !existsSync(join(dir, MARKER))) {
@@ -55,7 +55,9 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date() } 
     return 1;
   }
   const settings = readMarker(dir).heartbeat ?? {};
-  const caps = { maxTokens: settings.maxTokens ?? DEFAULT_CAPS.maxTokens, maxTurns: settings.maxTurns ?? DEFAULT_CAPS.maxTurns };
+  // Caps given for this run only (D108) take the place of the project's, which stay as they are.
+  const caps = { maxTokens: maxTokens ?? settings.maxTokens ?? DEFAULT_CAPS.maxTokens, maxTurns: maxTurns ?? settings.maxTurns ?? DEFAULT_CAPS.maxTurns };
+  const once = (given) => (given !== null ? ' (this run)' : '');
   const run = startRun(dir, now);
   const finish = (status, reason, request) => {
     const opened = endRun(dir, run, status, reason, request);
@@ -121,8 +123,8 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date() } 
     writeLast(dir, { fingerprint: projectFingerprint(dir), verdict: 'work', at: new Date().toISOString() });
     const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
     for (const r of opened) notify(env, basename(dir), `Decision request R${r.id}: ${r.question}`);
-    if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${note}`);
-    if (lead.subtype === 'error_max_turns') return finish('stopped', `turn cap: ${caps.maxTurns} turns${note}`);
+    if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${once(maxTokens)}${note}`);
+    if (lead.subtype === 'error_max_turns') return finish('stopped', `turn cap: ${caps.maxTurns} turns${once(maxTurns)}${note}`);
     if (lead.error) return finish('failed', `${lead.error}${note}`);
     return finish('done', `${plan.implicit ? '' : `${area.name}: `}${triage.task}${note}`);
   } finally {

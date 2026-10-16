@@ -64,7 +64,7 @@ jerome schedule --off
 "heartbeat": { "every": "daily", "hour": 9, "minute": 0, "maxTokens": 500000, "maxTurns": 40 }
 ```
 
-Scheduling again replaces the schedule and the caps (defaults: 500,000 tokens and 40 turns). Each heartbeat works on one area: how often each area gets one is its own pace, below. See [`jerome schedule`](commands/schedule.md).
+Scheduling again replaces the schedule and the caps (defaults: 500,000 tokens and 40 turns). For one heartbeat run by hand, `jerome heartbeat --max-tokens 50000 --max-turns 10` sets caps for that run only. Each heartbeat works on one area: how often each area gets one is its own pace, below. See [`jerome schedule`](commands/schedule.md).
 
 ## Which model does an agent use?
 

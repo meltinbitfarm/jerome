@@ -414,3 +414,17 @@ test('jerome request open takes an area, which must exist', () => {
   assert.equal(d.prepare("SELECT area FROM requests WHERE question = 'Which audience first?'").get().area, 'marketing');
   d.close();
 });
+
+test('caps given to one heartbeat by hand replace those of the project for that run only (D108)', () => {
+  const p = project({ FAKE_TRIAGE: '{"work": true, "task": "Try the caps"}' });
+  const marker = () => readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8');
+  const before = marker();
+  p.runWith({ FAKE_LEAD_CALLS: '5', FAKE_LEAD_SLEEP: '0.05' }, 'heartbeat', 'demo', '--max-tokens', '2500');
+  assert.equal(p.lastRun().status, 'stopped');
+  assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 2,500 \(this run\)$/);
+  p.runWith({ FAKE_LEAD_RESULT: 'error_max_turns' }, 'heartbeat', 'demo', '--max-turns', '7');
+  assert.equal(p.lastRun().reason, 'turn cap: 7 turns (this run)');
+  assert.match(p.calls().split(/^-p /m).filter((c) => c.includes('--max-turns')).pop(), /--max-turns 7 /);
+  assert.equal(marker(), before, 'project.json is not touched');
+  assert.equal(p.run('heartbeat', 'demo', '--max-tokens', 'lots').status, 2);
+});
