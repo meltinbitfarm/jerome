@@ -5,7 +5,7 @@ Schedules [heartbeats](../heartbeat.md) for a project: runs of the lead agent wi
 ```sh
 jerome schedule daily --at 09:00
 jerome schedule hourly --at :15 --max-tokens 300000 --max-turns 20
-jerome schedule weekly --day fri --at 18:00
+jerome schedule weekly --day fri --at 18:00 --model sonnet
 jerome schedule --list
 jerome schedule --off
 ```
@@ -16,10 +16,11 @@ jerome schedule --off
 | `--day` | `mon` … `sun`, for `weekly` (default `mon`) |
 | `--max-tokens` | token cap per run (default 500,000) |
 | `--max-turns` | turn cap per run (default 40) |
+| `--model` | the lead agent's model in heartbeats: `opus` (default), `sonnet`, `haiku`, a full model id, or `default` to go back to Opus; the triage always runs on Haiku |
 | `--list` | the projects with a schedule on this machine |
 | `--off` | removes the project's schedule and its launchd job |
 
-Scheduling again replaces the previous schedule and caps; a `model` added by hand under `heartbeat`, the lead agent's model in heartbeats (`opus` by default), is kept (see [configuration.md](../configuration.md#which-model-does-the-lead-agent-use)). The schedule and the caps are saved in `.jerome/project.json` under `heartbeat`; the launchd job, with the absolute paths of `node`, `jerome` and `claude`, lives in `~/Library/LaunchAgents/` and stays on your machine. `jerome doctor` checks it.
+Scheduling again replaces the previous schedule and caps, and keeps the model unless `--model` is given. The schedule and the caps are saved in `.jerome/project.json` under `heartbeat`; the launchd job, with the absolute paths of `node`, `jerome` and `claude`, lives in `~/Library/LaunchAgents/` and stays on your machine. `jerome doctor` checks it.
 
 The schedule is the project's: each heartbeat works on one of its [areas](../areas.md), chosen by priority among those whose own pace has come round. An area paced more often than the heartbeats run (an `hourly` area with daily heartbeats) gets at most one per heartbeat; `schedule` and `jerome doctor` point it out.
 

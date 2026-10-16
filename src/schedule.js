@@ -12,6 +12,7 @@ import { areaWarnings } from './areas.js';
 
 export const EVERY = ['hourly', 'daily', 'weekly'];
 export const DEFAULT_CAPS = { maxTokens: 500_000, maxTurns: 40 };
+const MODEL = /^(opus|sonnet|haiku|default|claude-[a-z0-9.-]+)$/;
 const DAYS = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 const LABEL_PREFIX = 'com.jerome.heartbeat.';
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
@@ -30,7 +31,7 @@ export function logPath(label) {
   return join(cache, 'jerome', 'logs', `${label.slice(LABEL_PREFIX.length)}.log`);
 }
 
-export async function schedule(dirArg, { every, at, day, maxTokens, maxTurns, off = false, list = false } = {}) {
+export async function schedule(dirArg, { every, at, day, maxTokens, maxTurns, model, off = false, list = false } = {}) {
   if (list) return listJobs();
   if (process.platform !== 'darwin') {
     console.error('Heartbeats are scheduled with launchd, so only on macOS for now.');
@@ -72,6 +73,11 @@ export async function schedule(dirArg, { every, at, day, maxTokens, maxTurns, of
     console.error('--max-tokens and --max-turns take positive whole numbers.');
     return 2;
   }
+  // The lead agent's model in heartbeats (D106): an alias or a full id; `default` goes back to Opus.
+  if (model !== undefined && !MODEL.test(model)) {
+    console.error('--model takes opus, sonnet, haiku, a full model id such as claude-sonnet-5-5, or default.');
+    return 2;
+  }
 
   const paths = { node: process.execPath, jerome: realpathSync(BIN), claude: which('claude') };
   if (!paths.claude) {
@@ -90,9 +96,13 @@ export async function schedule(dirArg, { every, at, day, maxTokens, maxTurns, of
     console.error(`launchctl could not load the job: ${loaded.message}`);
     return 1;
   }
-  // The lead agent's model for heartbeats, set by hand in project.json, survives a new schedule.
-  updateMarker(dir, (m) => { m.heartbeat = { ...heartbeat, ...(m.heartbeat?.model ? { model: m.heartbeat.model } : {}) }; });
-  console.log(`✓ Heartbeat scheduled ${describe(heartbeat)}, at most ${caps.maxTokens.toLocaleString('en')} tokens and ${caps.maxTurns} turns per run`);
+  // Without --model, a new schedule keeps the model the heartbeats had (D106).
+  let kept = null;
+  updateMarker(dir, (m) => {
+    kept = model === undefined ? m.heartbeat?.model ?? null : model === 'default' ? null : model;
+    m.heartbeat = { ...heartbeat, ...(kept ? { model: kept } : {}) };
+  });
+  console.log(`✓ Heartbeat scheduled ${describe(heartbeat)}, on ${kept ?? 'opus'}, at most ${caps.maxTokens.toLocaleString('en')} tokens and ${caps.maxTurns} turns per run`);
   console.log(`  job ${label}, log ${logPath(label)}`);
   // An area paced faster than the heartbeats gets at most one per heartbeat (D100).
   for (const w of areaWarnings(dir, { every }).filter((x) => / pace, but heartbeats run /.test(x.message))) console.log(`! ${w.message}`);
@@ -201,7 +211,7 @@ export function heartbeatProblems(dir) {
 
 export function rescheduleCommand(dir, h) {
   const at = h.every === 'hourly' ? `:${String(h.minute).padStart(2, '0')}` : `${String(h.hour).padStart(2, '0')}:${String(h.minute).padStart(2, '0')}`;
-  return `jerome schedule ${dir} ${h.every} --at ${at}${h.day ? ` --day ${h.day}` : ''} --max-tokens ${h.maxTokens} --max-turns ${h.maxTurns}`;
+  return `jerome schedule ${dir} ${h.every} --at ${at}${h.day ? ` --day ${h.day}` : ''} --max-tokens ${h.maxTokens} --max-turns ${h.maxTurns}${h.model ? ` --model ${h.model}` : ''}`;
 }
 
 function listJobs() {

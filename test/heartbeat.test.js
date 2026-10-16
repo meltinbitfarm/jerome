@@ -200,7 +200,7 @@ test('jerome schedule writes a launchd job with absolute paths, keeps them out o
   const p = project();
   const r = p.run('schedule', 'demo', 'daily', '--at', '07:30');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /every day at 07:30, at most 500,000 tokens and 40 turns per run/);
+  assert.match(r.stdout, /every day at 07:30, on opus, at most 500,000 tokens and 40 turns per run/);
   const marker = JSON.parse(readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8'));
   assert.deepEqual(marker.heartbeat, { every: 'daily', hour: 7, minute: 30, maxTokens: 500000, maxTurns: 40 });
   const plists = execFileSync('ls', [join(p.root, 'Library', 'LaunchAgents')], { encoding: 'utf8' }).trim().split('\n');
@@ -216,11 +216,15 @@ test('jerome schedule writes a launchd job with absolute paths, keeps them out o
   assert.equal(broken.status, 1);
   assert.match(broken.stdout, /✗ Heartbeat job — the job \S+ is not loaded in launchd: reschedule with `jerome schedule \S+ daily --at 07:30 --max-tokens 500000 --max-turns 40`/);
 
-  // The heartbeats' model, set by hand in project.json, survives a new schedule.
+  // The heartbeats' model (D106): set with --model, kept by a new schedule without it, removed with default.
   const path = join(p.dir, '.jerome', 'project.json');
-  writeFileSync(path, readFileSync(path, 'utf8').replace('"maxTurns": 40', '"maxTurns": 40,\n    "model": "sonnet"'));
+  assert.match(p.run('schedule', 'demo', 'daily', '--at', '07:30', '--model', 'sonnet').stdout, /every day at 07:30, on sonnet,/);
   assert.equal(p.run('schedule', 'demo', 'daily', '--at', '07:30').status, 0);
   assert.equal(JSON.parse(readFileSync(path, 'utf8')).heartbeat.model, 'sonnet');
+  assert.match(p.runWith({ FAKE_LAUNCHCTL_PRINT: 'fail' }, 'doctor', 'demo').stdout, /--max-turns 40 --model sonnet`/);
+  assert.equal(p.run('schedule', 'demo', 'daily', '--model', 'gpt-5').status, 2);
+  assert.equal(p.run('schedule', 'demo', 'daily', '--at', '07:30', '--model', 'default').status, 0);
+  assert.equal(JSON.parse(readFileSync(path, 'utf8')).heartbeat.model, undefined);
 
   assert.match(p.run('schedule', '--list').stdout, /every day at 07:30/);
   assert.equal(p.run('schedule', 'demo', '--off').status, 0);

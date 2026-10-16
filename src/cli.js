@@ -48,6 +48,7 @@ const USAGE = `Usage:
     --day <day>           mon … sun, for weekly (default mon)
     --max-tokens <n>      token cap per run (default 500000)
     --max-turns <n>       turn cap per run (default 40)
+    --model <model>       the lead agent's model in heartbeats: opus (default), sonnet, haiku, a model id, or default
     --off                 remove the project's schedule
     --list                list the scheduled projects
   jerome heartbeat [dir]  one scheduled run, as launchd starts it
@@ -80,6 +81,7 @@ const OPTIONS = {
   day: { type: 'string' },
   'max-tokens': { type: 'string' },
   'max-turns': { type: 'string' },
+  model: { type: 'string' },
   off: { type: 'boolean' },
   list: { type: 'boolean' },
   question: { type: 'string' },
@@ -98,7 +100,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation', 'area'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: [], request: ['question', 'options', 'recommendation', 'area'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
 
 export async function main(argv) {
   let parsed;
@@ -156,7 +158,7 @@ export async function main(argv) {
       const dirs = rest.filter((r) => r !== every);
       if (dirs.length > 1) return usageError('jerome schedule takes at most one folder.');
       if (!v.off && !every) return usageError(`jerome schedule needs how often: ${EVERY.join(', ')}.`);
-      return schedule(dirs[0] ?? '.', { every, at: v.at, day: v.day, maxTokens: v['max-tokens'], maxTurns: v['max-turns'], off: v.off });
+      return schedule(dirs[0] ?? '.', { every, at: v.at, day: v.day, maxTokens: v['max-tokens'], maxTurns: v['max-turns'], model: v.model, off: v.off });
     }
     case 'heartbeat':
       if (rest.length > 1) return usageError('jerome heartbeat takes at most one folder.');

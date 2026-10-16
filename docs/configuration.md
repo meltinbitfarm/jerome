@@ -9,7 +9,7 @@ Where each setting of a Jérôme project lives, and how to change it. Each secti
 | How often heartbeats run, and their caps | `.jerome/project.json`, `heartbeat`, and the launchd job | `jerome schedule daily --at 09:00 --max-tokens 300000` |
 | An agent's model | `.claude/agents/<name>.md`, `model` | ask the lead agent |
 | The lead agent's model in your sessions | Claude Code: `--model`, `/model`, or `model` in `.claude/settings.json` | `claude --model sonnet` |
-| The lead agent's model in heartbeats | `.jerome/project.json`, `heartbeat.model` | edit the file (default `opus`) |
+| The lead agent's model in heartbeats | `.jerome/project.json`, `heartbeat.model` | `jerome schedule daily --model sonnet` (default `opus`) |
 | An area's pace, priority, or pause | `.jerome/areas.md` | ask the lead agent, or hold an area briefing |
 | Budgets of the files loaded at every turn | `.jerome/project.json`, `budgets` | edit the file |
 | Agent limits | `.jerome/PROJECT.md`, `## Agent limits` | ask the lead agent |
@@ -19,7 +19,7 @@ Where each setting of a Jérôme project lives, and how to change it. Each secti
 
 **Ask the lead agent** for anything that is a decision about the project: an agent's model or tools, an agent limit, an area's goal, milestone, pace or priority, a new area. It changes the file and records the change in `.jerome/decisions.md`, one line with its reason, so it is not questioned again later, and it keeps related files in step: an agent limit is copied into every agent it applies to, an area's agents are listed in `areas.md`. A change made by hand in those files is not recorded anywhere, and the lead agent may not notice it.
 
-**Run a command** for settings about how much the project may spend and when it runs: limits and schedules. They take effect at once, are checked by the CLI, and are not decisions about the work. The few values with no command, the budgets and the heartbeats' model, are edited in `.jerome/project.json`; `jerome doctor` reports an invalid budget or limit, and the default applies.
+**Run a command** for settings about how much the project may spend and when it runs: limits and schedules. They take effect at once, are checked by the CLI, and are not decisions about the work. The one value with no command, the budgets, is edited in `.jerome/project.json`; `jerome doctor` reports an invalid budget, and the default applies.
 
 Everything in `.jerome/` and `.claude/settings.json` is versioned: commit a change you make by hand. Heartbeats skip while the working tree has uncommitted changes, `.jerome/project.json` excepted. `account.json` and the launchd job are on your machine only.
 
@@ -89,7 +89,11 @@ Ask the lead agent, for example "put the researcher on Haiku": it edits the file
 "model": "opus"
 ```
 
-**In heartbeats**, Opus by default. To change it, add `model` to `heartbeat` in `.jerome/project.json`; a new `jerome schedule` keeps it:
+**In heartbeats**, Opus by default. Set it with the schedule; a new `jerome schedule` without `--model` keeps it, and `--model default` goes back to Opus:
+
+```sh
+jerome schedule daily --at 09:00 --model sonnet
+```
 
 ```json
 "heartbeat": { "every": "daily", "hour": 9, "minute": 0, "maxTokens": 500000, "maxTurns": 40, "model": "sonnet" }
