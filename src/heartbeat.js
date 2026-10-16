@@ -29,6 +29,7 @@ import { DIGEST } from './digest.js';
 import { STATE, isLegacy } from './paths.js';
 import { areaPlan } from './areas.js';
 import { transcriptMeter } from './meter.js';
+import { checkPages, saveHashes, watchedPages } from './watch.js';
 import { n } from './state.js';
 
 const INTERACTIVE_HOURS = 12;
@@ -93,7 +94,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
       notifyOnce(dir, env, project.key, `Heartbeats paused: ${project.reason}`);
       return finish('blocked', project.reason);
     }
-    const note = limits.note ? ` (${limits.note})` : '';
+    let note = limits.note ? ` (${limits.note})` : '';
 
     // Areas (D100): those paused, held up by an open request, or whose pace has not come round are left out here,
     // at zero tokens; the triage chooses among the others.
@@ -104,6 +105,14 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     } finally {
       db3.close();
     }
+    // The pages areas follow (D111), fetched at zero tokens and saved for their agents to read whole; an area with
+    // Trigger: watch is due only when one of them changed.
+    for (const a of plan.due.filter((x) => watchedPages(dir, x.name).length)) {
+      a.watch = await checkPages(dir, a.name, jobLabel(dir));
+      if (a.watch.outside.length) note += ` (${a.name}: skipped outside the WebFetch domains: ${a.watch.outside.join(', ')})`;
+      if (a.trigger === 'watch' && (a.watch.unreachable || !a.watch.changed)) plan.skipped.push({ name: a.name, why: a.watch.unreachable ? `page unreachable: ${a.watch.unreachable}` : 'pages unchanged' });
+    }
+    plan.due = plan.due.filter((a) => !plan.skipped.some((s) => s.name === a.name));
     if (!plan.due.length) return finish('done', `no area due: ${plan.skipped.map((a) => `${a.name} ${a.why}`).join(' · ')}${note}`);
 
     const fingerprint = projectFingerprint(dir, plan.due.map((a) => a.name));
@@ -133,6 +142,8 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${capDetail(maxTokens !== null, lead.byAgent)}${tidy.text}${note}`, tidy.request);
     if (lead.subtype === 'error_max_turns') return finish('stopped', `turn cap: ${caps.maxTurns} turns${once(maxTurns)}${tidy.text}${note}`, tidy.request);
     if (lead.error) return finish('failed', `${lead.error}${tidy.text}${note}`, tidy.request);
+    // The pages' new hashes count only once the area's heartbeat has done its work (D111).
+    if (area.watch) saveHashes(jobLabel(dir), area.name, area.watch.pending);
     return finish('done', `${plan.implicit ? '' : `${area.name}: `}${triage.task}${note}`);
   } finally {
     releaseLock(lock);
@@ -444,7 +455,8 @@ ${digestLines.join('\n') || 'none'}`;
 
 export function leadPrompt(task, area = null) {
   const where = area ? `
-Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'none listed'}). Milestone: ${area.milestone} — criteria: ${area.criteria}
+Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'none listed'}). Milestone: ${area.milestone} — criteria: ${area.criteria}${area.watch?.files.length ? `
+- The pages this area follows are saved whole in ${area.watch.files.join(', ')}: have them read there with Read, not with WebFetch, which returns summaries.` : ''}
 - Work in the area's folder, with its agents. If its milestone's criteria are met, open a decision request proposing the next milestone and its criteria (options: open it / continue / area briefing), and stop.` : '';
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
 Task chosen by the triage: ${task}${where}

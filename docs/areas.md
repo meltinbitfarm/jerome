@@ -38,10 +38,24 @@ One section per area, with fixed lines that the CLI reads at zero tokens:
 | `Agents` | the agents of `.claude/agents/` that work on it; an agent may serve several areas |
 | `Pace` | how often heartbeats may work on it: `hourly`, `daily`, `weekly`, or `paused` |
 | `Priority` | 1 is the highest |
+| `Trigger` | optional: `watch` makes the area due only when a page it follows changed (see below); `pace` by default |
 
 The file is versioned. The lead agent writes it with your confirmation, from the brief, the area briefing or the project-team skill. Each area's context and out of scope go in `scope.md`, under `## Area: <name>`. `jerome doctor` reports a malformed line, an agent without a file, a folder that does not exist yet, and a pace more frequent than the project's heartbeats.
 
 **A project without `areas.md`** has one implicit area, `main`, whose goal and criteria are the project's goal and success criteria. Projects created before areas existed work as before, and `jerome state` and the viewer show no areas for them.
+
+## Pages an area follows
+
+An area that keeps an eye on web pages, such as a product's documentation, lists them on a `Watch` line of its section in `scope.md`:
+
+```markdown
+## Area: research
+- Watch: https://code.claude.com/docs/en/hooks, https://code.claude.com/docs/en/settings
+```
+
+Before the triage, heartbeats fetch each page's markdown version (`<url>.md`), at zero tokens, and save it in `.jerome/watch/<host>/<path>.md`, kept out of git. The lead agent is told where the copies are, and the area's agents read them whole with Read: WebFetch returns a summary, not the page. Only the domains the project's `WebFetch(domain:…)` rules allow are fetched; a page outside them is skipped and named in the run's reason, and `jerome doctor` reports it.
+
+With `- Trigger: watch` in `areas.md`, the pages also decide when the area works: it is due, within its pace, only when one of them changed since its last heartbeat that ended `done`, and is otherwise left out with `pages unchanged` (or `page unreachable: <url>`), before any token is spent. The pages' hashes are kept in `~/.cache/jerome/watch/`.
 
 ## Milestones
 

@@ -4,8 +4,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STATE } from './paths.js';
+import { watchedPages, allowedDomains } from './watch.js';
 
-export const AREA_KEYS = ['Goal', 'Milestone', 'Criteria', 'Folder', 'Agents', 'Pace', 'Priority'];
+export const AREA_KEYS = ['Goal', 'Milestone', 'Criteria', 'Folder', 'Agents', 'Pace', 'Priority', 'Trigger'];
 export const PACES = { hourly: 3_600_000, daily: 86_400_000, weekly: 7 * 86_400_000 };
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 export const IMPLICIT = 'main';
@@ -19,7 +20,7 @@ export function parseAreas(text) {
     const name = parts[i].trim();
     if (!NAME.test(name)) problems.push(`area "${name}": names are lowercase letters, digits and dashes, such as marketing`);
     if (areas.some((a) => a.name === name)) problems.push(`area "${name}" appears twice`);
-    const area = { name, goal: null, milestone: null, criteria: null, folder: '.', agents: [], pace: 'daily', priority: 1 };
+    const area = { name, goal: null, milestone: null, criteria: null, folder: '.', agents: [], pace: 'daily', priority: 1, trigger: 'pace' };
     for (const line of parts[i + 1].split('\n')) {
       const m = line.match(/^- *([A-Za-z]+): *(.*?)\s*$/);
       if (!m) {
@@ -32,6 +33,10 @@ export function parseAreas(text) {
       else if (key === 'Pace') {
         if (value in PACES || value === 'paused') area.pace = value;
         else problems.push(`area "${name}": Pace is hourly, daily, weekly or paused, not "${value}"`);
+      } else if (key === 'Trigger') {
+        // D111: `watch` makes the area due only when one of the pages it follows changed.
+        if (value === 'pace' || value === 'watch') area.trigger = value;
+        else problems.push(`area "${name}": Trigger is pace or watch, not "${value}"`);
       } else if (key === 'Priority') {
         if (/^[1-9]\d*$/.test(value)) area.priority = Number(value);
         else problems.push(`area "${name}": Priority is a whole number from 1, the highest, not "${value}"`);
@@ -64,7 +69,8 @@ export function section(text, heading) {
 // An areas.md section, as the brief import writes it.
 export function formatArea(a) {
   const lines = [`## ${a.name}`, `- Goal: ${a.goal ?? ''}`, `- Milestone: ${a.milestone ?? ''}`, `- Criteria: ${a.criteria ?? ''}`, `- Folder: ${a.folder ?? '.'}`,
-    `- Agents: ${a.agents?.length ? a.agents.join(', ') : 'none'}`, `- Pace: ${a.pace ?? 'daily'}`, `- Priority: ${a.priority ?? 1}`];
+    `- Agents: ${a.agents?.length ? a.agents.join(', ') : 'none'}`, `- Pace: ${a.pace ?? 'daily'}`, `- Priority: ${a.priority ?? 1}`,
+    ...(a.trigger === 'watch' ? ['- Trigger: watch'] : [])];
   return `${lines.join('\n')}\n`;
 }
 
@@ -114,6 +120,13 @@ export function areaWarnings(dir, { agents = [], every = null } = {}) {
     const missing = a.agents.filter((x) => !known.has(x));
     if (missing.length) warnings.push({ id: 'areas', message: `.jerome/areas.md: area "${a.name}" lists ${missing.join(', ')}, with no file in .claude/agents/.` });
     if (a.folder && !existsSync(join(dir, a.folder))) warnings.push({ id: 'areas', message: `.jerome/areas.md: the folder of area "${a.name}", ${a.folder}, does not exist yet.` });
+    if (a.trigger === 'watch') {
+      const pages = watchedPages(dir, a.name);
+      const domains = allowedDomains(dir);
+      if (!pages.length) warnings.push({ id: 'areas', message: `.jerome/areas.md: area "${a.name}" has Trigger: watch, but its section in scope.md has no "- Watch:" line: it will never be due.` });
+      const outside = pages.filter((u) => { try { return !domains.has(new URL(u).hostname.toLowerCase()); } catch { return true; } });
+      if (outside.length) warnings.push({ id: 'areas', message: `scope.md: area "${a.name}" watches ${outside.join(', ')}, outside the domains its WebFetch rules allow: skipped.` });
+    }
     if (every && PACES[a.pace] < PACES[every]) warnings.push({ id: 'areas', message: `.jerome/areas.md: area "${a.name}" has a ${a.pace} pace, but heartbeats run ${every}: it gets at most one per heartbeat.` });
   }
   return warnings;

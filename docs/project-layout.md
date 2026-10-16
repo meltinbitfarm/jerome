@@ -14,6 +14,7 @@ my-project/
 │   ├── archive.md              closed entries, with their IDs
 │   ├── brief.md                the original brief
 │   ├── digest.md               one line per heartbeat
+│   ├── watch/                  copies of the pages areas follow, kept out of git
 │   ├── docs-queue.md           documentation changes waiting for the documentarist
 │   └── notes/                  the agents' detailed reports
 ├── .claude/

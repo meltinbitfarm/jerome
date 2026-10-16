@@ -2,8 +2,8 @@
 // `claude` and a fake `launchctl` on the PATH.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { sandbox, sandboxDb } from './sandbox.js';
@@ -458,4 +458,62 @@ test('a stopped run goes back to the branch it started from, and leaves uncommit
   assert.equal(p.lastRun().reason, 'turn cap: 40 turns; uncommitted changes left on task/dirty');
   assert.equal(branch(), 'task/dirty');
   assert.match(p.requests().pop().question, /stopped halfway on branch task\/dirty and left uncommitted changes/);
+});
+
+// A local server for the pages an area follows: GET /docs/<name>.md serves <root>/pages/<name>.md, or 404.
+async function pageServer(root) {
+  mkdirSync(join(root, 'pages'), { recursive: true });
+  const code = `require('node:http').createServer((q, s) => { const f = require('node:path').join(${JSON.stringify(join(root, 'pages'))}, q.url.replace(/^\\/docs\\//, ''));
+    try { s.end(require('node:fs').readFileSync(f)); } catch { s.statusCode = 404; s.end(); } })
+    .listen(0, '127.0.0.1', function () { require('node:fs').writeFileSync(${JSON.stringify(join(root, 'port'))}, String(this.address().port)); });`;
+  const child = spawn(process.execPath, ['-e', code], { stdio: 'ignore' });
+  while (!existsSync(join(root, 'port'))) await new Promise((r) => setTimeout(r, 20));
+  return { port: Number(readFileSync(join(root, 'port'), 'utf8')), stop: () => child.kill() };
+}
+
+test('an area paced by the pages it follows is due only when one changed, and its agents read the saved copy (D111)', async () => {
+  const p = project();
+  const server = await pageServer(p.root);
+  try {
+    const page = (text) => (text === null ? rmSync(join(p.root, 'pages', 'hooks.md'), { force: true }) : writeFileSync(join(p.root, 'pages', 'hooks.md'), text));
+    const base = `http://127.0.0.1:${server.port}/docs`;
+    page('# Hooks\nSessionStart sources: startup, resume.\n');
+    writeFileSync(join(p.dir, '.jerome', 'areas.md'), `# Areas\n\n## research\n- Goal: Follow the hooks page.\n- Milestone: routine\n- Criteria: a report per change\n- Folder: research/\n- Pace: hourly\n- Priority: 1\n- Trigger: watch\n`);
+    writeFileSync(join(p.dir, '.jerome', 'scope.md'), `# Scope\n\n## Area: research\n- Watch: ${base}/hooks, https://example.org/other\n`);
+    const settings = join(p.dir, '.claude', 'settings.json');
+    const s = JSON.parse(readFileSync(settings, 'utf8'));
+    s.permissions.allow.push('WebFetch(domain:127.0.0.1)');
+    writeFileSync(settings, JSON.stringify(s, null, 2));
+    p.git('add', '-A');
+    p.git('commit', '-q', '-m', 'watch');
+    // Pace is not what holds the area back here: each heartbeat is made to look an hour older.
+    const age = () => { const d = new DatabaseSync(sandboxDb(p.root, p.dir)); d.exec("UPDATE runs SET started_at = '2000-01-01T00:00:00.000Z'"); d.close(); };
+
+    p.runWith({ FAKE_TRIAGE: '{"work": true, "area": "research", "task": "Report the changes"}' }, 'heartbeat', 'demo');
+    assert.equal(p.lastRun().reason, 'research: Report the changes (research: skipped outside the WebFetch domains: https://example.org/other)');
+    const saved = `.jerome/watch/127.0.0.1:${server.port}/docs/hooks.md`;
+    assert.equal(readFileSync(join(p.dir, saved), 'utf8'), '# Hooks\nSessionStart sources: startup, resume.\n');
+    assert.ok(p.calls().split(/^-p /m).filter((c) => c.includes('--max-turns')).pop().includes(`saved whole in ${saved}: have them read there with Read`));
+    assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: p.dir, encoding: 'utf8' }), '', 'the saved pages stay out of git');
+
+    age();
+    const triages = () => p.calls().split(/^-p /m).filter((c) => c.includes('--model haiku')).length;
+    const before = triages();
+    p.run('heartbeat', 'demo');
+    assert.match(p.lastRun().reason, /^no area due: research pages unchanged/);
+    assert.equal(triages(), before, 'unchanged pages cost no triage');
+
+    page('# Hooks\nSessionStart sources: startup, resume, clear, compact, fork.\n');
+    age();
+    p.runWith({ FAKE_TRIAGE: '{"work": false, "reason": "only a wording change"}' }, 'heartbeat', 'demo');
+    assert.match(p.lastRun().reason, /^no work: only a wording change/);
+    assert.equal(triages(), before + 1);
+
+    page(null);
+    age();
+    p.run('heartbeat', 'demo');
+    assert.match(p.lastRun().reason, new RegExp(`^no area due: research page unreachable: ${base}/hooks`));
+  } finally {
+    server.stop();
+  }
 });
