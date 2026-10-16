@@ -44,7 +44,7 @@ test('every result, status line and subagent meta field the code reads is listed
 
 test('every flag passed to claude and every /context section parsed is listed', () => {
   // Flags these files pass to git, not to claude.
-  const git = new Set(['--verify', '--porcelain', '--untracked-files', '--oneline', '--first-parent']);
+  const git = new Set(['--verify', '--porcelain', '--untracked-files', '--oneline', '--first-parent', '--abbrev-ref', '--count']);
   for (const file of ['profile.js', 'docs.js', 'heartbeat.js']) {
     for (const flag of new Set(all(/'(--[a-zA-Z-]+)/g, src(file)))) if (!git.has(flag)) assert.ok(listed('cli', flag), `${file} ${flag}`);
   }
