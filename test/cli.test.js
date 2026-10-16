@@ -146,6 +146,22 @@ test('doctor fails if a plugin skill stays loaded', () => {
   assert.match(r.stdout, /✗ skill still loaded: shop:x \(Plugin \(shop\)\)/);
 });
 
+test('a plugin the project enables in its settings.json stays on, with its cost reported (D113)', () => {
+  const { root, run } = sandbox({ env: { FAKE_STUCK_PLUGIN: '1' } });
+  run('new', 'demo');
+  const shared = join(root, 'demo', '.claude', 'settings.json');
+  const s = JSON.parse(readFileSync(shared, 'utf8'));
+  s.enabledPlugins = { 'shop@official': true };
+  writeFileSync(shared, JSON.stringify(s, null, 2));
+  const r = run('doctor', 'demo', '--json');
+  const report = JSON.parse(r.stdout);
+  assert.equal(r.status, 0, r.stdout);
+  assert.deepEqual(report.warnings.filter((w) => w.id === 'project-plugins').map(({ plugin, skills, tokens }) => ({ plugin, skills, tokens })), [{ plugin: 'shop@official', skills: 1, tokens: 40 }]);
+  const local = JSON.parse(readFileSync(join(root, 'demo', '.claude', 'settings.local.json'), 'utf8'));
+  assert.equal(local.enabledPlugins['shop@official'], undefined, 'the false the profile had set is gone');
+  assert.equal(local.enabledPlugins['sito@synced'], false);
+});
+
 test('doctor outside a Jérôme project', () => {
   const { run } = sandbox();
   const r = run('doctor');

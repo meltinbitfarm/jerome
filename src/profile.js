@@ -226,8 +226,19 @@ export function parseTokens(value) {
 }
 
 // What the lean profile should not let through. MCP tools are allowed only if the project has a .mcp.json.
-export function findLeaks(context, { hasProjectMcp }) {
-  const skills = context.skills.filter((s) => s.source !== 'Project');
+// The plugins a project enables itself, with true in its versioned settings.json (D113): its own choice, left on.
+export function projectPlugins(dir) {
+  return Object.entries(readSettings(dir, SHARED_SETTINGS).enabledPlugins ?? {}).filter(([, on]) => on === true).map(([id]) => id);
+}
+
+// A skill of one of those plugins is the project's, not a leak: "Plugin (shop)" for shop@official.
+export function isProjectPluginSkill(skill, plugins) {
+  const m = skill.source.match(/^Plugin \((.+)\)$/);
+  return Boolean(m) && plugins.some((id) => id.split('@')[0] === m[1]);
+}
+
+export function findLeaks(context, { hasProjectMcp, plugins = [] }) {
+  const skills = context.skills.filter((s) => s.source !== 'Project' && !isProjectPluginSkill(s, plugins));
   const mcp = hasProjectMcp ? [] : context.categories.filter((c) => c.name.startsWith('MCP tools'));
   return { skills, mcp };
 }

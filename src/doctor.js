@@ -17,7 +17,7 @@ import { candidates, relink, stores, describeStore, storeSummary } from './store
 import { createInterface } from 'node:readline/promises';
 import {
   discoverInstalled, desiredProfile, applyProfile, readSettings, writeSettings, settingsPath,
-  splitProfileKeys, ensureGitignored, inspectContext, findLeaks, overrideFor, parseTokens,
+  splitProfileKeys, ensureGitignored, inspectContext, findLeaks, overrideFor, parseTokens, projectPlugins, isProjectPluginSkill,
   ContextFormatError, SHARED_SETTINGS, LOCAL_SETTINGS,
 } from './profile.js';
 
@@ -106,7 +106,7 @@ export async function runDoctor(dir, { setup = true, fix = true, db: dbOptions =
     report.checks.push({ id: 'context-format', ok: false, label: 'Claude Code /context output', detail: 'not recognized', problems });
     return done();
   }
-  const { context, leaks } = result;
+  const { context, leaks, plugins } = result;
   report.checks.push({ id: 'context-format', ok: true, label: 'Claude Code /context output', detail: 'recognized' });
 
   const projectSkills = context.skills.filter((s) => s.source === 'Project').map((s) => s.name);
@@ -127,6 +127,13 @@ export async function runDoctor(dir, { setup = true, fix = true, db: dbOptions =
     },
   };
   const lean = leaks.skills.length === 0 && leaks.mcp.length === 0;
+  // What the project's own plugins cost at every session, since they stay on (D113).
+  for (const id of plugins ?? []) {
+    const skills = context.skills.filter((s) => isProjectPluginSkill(s, [id]));
+    const tokens = skills.reduce((sum, s) => sum + (parseTokens(s.tokens) ?? 0), 0);
+    report.warnings.push({ id: 'project-plugins', plugin: id, skills: skills.length, tokens,
+      message: `${id} is enabled by the project's settings.json, so the lean profile leaves it on: ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}, about ${tokens.toLocaleString('en')} tokens in every session.` });
+  }
   // Two figures (D81): /context's estimate, which with -p counts the headless tool set, and the real first call of
   // the latest session, read from its transcript.
   const last = lastSessionReport(dir);
@@ -504,7 +511,16 @@ export async function ensureLeanProfile(dir, { fix = true } = {}) {
     changes.push(`moved ${split.moved.length} profile entries from ${SHARED_SETTINGS} to ${LOCAL_SETTINGS}`);
   }
 
-  const applied = applyProfile(settings, desiredProfile(discoverInstalled()));
+  // Plugins the project enables in its own settings.json stay on (D113): a false left here earlier is removed.
+  const own = projectPlugins(dir);
+  const installed = discoverInstalled();
+  const applied = applyProfile(settings, desiredProfile({ ...installed, plugins: installed.plugins.filter((id) => !own.includes(id)) }));
+  for (const id of own) {
+    if (applied.settings.enabledPlugins?.[id] === false) {
+      delete applied.settings.enabledPlugins[id];
+      applied.changes.push(`enabledPlugins.${id}: left on, the project enables it`);
+    }
+  }
   if (fix && applied.changes.length) writeSettings(dir, applied.settings);
   settings = applied.settings;
   changes.push(...applied.changes);
@@ -514,7 +530,7 @@ export async function ensureLeanProfile(dir, { fix = true } = {}) {
   const progress = startProgress('reading what Claude Code loads (/context)');
   try {
     let context = await inspectContext(dir);
-    let leaks = findLeaks(context, { hasProjectMcp });
+    let leaks = findLeaks(context, { hasProjectMcp, plugins: own });
 
     const extra = {};
     for (const skill of leaks.skills) {
@@ -528,10 +544,10 @@ export async function ensureLeanProfile(dir, { fix = true } = {}) {
         writeSettings(dir, patched.settings);
         progress.update('checking again after turning skills off');
         context = await inspectContext(dir);
-        leaks = findLeaks(context, { hasProjectMcp });
+        leaks = findLeaks(context, { hasProjectMcp, plugins: own });
       }
     }
-    return { changes, context, leaks };
+    return { changes, context, leaks, plugins: own };
   } catch (error) {
     return { changes, error };
   } finally {

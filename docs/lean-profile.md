@@ -8,7 +8,7 @@ All of this goes in the project's own `.claude/settings.local.json`, which `jero
 
 | Setting | Effect |
 |---|---|
-| `enabledPlugins: { "<plugin>@<marketplace>": false }` | Turns off every installed plugin, including plugins synced from claude.ai (`@synced`) |
+| `enabledPlugins: { "<plugin>@<marketplace>": false }` | Turns off every installed plugin, including plugins synced from claude.ai (`@synced`), except those the project enables itself |
 | `disableClaudeAiConnectors: true` | Turns off the claude.ai connectors (remote MCP servers), together with their tool lists and server instructions |
 | `disableBundledSkills: true` | Turns off the skills bundled with Claude Code |
 | `skillOverrides: { "<skill>": "off" }` | Turns off skills synced from claude.ai, and any other skill that is not part of the project |
@@ -38,5 +38,7 @@ Your numbers depend on what you have installed. Run `claude -p "/context"` insid
 The list of plugins and synced skills depends on the machine and changes over time. That is why `jerome new` generates the profile and `jerome doctor` keeps it current. A static file in the template could not do this.
 
 For the same reason the profile lives in the local settings file and stays out of git. A teammate, or your other computer, has different plugins and generates its own profile with `jerome doctor`. Claude Code applies `settings.local.json` on top of `settings.json`, so the profile wins over any shared setting.
+
+One exception is deliberate: a plugin the project enables with `true` in its versioned `.claude/settings.json` is the project's choice, so the profile leaves it on, and `jerome doctor` reports what it costs in every session (`project-plugins`: its skills and their tokens). Claude Code gives local settings precedence over project settings and those over user settings, so every other plugin stays off, even one the project enables. A plugin force-enabled by your organisation's managed settings cannot be turned off from a project: `doctor` reports it as a skill still loaded. A plugin installed after the last `doctor` stays on in interactive sessions until `doctor` runs again; heartbeats run it every time.
 
 Projects created by earlier versions of Jérôme had the profile in `settings.json`. `jerome doctor` moves those entries to the local file, and deletes `settings.json` if nothing else is left in it.
