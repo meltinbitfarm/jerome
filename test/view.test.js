@@ -131,6 +131,9 @@ test('the page builds every text with textContent, so transcript contents are ne
   assert.match(page, /'Cache read', 'Cache write'/);
   assert.match(page, /no data yet/);
   assert.match(page, /count === 1 \? 'word' : 'words'/);
+  // Areas (D102) and windows that have reset since their reading.
+  assert.match(page, /cat \.jerome\/areas\.md/);
+  assert.match(page, /no reading since its reset/);
 });
 
 test('jerome state --json carries the team too', () => {

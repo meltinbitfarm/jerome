@@ -10,6 +10,7 @@ import { projectStatus, projectOver, projectSummary, globalLimits } from './budg
 import { callPrice, TIER_SQL } from './models.js';
 import { readAccount, WINDOWS } from './account.js';
 import { notProjectMessage } from './paths.js';
+import { readAreas, agentAreas } from './areas.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
 
@@ -57,9 +58,10 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
     const agents = new Map();
     for (const r of periods.week) agents.set(r.agent, total([agents.get(r.agent) ?? total([]), totals([r])]));
 
-    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
+    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
     const perRun = db.prepare(`SELECT agent, model, ${TIER_SQL} long_prompt, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model, long_prompt`);
-    const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
+    const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at, area FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
+    const areas = areaUsage(dir, db, since.week, requests);
 
     return {
       schema: STATE_SCHEMA,
@@ -73,25 +75,54 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
         .sort((a, b) => b.tokens - a.tokens)])),
       agents: [...agents].map(([name, t]) => ({ agent: name, ...t })).sort((a, b) => b.tokens - a.tokens),
       team: team(dir, periods.month),
-      windows: Object.fromEntries(WINDOWS.filter((w) => account.windows[w]).map((w) => [w, account.windows[w]])),
+      // A reading whose window has reset since says nothing about now: it is marked stale, never shown as current.
+      windows: Object.fromEntries(WINDOWS.filter((w) => account.windows[w]).map((w) => [w, { ...account.windows[w], stale: isReset(account.windows[w], now) }])),
       limits: account.limits,
+      // The areas with their milestone, last heartbeat, open request and 7-day usage; the rest is shared (D101, D102).
+      areas: areas.areas,
+      areasImplicit: areas.implicit,
+      shared: areas.shared,
       // The project's limits and spend in each calendar window (D82, D86).
       projectLimits: projectStatus(dir, db, now),
       runs: recent.map((r) => {
         const usage = perRun.all(r.id);
         const t = totals(usage);
         return {
-          id: r.id, sessionId: r.session_id, kind: r.kind, status: r.status, startedAt: r.started_at, endedAt: r.ended_at,
+          id: r.id, sessionId: r.session_id, kind: r.kind, area: r.area, status: r.status, startedAt: r.started_at, endedAt: r.ended_at,
           durationMs: r.ended_at ? Date.parse(r.ended_at) - Date.parse(r.started_at) : null, reason: r.reason,
           tokens: t.tokens, calls: t.calls, apiUsd: t.apiUsd, unpriced: t.unpriced, agents: [...new Set(usage.map((u) => u.agent))],
         };
       }),
-      requests: requests.map((r) => ({ id: r.id, runId: r.run_id, question: r.question, options: r.options, recommendation: r.recommendation, openedAt: r.opened_at })),
+      requests: requests.map((r) => ({ id: r.id, runId: r.run_id, area: r.area, question: r.question, options: r.options, recommendation: r.recommendation, openedAt: r.opened_at })),
       replies: replyStats(db, since.week, agent),
     };
   } finally {
     db.close();
   }
+}
+
+// Usage per area over the week (D101): a run's area takes all of its usage; otherwise an agent listed in one area
+// only counts for it, and the rest (the lead agent, shared agents) is shared. With a single area, all of it is its.
+function areaUsage(dir, db, since, requests) {
+  const { areas, implicit } = readAreas(dir);
+  const names = new Set(areas.map((a) => a.name));
+  const byAgent = agentAreas(areas);
+  const rows = db.prepare(`SELECT model, agent, run_area, ${TIER_SQL} long_prompt, ${SUMS} FROM
+    (SELECT u.*, r.area run_area FROM usage u LEFT JOIN runs r ON r.id = u.run_id) WHERE at >= ? GROUP BY model, agent, run_area, long_prompt`).all(since);
+  const groups = new Map();
+  for (const r of rows) {
+    const area = areas.length === 1 ? areas[0].name : names.has(r.run_area) ? r.run_area : byAgent.get(r.agent) ?? 'shared';
+    (groups.get(area) ?? groups.set(area, []).get(area)).push(r);
+  }
+  const last = new Map(db.prepare("SELECT area, max(started_at) at FROM runs WHERE kind = 'heartbeat' AND area IS NOT NULL GROUP BY area").all().map((r) => [r.area, r.at]));
+  return {
+    implicit,
+    areas: areas.map((a) => {
+      const request = requests.find((q) => q.area === a.name);
+      return { ...a, lastHeartbeat: last.get(a.name) ?? null, request: request ? { id: request.id, question: request.question, runId: request.run_id } : null, week: totals(groups.get(a.name) ?? []) };
+    }),
+    shared: totals(groups.get('shared') ?? []),
+  };
 }
 
 // The lead agent and its subagents (D66): the agents declared in .claude/agents/, and the ones that appear in the
@@ -107,7 +138,8 @@ function team(dir, monthRows) {
     source: 'project',
   }));
   const names = new Set(declared.map((a) => a.agent));
-  const seen = [...models.keys()].filter((name) => name !== 'main' && !names.has(name)).sort()
+  // The heartbeat's triage is a service call recorded under its own name, not an agent of the team.
+  const seen = [...models.keys()].filter((name) => name !== 'main' && name !== 'triage' && !names.has(name)).sort()
     .map((name) => ({ agent: name, model: null, tools: [], description: null, source: 'built-in' }));
   return {
     lead: { agent: 'main', models: models.get('main') ?? [] },
@@ -183,16 +215,23 @@ export function formatState(s, { replies = false } = {}) {
   const windows = Object.entries(s.windows);
   const limits = WINDOWS.filter((w) => s.limits[w] !== undefined).map((w) => `${s.limits[w]}%`);
   if (windows.length) {
-    const latest = windows.map(([, w]) => w).sort((a, b) => b.readAt.localeCompare(a.readAt))[0];
-    const parts = windows.map(([name, w]) => `${name === 'five_hour' ? '5h' : '7d'} ${w.used}%`);
-    lines.push(`window  ${parts.join(' · ')} (${latest.source}, ${when(latest.readAt, now)})${limits.length ? ` · global limits ${limits.join(' / ')}` : ''}`);
+    const current = windows.map(([, w]) => w).filter((w) => !w.stale);
+    const latest = current.sort((a, b) => b.readAt.localeCompare(a.readAt))[0];
+    const parts = windows.map(([name, w]) => `${name === 'five_hour' ? '5h' : '7d'} ${w.stale ? `no reading since its reset at ${when(new Date(w.resetsAt * 1000).toISOString(), now)}` : `${w.used}%`}`);
+    lines.push(`window  ${parts.join(' · ')}${latest ? ` (${latest.source}, ${when(latest.readAt, now)})` : ''}${limits.length ? ` · global limits ${limits.join(' / ')}` : ''}`);
   } else lines.push('window  no reading yet');
   if (s.projectLimits) lines.push(`limits  ${projectSummary(s.projectLimits)} API`);
   // Heartbeats are paused while a limit is reached (D84); they start again when its window resets.
   const paused = (s.projectLimits && projectOver(s.projectLimits)) || globalLimits(now, { windows: s.windows, limits: s.limits }).over;
   if (paused) lines.push(`paused  heartbeats: ${typeof paused === 'string' ? paused : paused.reason}`);
+  // Areas (D102), left out while the project has only the implicit one.
+  if (!s.agent && s.areas && !s.areasImplicit) {
+    const parts = s.areas.map((a) => `${a.name} ${a.milestone ?? ''}${a.pace === 'paused' ? ' paused' : ''}${a.request ? ` waiting R${a.request.id}` : ''} 7d ${n(a.week.tokens)} ${usd(a.week)}`);
+    if (s.shared.tokens) parts.push(`shared 7d ${n(s.shared.tokens)} ${usd(s.shared)}`);
+    lines.push(`areas   ${parts.join(' · ')}`);
+  }
   if (!s.agent) lines.push(`agents  7d: ${s.agents.length ? s.agents.map((a) => `${a.agent} ${n(a.tokens)}`).join(' · ') : 'none'}`);
-  lines.push(`runs    ${s.runs.length ? `last ${s.runs.length}: ${s.runs.map((r) => `${when(r.startedAt, now)} ${r.kind} ${r.status}${r.reason && r.status !== 'done' ? ` (${r.reason})` : ''} ${n(r.tokens)}`).join(' · ')}` : 'none'}`);
+  lines.push(`runs    ${s.runs.length ? `last ${s.runs.length}: ${s.runs.map((r) => `${when(r.startedAt, now)} ${r.kind}${r.area && !s.areasImplicit ? ` ${r.area}` : ''} ${r.status}${r.reason && r.status !== 'done' ? ` (${r.reason})` : ''} ${n(r.tokens)}`).join(' · ')}` : 'none'}`);
   if (replies) {
     lines.push(`replies 7d: ${s.replies.length ? s.replies.map((r) => `${r.agent} avg ${r.average}w max ${r.max} (${r.over}/${r.replies} over ${REPLY_LIMIT})`).join(' · ') : 'none recorded'}`);
   }
@@ -227,6 +266,11 @@ function when(iso, now, full = false) {
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   if (full) return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
   return startOfLocalDay(d).getTime() === startOfLocalDay(now).getTime() ? time : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${time}`;
+}
+
+// Whether a window has reset since it was read: its reading is then out of date.
+export function isReset(reading, now = new Date()) {
+  return Boolean(reading?.resetsAt) && reading.resetsAt * 1000 <= now.getTime();
 }
 
 function startOfLocalDay(d) {

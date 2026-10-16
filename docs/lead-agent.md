@@ -21,7 +21,8 @@ Every Jérôme project has one lead agent: the main Claude Code session you talk
 |---|---|
 | `.claude/rules/jerome.md` | Always, at startup |
 | `PROJECT.md` | Always, at startup, imported by `jerome.md` with `@../../.jerome/PROJECT.md`: goal, constraints, agent limits and project rules |
-| `scope.md` | Before proposing an approach, a plan or agents; before calling work done; when a request may be out of scope: context, out of scope, success criteria, tools, pace |
+| `areas.md` | Before choosing work, proposing an approach, a plan or agents, or calling work or a milestone done: the [areas](areas.md), each with its goal, milestone and criteria, folder, agents, pace and priority |
+| `scope.md` | Before proposing an approach, a plan or agents; before calling work done; when a request may be out of scope: context, out of scope, success criteria, tools, pace, and each area's context |
 | `decisions.md` | Before proposing an approach, a plan or agents, or when a decision is cited |
 | `open.md` | For status questions, or when an open or parked topic comes up |
 | `archive.md` | Only when a cited ID is not in the other files |
@@ -55,7 +56,7 @@ When `jerome new --from-file` gets a text that is not a valid brief, it saves th
 
 1. converts `brief.md` with the `project-brief` skill;
 2. lists the decisions it found and asks you to confirm them in one block, because the text may come from another chat and hold proposals you never confirmed;
-3. writes `PROJECT.md`, `scope.md`, `decisions.md` and `open.md`, replacing the provisional file, and leaves `brief.md` as the original text.
+3. writes `PROJECT.md`, `scope.md`, `areas.md`, `decisions.md` and `open.md`, replacing the provisional file, and leaves `brief.md` as the original text.
 
 The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and [heartbeats](heartbeat.md) do not start on it.
 
@@ -67,7 +68,7 @@ The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens
 
 | File | Budget | Current |
 |---|---:|---:|
-| `jerome.md` | 680 tokens | 678 |
+| `jerome.md` | 680 tokens | 679, measured with `/context` |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
 `jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome/project.json`:

@@ -216,6 +216,12 @@ test('jerome schedule writes a launchd job with absolute paths, keeps them out o
   assert.equal(broken.status, 1);
   assert.match(broken.stdout, /✗ Heartbeat job — the job \S+ is not loaded in launchd: reschedule with `jerome schedule \S+ daily --at 07:30 --max-tokens 500000 --max-turns 40`/);
 
+  // The heartbeats' model, set by hand in project.json, survives a new schedule.
+  const path = join(p.dir, '.jerome', 'project.json');
+  writeFileSync(path, readFileSync(path, 'utf8').replace('"maxTurns": 40', '"maxTurns": 40,\n    "model": "sonnet"'));
+  assert.equal(p.run('schedule', 'demo', 'daily', '--at', '07:30').status, 0);
+  assert.equal(JSON.parse(readFileSync(path, 'utf8')).heartbeat.model, 'sonnet');
+
   assert.match(p.run('schedule', '--list').stdout, /every day at 07:30/);
   assert.equal(p.run('schedule', 'demo', '--off').status, 0);
   assert.equal(JSON.parse(readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8')).heartbeat, undefined);
@@ -305,4 +311,102 @@ test('a global limit pauses the heartbeats of every project, since account.json 
     assert.equal(d.prepare('SELECT reason FROM runs ORDER BY id DESC').get().reason, 'global limit: 5h 59% ≥ 50%', name);
     d.close();
   }
+});
+
+// Areas (D95-D102): three fronts of work with their pace and priority.
+const AREAS = `# Areas
+
+## development
+- Goal: A web app people can sign up to.
+- Milestone: MVP
+- Criteria: sign-up and one list work
+- Folder: .
+- Agents: developer
+- Pace: daily
+- Priority: 1
+
+## marketing
+- Goal: 200 people on the waiting list.
+- Milestone: pre-launch
+- Criteria: landing page draft; three posts ready
+- Folder: marketing/
+- Agents: writer
+- Pace: weekly
+- Priority: 2
+
+## research
+- Goal: Know the three closest competitors.
+- Milestone: survey
+- Criteria: one page per competitor
+- Folder: research/
+- Pace: daily
+- Priority: 3
+`;
+
+test('the triage chooses among the areas due; paused areas, open requests and paces cost nothing', () => {
+  const p = project();
+  writeFileSync(join(p.dir, '.jerome', 'areas.md'), AREAS);
+  p.git('add', '-A');
+  p.git('commit', '-q', '-m', 'areas');
+  // Each call is logged with its arguments, the prompt's lines included: one entry per `-p`.
+  const triages = () => p.calls().split(/^-p /m).filter((c) => c.includes('--model haiku'));
+
+  // The triage picks marketing; the lead agent works there and opens a request, which belongs to the area.
+  p.runWith({ FAKE_TRIAGE: '{"work": true, "area": "marketing", "task": "Draft the landing page"}', FAKE_LEAD_REQUEST: 'Pre-launch met: open launch?' }, 'heartbeat', 'demo');
+  let run = p.lastRun();
+  assert.deepEqual([run.status, run.area, run.reason], ['done', 'marketing', 'marketing: Draft the landing page']);
+  assert.match(triages()[0], /### development · priority 1 · daily pace · last heartbeat never[\s\S]*### marketing · priority 2[\s\S]*### research · priority 3/);
+  const lead = p.calls().split(/^-p /m).filter((c) => c.includes('--max-turns')).pop();
+  assert.match(lead, /Area: marketing \(folder marketing\/; agents writer\)\. Milestone: pre-launch — criteria: landing page draft; three posts ready/);
+  const d = p.db();
+  assert.deepEqual({ ...d.prepare('SELECT id, area FROM requests').get() }, { id: 1, area: 'marketing' });
+  d.close();
+
+  // Marketing now waits for R1, and its weekly pace has not come round: a triage that picks it is not trusted.
+  p.runWith({ FAKE_TRIAGE: '{"work": true, "area": "marketing", "task": "Write a post"}' }, 'heartbeat', 'demo');
+  run = p.lastRun();
+  assert.deepEqual([run.status, run.reason], ['failed', 'triage: the triage chose the area "marketing", which is not due']);
+  assert.doesNotMatch(triages().pop(), /### marketing/);
+
+  // A triage with no work still records the subscription window its stream carries.
+  p.runWith({ FAKE_TRIAGE: '{"work": false, "reason": "nothing ready"}', FAKE_TRIAGE_WINDOW: '0.33' }, 'heartbeat', 'demo');
+  assert.equal(p.lastRun().reason, 'no work: nothing ready');
+  const account = JSON.parse(readFileSync(join(p.root, '.config', 'jerome', 'account.json'), 'utf8'));
+  assert.deepEqual([account.windows.five_hour.used, account.windows.five_hour.source], [33, 'triage']);
+
+  // With development and research paused, no area is due: the heartbeat ends before the triage.
+  writeFileSync(join(p.dir, '.jerome', 'areas.md'), AREAS.replace(/- Pace: daily/g, '- Pace: paused'));
+  p.git('commit', '-q', '-am', 'pause');
+  const before = triages().length;
+  p.run('heartbeat', 'demo');
+  assert.equal(p.lastRun().reason, 'no area due: development paused · marketing waiting for R1 · research paused');
+  assert.equal(triages().length, before);
+
+  // jerome state shows each area with its milestone and usage. The first heartbeat's usage, triage and lead agent, is
+  // marketing's; the triages of the heartbeats that chose no area are shared.
+  const state = p.run('state', 'demo', '--runs', '4');
+  assert.match(state.stdout, /^areas   development MVP paused 7d 0 \$0\.00 API · marketing pre-launch waiting R1 7d 5k <\$0\.01 API · research survey paused 7d 0 \$0\.00 API · shared 7d 6k <\$0\.01 API$/m);
+  assert.match(state.stdout, /heartbeat marketing done/);
+  const json = JSON.parse(p.run('state', 'demo', '--json').stdout);
+  assert.equal(json.areas.find((a) => a.name === 'marketing').week.tokens, 2000 + 3040);
+  assert.equal(json.shared.tokens, 2 * 3040);
+
+  // doctor names the agents without a file and the folders that do not exist yet.
+  const warnings = JSON.parse(p.run('doctor', 'demo', '--check', '--json').stdout).warnings.filter((w) => w.id === 'areas').map((w) => w.message);
+  assert.ok(warnings.some((m) => /area "development" lists developer, with no file/.test(m)));
+  assert.ok(warnings.some((m) => /the folder of area "marketing", marketing\/, does not exist yet/.test(m)));
+});
+
+test('jerome request open takes an area, which must exist', () => {
+  const p = project();
+  writeFileSync(join(p.dir, '.jerome', 'areas.md'), AREAS);
+  const req = (...args) => spawnSync(process.execPath, [join(import.meta.dirname, '..', 'bin', 'jerome.js'), 'request', 'open', ...args],
+    { cwd: p.dir, encoding: 'utf8', env: { ...process.env, HOME: p.root, XDG_DATA_HOME: '', XDG_CONFIG_HOME: '', XDG_CACHE_HOME: '' } });
+  assert.equal(req('--question', 'Which audience first?', '--area', 'marketing').status, 0);
+  const bad = req('--question', 'x', '--area', 'sales');
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /There is no area sales; the areas are development, marketing, research/);
+  const d = p.db();
+  assert.equal(d.prepare("SELECT area FROM requests WHERE question = 'Which audience first?'").get().area, 'marketing');
+  d.close();
 });

@@ -139,15 +139,15 @@ function readBrief(path) {
   if (brief.kind === 'text') {
     return {
       files: { ...original, [STATE.project]: provisionalProject(brief.reasons) },
-      message: `! .jerome/brief.md is not a valid brief/v2 (${brief.reasons.join('; ')}): saved as it is.\n  The lead agent will convert it in the first session, asking you to confirm the decisions it finds.`,
+      message: `! .jerome/brief.md is not a valid brief/v3 (${brief.reasons.join('; ')}): saved as it is.\n  The lead agent will convert it in the first session, asking you to confirm the decisions it finds.`,
     };
   }
   const files = projectFiles(brief);
   const ignored = brief.ignored.map((w) => `\n! Ignored ${w}`).join('');
   const draft = brief.meta.status === 'draft' ? '\n! The brief is a draft (status: draft): its open questions come first.' : '';
-  const from = brief.format === 'brief/v1' ? ' (brief/v1, headings mapped to brief/v2)' : '';
+  const from = brief.format === 'brief/v1' ? ' (brief/v1, headings mapped to brief/v3)' : brief.format === 'brief/v2' ? ' (brief/v2)' : '';
   return {
     files: { ...original, ...files },
-    message: `✓ Brief imported${from} into .jerome/: PROJECT.md, scope.md, decisions.md, open.md and brief.md${ignored}${draft}`,
+    message: `✓ Brief imported${from} into .jerome/: PROJECT.md, scope.md, areas.md, decisions.md, open.md and brief.md${ignored}${draft}`,
   };
 }

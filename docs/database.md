@@ -22,12 +22,12 @@ The hooks that write it are described in [hooks.md](hooks.md). The lead agent re
 
 | Table | One row per |
 |---|---|
-| `runs` | session or run: kind (`interactive`, `heartbeat`, `service`), start and end, status (`running`, `done`, `failed`, `blocked`, `stopped`) and reason |
+| `runs` | session or run: kind (`interactive`, `heartbeat`, `service`), start and end, status (`running`, `done`, `failed`, `blocked`, `stopped`), reason, and the [area](areas.md) a heartbeat worked on |
 | `usage` | API call, keyed by `request_id`: agent, model, input, output, cache reads, cache writes (5 minutes and 1 hour), time |
 | `usage_daily` | day, agent and model, summing `usage` rows older than 90 days |
 | `transcript_reads` | transcript, with how far it has been read |
 | `events` | hook event: kind and numbers or names only, never message contents |
-| `requests` | decision request: question, options, recommendation, status and answer |
+| `requests` | decision request: question, options, recommendation, status, answer, and the area it holds up |
 
 Allowed values are checked by the schema itself. Model prices are not in the database: they live in the code (`src/models.js`), so a price change comes with a Jérôme update.
 
@@ -64,4 +64,4 @@ The subscription is one, shared by every project, so its data is not in any proj
 }
 ```
 
-The status line and the scheduled runs write it, only when a value changes, through a temporary file and a rename, so a reader never sees half a file. Global limits are set with [`jerome limits`](commands/limits.md); per-project limits live in the project's `.jerome/project.json`, see [limits.md](limits.md).
+The status line and the scheduled runs (the lead agent and the triage, from the `rate_limit_event` of their streams) write it, only when a value changes, through a temporary file and a rename, so a reader never sees half a file. Global limits are set with [`jerome limits`](commands/limits.md); per-project limits live in the project's `.jerome/project.json`, see [limits.md](limits.md).

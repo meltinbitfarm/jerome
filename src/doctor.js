@@ -6,7 +6,8 @@ import { startProgress } from './progress.js';
 import { VERSION, templatePlan, behind, isJeromeRepo, readMarker } from './template.js';
 import { isProvisional, misplacedSections } from './brief.js';
 import { RULE_COUNT, missingRules, addRules, isTrusted } from './limits.js';
-import { agentWarnings, queueWarning } from './agents.js';
+import { agentWarnings, queueWarning, projectAgents } from './agents.js';
+import { areaWarnings } from './areas.js';
 import { planHooks, applyHooks } from './hookconfig.js';
 import { latestSession, toolProblems } from './session-shape.js';
 import { projectLimitSettings } from './budget.js';
@@ -369,6 +370,13 @@ export function projectWarnings(dir) {
     }
   }
   warnings.push(...agentWarnings(dir));
+  let every = null;
+  try {
+    every = readMarker(dir).heartbeat?.every ?? null;
+  } catch {
+    // An unreadable project.json is reported elsewhere.
+  }
+  warnings.push(...areaWarnings(dir, { agents: projectAgents(dir).map((a) => a.meta.name || a.file.replace(/\.md$/, '')), every }));
   for (const message of projectLimitSettings(dir).problems) warnings.push({ id: 'limits-config', message });
   const queue = queueWarning(dir);
   if (queue) warnings.push(queue);

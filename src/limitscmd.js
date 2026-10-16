@@ -66,6 +66,13 @@ function parse(raw, name, { max } = {}) {
   return value;
 }
 
+// Local time of a window's reset: "15/10 20:00".
+function resetTime(seconds) {
+  const d = new Date(seconds * 1000);
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function show(dir, now = new Date()) {
   const lines = [];
   const g = globalLimits(now);
@@ -74,7 +81,7 @@ export function show(dir, now = new Date()) {
   for (const key of ['five_hour', 'seven_day']) {
     const w = g.windows[key];
     const limit = account.limits?.[key];
-    const used = w ? `${w.used}%${w.stale ? ' (window reset since the last reading)' : ''}` : 'no reading yet';
+    const used = !w ? 'no reading yet' : w.stale ? `no reading since its reset (${resetTime(w.resetsAt)})` : `${w.used}%`;
     lines.push(`global  ${names[key]} ${used} / ${typeof limit === 'number' ? `${limit}%` : 'no limit'}`);
   }
   lines.push(`        in ${accountPath()}`);

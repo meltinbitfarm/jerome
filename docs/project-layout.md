@@ -7,7 +7,8 @@ my-project/
 ├── .jerome/                    Jérôme's state
 │   ├── project.json            Jérôme version, template files, budgets, limits, schedule
 │   ├── PROJECT.md              goal, constraints, agent limits, project rules: loaded at every turn
-│   ├── scope.md                context, out of scope, success, tools, pace: read when needed
+│   ├── scope.md                context, out of scope, success, tools, pace, each area's context: read when needed
+│   ├── areas.md                the areas: goal, milestone, criteria, folder, agents, pace, priority
 │   ├── decisions.md            the decisions, one per line
 │   ├── open.md                 open questions and parked topics
 │   ├── archive.md              closed entries, with their IDs

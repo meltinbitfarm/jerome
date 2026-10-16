@@ -19,7 +19,9 @@ jerome schedule --off
 | `--list` | the projects with a schedule on this machine |
 | `--off` | removes the project's schedule and its launchd job |
 
-Scheduling again replaces the previous schedule. The schedule and the caps are saved in `.jerome/project.json` under `heartbeat`; the launchd job, with the absolute paths of `node`, `jerome` and `claude`, lives in `~/Library/LaunchAgents/` and stays on your machine. `jerome doctor` checks it.
+Scheduling again replaces the previous schedule and caps; a `model` added by hand under `heartbeat`, the lead agent's model in heartbeats (`opus` by default), is kept (see [configuration.md](../configuration.md#which-model-does-the-lead-agent-use)). The schedule and the caps are saved in `.jerome/project.json` under `heartbeat`; the launchd job, with the absolute paths of `node`, `jerome` and `claude`, lives in `~/Library/LaunchAgents/` and stays on your machine. `jerome doctor` checks it.
+
+The schedule is the project's: each heartbeat works on one of its [areas](../areas.md), chosen by priority among those whose own pace has come round. An area paced more often than the heartbeats run (an `hourly` area with daily heartbeats) gets at most one per heartbeat; `schedule` and `jerome doctor` point it out.
 
 ## Exit codes
 

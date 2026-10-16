@@ -60,13 +60,14 @@ test('a new migration keeps the existing data, and a newer database is refused',
   db.prepare("INSERT INTO runs (session_id, kind, started_at) VALUES ('s1', 'interactive', ?)").run(NOW.toISOString());
   const folder = join(dir, 'migrations');
   mkdirSync(folder);
-  writeFileSync(join(folder, '001-init.sql'), readFileSync(new URL('../migrations/001-init.sql', import.meta.url), 'utf8'));
-  writeFileSync(join(folder, '002-note.sql'), 'ALTER TABLE runs ADD COLUMN note TEXT;');
-  assert.deepEqual(applyMigrations(db, migrations(folder)), ['002-note.sql']);
-  assert.equal(schemaVersion(db), 2);
+  for (const m of migrations()) writeFileSync(join(folder, m.name), m.sql);
+  const next = `${String(LATEST + 1).padStart(3, '0')}-note.sql`;
+  writeFileSync(join(folder, next), 'ALTER TABLE runs ADD COLUMN note TEXT;');
+  assert.deepEqual(applyMigrations(db, migrations(folder)), [next]);
+  assert.equal(schemaVersion(db), LATEST + 1);
   assert.equal(db.prepare('SELECT count(*) n FROM runs').get().n, 1);
   db.close();
-  assert.throws(() => openDb(dir), /schema version 2, this Jérôme knows up to 1/);
+  assert.throws(() => openDb(dir), new RegExp(`schema version ${LATEST + 1}, this Jérôme knows up to ${LATEST}`));
 });
 
 test('transcripts are read from the saved offset, deduplicated, and from the start when they get shorter', () => {
@@ -146,7 +147,8 @@ test('state is compact, labels dollars as API equivalents, and lists runs and op
   db.prepare("INSERT INTO requests (run_id, opened_at, question) VALUES (?, '2026-10-15T09:30:00Z', 'merge task/x: tests fail')").run(run);
   db.close();
 
-  const account = { windows: { five_hour: { used: 43, resetsAt: 1, readAt: '2026-10-15T11:00:00Z', source: 'statusline' } }, limits: { five_hour: 80 } };
+  const later = Date.parse('2026-10-15T16:00:00Z') / 1000;
+  const account = { windows: { five_hour: { used: 43, resetsAt: later, readAt: '2026-10-15T11:00:00Z', source: 'statusline' } }, limits: { five_hour: 80 } };
   const s = readState(dir, { now: NOW, account });
   assert.equal(s.schema, 'jerome.state/v1');
   assert.equal(s.usage.week.calls, 3);
@@ -162,6 +164,14 @@ test('state is compact, labels dollars as API equivalents, and lists runs and op
   assert.match(text, /record each answer with `jerome request answer <id>/);
   assert.match(text, /^limits  today ≈\$\d+\.\d{2}\/\$5 · this week ≈\$\d+\.\d{2}\/\$20 API$/m);
   assert.ok(text.split('\n').length <= 8);
+
+  // Once the window has reset, its old reading is never shown as the current one, nor checked against the limit.
+  const stale = { windows: { five_hour: { used: 95, resetsAt: Date.parse('2026-10-15T12:00:00Z') / 1000, readAt: '2026-10-15T08:00:00Z', source: 'heartbeat' } }, limits: { five_hour: 80 } };
+  const after = readState(dir, { now: NOW, account: stale });
+  assert.equal(after.windows.five_hour.stale, true);
+  const staleText = formatState(after);
+  assert.match(staleText, /^window  5h no reading since its reset at \d\d:\d\d · global limits 80%$/m);
+  assert.doesNotMatch(staleText, /95%|^paused/m);
 });
 
 test('jerome state on a project without the database says how to create it', () => {

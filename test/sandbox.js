@@ -27,8 +27,10 @@ case "$1" in
       while [ "$#" -gt 0 ]; do [ "$1" = "--add-dir" ] && : > "$2/.jerome/docs-queue.md"; shift; done
       echo '{"type": "result", "is_error": false, "result": "Integrated the entries."}'; exit 0;;
     esac
-    # A heartbeat's triage: no tools, on Haiku. FAKE_TRIAGE is the JSON verdict it gives.
+    # A heartbeat's triage: no tools, on Haiku, streamed. FAKE_TRIAGE is the JSON verdict it gives; FAKE_TRIAGE_WINDOW,
+    # a 5-hour utilization such as 0.33, adds a rate_limit_event before the result.
     case " $* " in *" --model haiku "*)
+      [ -n "$FAKE_TRIAGE_WINDOW" ] && echo "{\\"type\\":\\"rate_limit_event\\",\\"rate_limit_info\\":{\\"unifiedWindows\\":{\\"five_hour\\":{\\"utilization\\":$FAKE_TRIAGE_WINDOW,\\"resetsAt\\":4102444800}}}}"
       "$FAKE_NODE" -e 'console.log(JSON.stringify({ type: "result", is_error: false, result: process.env.FAKE_TRIAGE || JSON.stringify({ work: false, reason: "nothing to do" }), modelUsage: { "claude-haiku-5-5": { inputTokens: 3000, outputTokens: 40, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } } }))'
       exit 0;;
     esac

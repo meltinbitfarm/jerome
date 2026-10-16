@@ -38,7 +38,9 @@ test('parseBrief maps brief/v1 headings', () => {
 });
 
 test('parseBrief tells an unknown format from free text', () => {
-  assert.deepEqual(parseBrief(BRIEF_V2.replace('brief/v2', 'brief/v3')), { kind: 'unknown-format', format: 'brief/v3' });
+  assert.deepEqual(parseBrief(BRIEF_V2.replace('brief/v2', 'brief/v4')), { kind: 'unknown-format', format: 'brief/v4' });
+  // Areas belong to brief/v3: in a brief/v2 they are an unexpected section.
+  assert.deepEqual(parseBrief(`${BRIEF_V2}\n## Areas\n### main\n- Goal: x\n`).reasons, ['unexpected section "Areas"']);
   assert.equal(parseBrief('Just an idea for an app').kind, 'text');
   assert.equal(parseBrief(BRIEF_V2.replace('brief/v2', 'notes')).kind, 'text');
   const missing = parseBrief(BRIEF_V2.replace('## Success\n- Tests pass.\n', ''));
@@ -53,6 +55,41 @@ test('projectFiles sorts the sections following the Import table', () => {
   assert.equal(files['.jerome/scope.md'], '# Scope\n\n## Context\n- Built for tests.\n\n## Out of scope\n- Mobile.\n\n## Success\n- Tests pass.\n');
   assert.equal(files['.jerome/decisions.md'], '# Decisions\n\n- D1: Node only — fewer tools.\n');
   assert.equal(files['.jerome/open.md'], '# Open\n\n## Open questions\n- Q1: which name?\n\n## Parked\nnone\n');
+  // A brief without areas gets one, main, from its Goal and Success (D98).
+  assert.equal(files['.jerome/areas.md'], '# Areas\n\n## main\n- Goal: A demo.\n- Milestone: first\n- Criteria: Tests pass.\n- Folder: .\n- Agents: none\n- Pace: daily\n- Priority: 1\n');
+});
+
+test('a brief/v3 brings its areas into areas.md, and their other lines into scope.md', () => {
+  const v3 = `${BRIEF_V2.replace('brief/v2', 'brief/v3')}
+## Areas
+### development
+- Goal: A web app people can sign up to.
+- Milestone: MVP
+- Criteria: sign-up and one list work; deployed by the owner
+- Folder: .
+- Pace: daily
+- Priority: 1
+
+### marketing
+- Goal: 200 people on the waiting list before launch.
+- Milestone: pre-launch
+- Criteria: landing page draft; three posts ready
+- Folder: marketing/
+- Pace: weekly
+- Priority: 2
+- Audience: indie makers on Mastodon.
+`;
+  const brief = parseBrief(v3);
+  assert.equal(brief.kind, 'brief');
+  const files = projectFiles(brief);
+  assert.match(files['.jerome/areas.md'], /^# Areas\n\n## development\n- Goal: A web app people can sign up to\.\n- Milestone: MVP\n/);
+  assert.match(files['.jerome/areas.md'], /## marketing\n[\s\S]*- Folder: marketing\/\n- Agents: none\n- Pace: weekly\n- Priority: 2\n$/);
+  assert.match(files['.jerome/scope.md'], /\n## Area: marketing\n- Audience: indie makers on Mastodon\.\n$/);
+  assert.doesNotMatch(files['.jerome/scope.md'], /## Area: development/);
+  // A malformed area makes the brief one to convert, not one imported half right.
+  const bad = parseBrief(v3.replace('- Pace: weekly', '- Pace: sometimes'));
+  assert.equal(bad.kind, 'text');
+  assert.match(bad.reasons.join(), /Areas: area "marketing": Pace is hourly, daily, weekly or paused/);
 });
 
 test('the provisional PROJECT.md is recognized', () => {
@@ -67,9 +104,10 @@ test('the briefing prompt holds the rules and the format, not the Claude Code pa
   const prompt = briefingPrompt();
   assert.match(prompt, /single markdown block/);
   assert.match(prompt, /silence, or moving on to another topic, is not confirmation/i);
-  assert.match(prompt, /format: brief\/v2/);
+  assert.match(prompt, /format: brief\/v3/);
+  assert.match(prompt, /## Areas \(optional\)/);
   assert.match(prompt, /## Decisions/);
-  assert.doesNotMatch(prompt, /## Import|Reading brief\/v1|\.jerome|MementoVault/);
+  assert.doesNotMatch(prompt, /## Import|Reading brief\/v1|\.jerome|MementoVault|Area briefing/);
 });
 
 test('a MANIFEST that lists project state is refused', () => {

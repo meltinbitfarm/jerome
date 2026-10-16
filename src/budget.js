@@ -81,7 +81,7 @@ export function globalLimits(now = new Date(), account = readAccount()) {
     const reading = account.windows?.[w];
     const limit = account.limits?.[w];
     if (!reading) continue;
-    const reset = reading.resetsAt && reading.resetsAt * 1000 < now.getTime();
+    const reset = Boolean(reading.resetsAt) && reading.resetsAt * 1000 <= now.getTime();
     windows[w] = { used: reading.used, limit: typeof limit === 'number' ? limit : null, readAt: reading.readAt, resetsAt: reading.resetsAt ?? null, stale: Boolean(reset), level: reset ? null : level(reading.used, limit) };
     if (typeof limit !== 'number' || reset) continue;
     const hours = Math.floor((now.getTime() - Date.parse(reading.readAt)) / 3_600_000);

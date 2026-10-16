@@ -12,7 +12,7 @@ import { readState } from './state.js';
 import { readAccount, accountPath } from './account.js';
 import { findTranscript, delegations, leadCalls } from './delegations.js';
 import { PRICES_DATE } from './models.js';
-import { notProjectMessage } from './paths.js';
+import { notProjectMessage, STATE } from './paths.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'index.html');
 const RUNS = 50;
@@ -85,7 +85,7 @@ function handle(dir, token, server, req, res) {
     return res.end(readFileSync(PAGE));
   }
   if (url.pathname === '/api/state') {
-    const tag = etag(dir);
+    const tag = etag(dir, token);
     if (req.headers['if-none-match'] === tag) {
       res.writeHead(304, { etag: tag });
       return res.end();
@@ -103,13 +103,14 @@ function send(res, status, body, headers = {}) {
   res.end(JSON.stringify(body));
 }
 
-// Changes whenever something the page shows changes (D68): new events, runs or usage, or a new account reading.
-function etag(dir) {
+// Changes whenever something the page shows changes (D68): new events, runs or usage, or a new account reading;
+// and at every start of the viewer, through its token, so a browser never keeps what an older Jérôme computed.
+function etag(dir, token) {
   const db = openDb(dir, { readOnly: true, migrate: false });
   try {
     const row = db.prepare(`SELECT (SELECT coalesce(max(id), 0) FROM events) e, (SELECT count(*) FROM runs) r,
       (SELECT coalesce(max(status || ended_at), '') FROM runs) s, (SELECT coalesce(max(at), '') FROM usage) u,
-      (SELECT count(*) FROM requests WHERE status = 'open') q`).get();
+      (SELECT count(*) FROM requests WHERE status = 'open') q, (SELECT count(area) FROM runs) a`).get();
     let account = '';
     try {
       account = JSON.stringify(readAccount().windows);
@@ -117,8 +118,9 @@ function etag(dir) {
       // An unreadable account file only means no windows.
     }
     const agents = existsSync(join(dir, '.claude', 'agents')) ? String(statSync(join(dir, '.claude', 'agents')).mtimeMs) : '';
+    const areas = existsSync(join(dir, STATE.areas)) ? String(statSync(join(dir, STATE.areas)).mtimeMs) : '';
     const day = new Date().toDateString();
-    return `"${createHash('sha256').update(JSON.stringify([row, account, agents, day, accountPath()])).digest('base64url').slice(0, 16)}"`;
+    return `"${createHash('sha256').update(JSON.stringify([row, account, agents, areas, day, accountPath(), token])).digest('base64url').slice(0, 16)}"`;
   } finally {
     db.close();
   }

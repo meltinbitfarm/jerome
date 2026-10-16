@@ -180,7 +180,7 @@ test('doctor --json: schema, checks, sections, counts and warnings, with a match
   assert.deepEqual(report.checks.map((c) => c.id),
     ['project', 'limits', 'hooks', 'db', 'node', 'git', 'claude-code', 'login', 'profile', 'context-format', 'startup-context']);
   assert.match(report.db.path, /\/\.local\/share\/jerome\/projects\/demo-[0-9a-f]{12}\/jerome\.db$/);
-  assert.deepEqual(report.db, { version: 1, latest: 1, applied: [], path: report.db.path, relinked: null });
+  assert.deepEqual(report.db, { version: 2, latest: 2, applied: [], path: report.db.path, relinked: null });
   assert.ok(report.checks.every((c) => c.ok));
   assert.deepEqual(report.context.sections, {
     'Estimated usage by category': { found: true, rows: 1 },

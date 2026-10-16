@@ -62,6 +62,6 @@ test('jerome deps --json prints the versioned list', () => {
   for (const item of report.items) {
     for (const key of ['area', 'path', 'kind', 'presence', 'documented', 'decisions', 'phase', 'code', 'use']) assert.ok(key in item, `${item.path}: ${key}`);
     assert.ok(['always', 'sometimes'].includes(item.presence));
-    assert.ok(Number.isInteger(item.phase) && item.phase >= 1 && item.phase <= 9, `${item.path}: phase`);
+    assert.ok(Number.isInteger(item.phase) && item.phase >= 1 && item.phase <= 10, `${item.path}: phase`);
   }
 });

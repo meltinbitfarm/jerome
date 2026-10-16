@@ -27,6 +27,7 @@ import { settingsPath } from './profile.js';
 import { serviceFolder, recordResultUsage } from './docs.js';
 import { DIGEST } from './digest.js';
 import { STATE, isLegacy } from './paths.js';
+import { areaPlan } from './areas.js';
 
 const INTERACTIVE_HOURS = 12;
 
@@ -90,19 +91,32 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date() } 
     }
     const note = limits.note ? ` (${limits.note})` : '';
 
-    const fingerprint = projectFingerprint(dir);
+    // Areas (D100): those paused, held up by an open request, or whose pace has not come round are left out here,
+    // at zero tokens; the triage chooses among the others.
+    const db3 = openDb(dir);
+    let plan;
+    try {
+      plan = areaPlan(dir, db3, now);
+    } finally {
+      db3.close();
+    }
+    if (!plan.due.length) return finish('done', `no area due: ${plan.skipped.map((a) => `${a.name} ${a.why}`).join(' · ')}${note}`);
+
+    const fingerprint = projectFingerprint(dir, plan.due.map((a) => a.name));
     const last = readLast(dir);
     if (last?.fingerprint === fingerprint && last.verdict === 'no work') return finish('done', `no changes since the last heartbeat${note}`);
 
-    const triage = await runTriage(dir, run, env);
+    const triage = await runTriage(dir, run, env, plan);
     if (triage.error) return finish('failed', `triage: ${triage.error}${note}`);
     if (!triage.work) {
       writeLast(dir, { fingerprint, verdict: 'no work', at: now.toISOString() });
       return finish('done', `no work: ${triage.reason ?? 'nothing to do'}${note}`);
     }
+    const area = plan.due.find((a) => a.name === triage.area);
+    setRunArea(dir, run, area.name);
 
     const before = openRequests(dir);
-    const lead = await runLead(dir, run, triage.task, caps, settings.model ?? 'opus', env);
+    const lead = await runLead(dir, run, triage.task, caps, settings.model ?? 'opus', env, plan.implicit ? null : area);
     closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
     writeLast(dir, { fingerprint: projectFingerprint(dir), verdict: 'work', at: new Date().toISOString() });
     const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
@@ -110,7 +124,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date() } 
     if (lead.capped) return finish('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${note}`);
     if (lead.subtype === 'error_max_turns') return finish('stopped', `turn cap: ${caps.maxTurns} turns${note}`);
     if (lead.error) return finish('failed', `${lead.error}${note}`);
-    return finish('done', `${triage.task}${note}`);
+    return finish('done', `${plan.implicit ? '' : `${area.name}: `}${triage.task}${note}`);
   } finally {
     releaseLock(lock);
   }
@@ -125,6 +139,15 @@ function startRun(dir, now) {
     const id = Number(db.prepare("INSERT INTO runs (session_id, kind, started_at, status) VALUES (?, 'heartbeat', ?, 'running')")
       .run(sessionId, now.toISOString()).lastInsertRowid);
     return { id, sessionId };
+  } finally {
+    db.close();
+  }
+}
+
+function setRunArea(dir, run, area) {
+  const db = openDb(dir);
+  try {
+    db.prepare('UPDATE runs SET area = ? WHERE id = ?').run(area, run.id);
   } finally {
     db.close();
   }
@@ -239,14 +262,15 @@ function uncommitted(dir) {
 }
 
 // What the triage looks at: when none of it changed since a "no work" verdict, there is nothing new to do.
-function projectFingerprint(dir) {
+function projectFingerprint(dir, due = []) {
   const hash = createHash('sha256');
+  hash.update(JSON.stringify(due));
   try {
     hash.update(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }));
   } catch {
     hash.update('no-head');
   }
-  for (const file of [STATE.open, STATE.decisions, STATE.scope]) {
+  for (const file of [STATE.open, STATE.decisions, STATE.scope, STATE.areas]) {
     hash.update(existsSync(join(dir, file)) ? readFileSync(join(dir, file)) : '');
   }
   const db = openDb(dir);
@@ -275,14 +299,10 @@ function writeLast(dir, data) {
   writeFileSync(lastPath(dir), `${JSON.stringify(data)}\n`);
 }
 
-function section(text, heading) {
-  const m = text.match(new RegExp(`^## ${heading}[ \\t]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'));
-  return m ? m[1].trim() : '';
-}
-
-// The triage (D73): a service call on Haiku with no tools, given the little it needs in the prompt. It answers
-// whether there is one task the lead agent can do now without the user.
-async function runTriage(dir, run, env) {
+// The triage (D73, D100): a service call on Haiku with no tools, given the little it needs in the prompt. It answers
+// whether there is one task the lead agent can do now without the user, and in which of the areas due. Its stream
+// carries the subscription windows too, recorded like the lead agent's (rate_limit_event).
+async function runTriage(dir, run, env, plan) {
   const read = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '');
   let gitLog = '';
   try {
@@ -293,46 +313,35 @@ async function runTriage(dir, run, env) {
   const db = openDb(dir);
   let requests;
   try {
-    requests = db.prepare('SELECT id, question, status, answer FROM requests ORDER BY id DESC LIMIT 10').all();
+    requests = db.prepare('SELECT id, question, status, answer, area FROM requests ORDER BY id DESC LIMIT 10').all();
   } finally {
     db.close();
   }
   const digestLines = read(DIGEST).split('\n').filter((l) => l.startsWith('- ')).slice(-3);
-  const prompt = `You decide whether a scheduled heartbeat of a software project should start its lead agent.
-Answer with one JSON object and nothing else: {"work": true|false, "task": "<one task, one sentence>", "reason": "<one sentence>"}.
-There is work only if one concrete task moves the project towards its success criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. Prefer the next step the recent history points to.
-
-## Open questions and parked topics (open.md)
-${read(STATE.open).trim() || 'none'}
-
-## Success criteria (scope.md)
-${section(read(STATE.scope), 'Success') || 'none'}
-
-## Recent commits
-${gitLog || 'none'}
-
-## Decision requests (latest first)
-${requests.map((r) => `R${r.id} [${r.status}] ${r.question}${r.answer ? ` → ${r.answer}` : ''}`).join('\n') || 'none'}
-
-## Latest heartbeats (digest.md)
-${digestLines.join('\n') || 'none'}`;
   const settings = settingsPath(dir);
   let out;
   const progress = startProgress('triage on Haiku: is there work to do?');
   try {
-    out = await runClaudeAsync(['-p', prompt, '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json',
-      ...(existsSync(settings) ? ['--settings', settings] : [])], { cwd: serviceFolder(dir), timeout: 180_000, env: { JEROME_HOOKS: 'off' } });
+    out = await runClaudeAsync(['-p', triagePrompt({ plan, open: read(STATE.open), gitLog, requests, digestLines }), '--model', 'haiku', '--tools', '',
+      '--no-session-persistence', '--output-format', 'stream-json', '--verbose', ...(existsSync(settings) ? ['--settings', settings] : [])],
+    { cwd: serviceFolder(dir), timeout: 180_000, env: { JEROME_HOOKS: 'off' } });
   } catch (err) {
     return { error: err.message };
   } finally {
     progress.stop();
   }
-  let result;
-  try {
-    result = JSON.parse(out);
-  } catch {
-    return { error: 'unreadable result' };
+  let result = null;
+  for (const line of out.split('\n')) {
+    let e;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (e.type === 'rate_limit_event') recordRateLimit(e.rate_limit_info, 'triage');
+    else if (e.type === 'result') result = e;
   }
+  if (!result) return { error: 'unreadable result' };
   const db2 = openDb(dir);
   try {
     recordResultUsage(db2, run.id, result, 'triage');
@@ -340,29 +349,62 @@ ${digestLines.join('\n') || 'none'}`;
     db2.close();
   }
   const verdict = String(result.result ?? '').match(/\{[\s\S]*\}/);
+  let v;
   try {
-    const v = JSON.parse(verdict?.[0] ?? '');
-    return { work: v.work === true && Boolean(v.task), task: String(v.task ?? '').slice(0, 300), reason: String(v.reason ?? '').slice(0, 300) };
+    v = JSON.parse(verdict?.[0] ?? '');
   } catch {
     return { error: 'the triage did not answer with JSON' };
   }
+  const work = v.work === true && Boolean(v.task);
+  // With one area the choice is made; with several, an area that is not due is not taken on trust.
+  const area = plan.due.length === 1 ? plan.due[0].name : String(v.area ?? '');
+  if (work && !plan.due.some((a) => a.name === area)) return { error: `the triage chose ${area ? `the area "${area.slice(0, 40)}", which is not due` : 'no area'}` };
+  const task = String(v.task ?? '').slice(0, 300);
+  return { work, area, task: v.milestone === true ? `${task} (check the milestone's criteria)` : task, reason: String(v.reason ?? '').slice(0, 300) };
 }
 
-export function leadPrompt(task) {
+export function triagePrompt({ plan, open = '', gitLog = '', requests = [], digestLines = [] }) {
+  const areas = plan.due.map((a) => `### ${a.name}${plan.implicit ? '' : ` · priority ${a.priority} · ${a.pace} pace · last heartbeat ${a.lastAt ? a.lastAt.slice(0, 16).replace('T', ' ') : 'never'}`}
+Goal: ${a.goal ?? 'none'}${a.milestone ? `\nMilestone: ${a.milestone}` : ''}
+${a.milestone ? 'Criteria' : 'Success criteria'}: ${a.criteria ?? 'none'}`).join('\n\n');
+  return `You decide whether a scheduled heartbeat of a project should start its lead agent, and on which area of work.
+Answer with one JSON object and nothing else: {"work": true|false, "area": "<area name>", "task": "<one task, one sentence>", "milestone": true|false, "reason": "<one sentence>"}.
+Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. When the history shows an area's criteria all met, set "milestone": true and make checking them the task.
+
+## Areas due now
+${areas}
+
+## Open questions and parked topics (open.md)
+${open.trim() || 'none'}
+
+## Recent commits
+${gitLog || 'none'}
+
+## Decision requests (latest first)
+${requests.map((r) => `R${r.id} [${r.status}]${r.area ? ` (${r.area})` : ''} ${r.question}${r.answer ? ` → ${r.answer}` : ''}`).join('\n') || 'none'}
+
+## Latest heartbeats (digest.md)
+${digestLines.join('\n') || 'none'}`;
+}
+
+export function leadPrompt(task, area = null) {
+  const where = area ? `
+Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'none listed'}). Milestone: ${area.milestone} — criteria: ${area.criteria}
+- Work in the area's folder, with its agents. If its milestone's criteria are met, open a decision request proposing the next milestone and its criteria (options: open it / continue / area briefing), and stop.` : '';
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
-Task chosen by the triage: ${task}
-- Do this task only. Work on a new branch. Delegate reading and code to the agents in .claude/agents/, and keep your own turns few.
+Task chosen by the triage: ${task}${where}
+- Do this task only. Work on a new branch. Delegate reading and work to the agents in .claude/agents/, and keep your own turns few.
 - Never ask the user. When you need a decision, run \`jerome request open --question "…" --options "…" --recommendation "…"\` and stop that line of work.
 - When the tests pass and there are no conflicts, merge the branch into main and report it; if tests fail or there is a conflict, open a decision request instead.
-- Before ending, append one line to .jerome/digest.md: \`- YYYY-MM-DD HH:MM · what you did · branches merged · requests opened\`. Commit it with your work, and end on main with a clean working tree.
+- Before ending, append one line to .jerome/digest.md: \`- YYYY-MM-DD HH:MM · ${area ? `${area.name} · ` : ''}what you did · branches merged · requests opened\`. Commit it with your work, and end on main with a clean working tree.
 - End with at most 3 lines.`;
 }
 
 // The lead agent in a new session (never resumed: long sessions are where its usage grows), with the turn cap
 // passed to Claude Code and the token cap enforced here, from the usage in the stream.
-function runLead(dir, run, task, caps, model, env) {
+function runLead(dir, run, task, caps, model, env, area) {
   return new Promise((done) => {
-    const child = spawn('claude', ['-p', leadPrompt(task), '--model', model, '--max-turns', String(caps.maxTurns),
+    const child = spawn('claude', ['-p', leadPrompt(task, area), '--model', model, '--max-turns', String(caps.maxTurns),
       '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose', '--session-id', run.sessionId], {
       cwd: dir, stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...env, JEROME_RUN_KIND: 'heartbeat', JEROME_SESSION_ID: run.sessionId },
@@ -391,7 +433,7 @@ function runLead(dir, run, task, caps, model, env) {
           child.kill('SIGTERM');
         }
       } else if (e.type === 'rate_limit_event') {
-        recordRateLimit(e.rate_limit_info);
+        recordRateLimit(e.rate_limit_info, 'heartbeat');
       } else if (e.type === 'result') {
         state.subtype = e.subtype ?? null;
         if (e.is_error && e.subtype !== 'error_max_turns') state.error = `${e.subtype ?? 'error'}: ${String(e.result ?? '').slice(0, 200)}`;
@@ -411,14 +453,14 @@ function runLead(dir, run, task, caps, model, env) {
 }
 
 // The subscription windows from a headless run (D20, D52), as fractions in the rate_limit_event.
-function recordRateLimit(info) {
+function recordRateLimit(info, source) {
   const windows = info?.unifiedWindows ?? {};
   const reading = {};
   for (const w of WINDOWS) {
     if (typeof windows[w]?.utilization === 'number') reading[w] = { used: Math.round(windows[w].utilization * 100), resetsAt: windows[w].resetsAt ?? null };
   }
   try {
-    if (Object.keys(reading).length) recordWindows(reading, { source: 'heartbeat' });
+    if (Object.keys(reading).length) recordWindows(reading, { source });
   } catch {
     // The account file is a convenience: a failure here never stops the run.
   }

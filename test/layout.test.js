@@ -215,7 +215,7 @@ test('a database still in .jerome/ moves out of the working tree with jerome upd
   assert.ok(!existsSync(join(dir, '.jerome', 'jerome.db')));
   assert.deepEqual(readdirSync(dirname(stored)).sort(), ['jerome.db', 'record.json'], 'nothing left from the check of the copy');
   assert.deepEqual(countRows(stored), rows);
-  assert.equal(run('doctor', 'demo', '--check').stdout.match(/Project database — (.*)/)[1], 'schema 1');
+  assert.equal(run('doctor', 'demo', '--check').stdout.match(/Project database — (.*)/)[1], 'schema 2');
 });
 
 test('the worktrees of a clone share its database, two clones have one each', () => {
@@ -258,7 +258,7 @@ test('a project that moved is relinked only with a choice, or with --yes when it
   assert.match(run('heartbeat', 'moved').stdout + run('heartbeat', 'moved').stderr, /not started/);
 
   const r = run('doctor', 'moved', '--yes');
-  assert.match(r.stdout, /✓ Project database — relinked from .*\/demo \(schema 1\)/);
+  assert.match(r.stdout, /✓ Project database — relinked from .*\/demo \(schema 2\)/);
   assert.equal(new DatabaseSync(sandboxDb(root, moved), { readOnly: true }).prepare('SELECT count(*) n FROM runs').get().n, 1);
   assert.doesNotMatch(r.stdout, /no longer holds a Jérôme project/);
 });

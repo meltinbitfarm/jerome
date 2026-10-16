@@ -29,9 +29,11 @@ Every agent:
 
 Ask the lead agent, for example "propose the team of agents from the brief". With the `project-team` skill it:
 
-1. reads `scope.md` and `decisions.md`;
-2. proposes the smallest team that covers the work: each agent with its task in this project, model, tools and reason, ending with a decision request;
-3. after your explicit confirmation, writes the agents to `.claude/agents/`, copies into each one the Agent limits from `PROJECT.md` that apply to it, and records the team as a decision.
+1. reads `areas.md`, `scope.md` and `decisions.md`;
+2. proposes, area by area, the smallest team that covers the work of each area's current milestone, reusing the agents that exist: each agent with its area, its task there, model, tools and reason, ending with a decision request;
+3. after your explicit confirmation, writes the agents to `.claude/agents/`, lists each one in the `Agents` line of its areas, copies into each one the Agent limits from `PROJECT.md` that apply to it, and records the team as a decision.
+
+All agent files stay in `.claude/agents/`, where Claude Code looks for them, whatever their area; `areas.md` says which area each one serves. A new area, or a new milestone, is the time to ask for the agents it needs.
 
 Nothing is created before you confirm. Claude Code protects the `.claude/` folder, so in a session it also asks you to approve each agent file the lead agent writes, even in "accept edits" mode. In a test on a real project, the lead agent proposed three agents (developer, analyst, documentarist), skipped the other three with a reason each, and recorded the team only after the files existed.
 

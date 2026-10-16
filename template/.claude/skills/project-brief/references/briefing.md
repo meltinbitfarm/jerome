@@ -1,6 +1,6 @@
 # Running the briefing
 
-The briefing is where every project starts. The goal is to reach, with a few targeted questions, a compact brief in the brief/v2 format that a lead agent can read with few tokens and use to propose the agents.
+The briefing is where every project starts. The goal is to reach, with a few targeted questions, a compact brief in the brief/v3 format that a lead agent can read with few tokens and use to propose the agents.
 
 ## Language
 
@@ -23,5 +23,14 @@ The briefing is where every project starts. The goal is to reach, with a few tar
 When the user asks to save or close the brief ("save the brief", "the brief is ready", or the same in their language):
 
 1. List the decisions you proposed that the user never explicitly confirmed, and ask them to confirm the list in one block, or to say which ones to drop. Don't write the brief until they answer. Proposals they don't confirm go under Open questions.
-2. Write the brief following the brief/v2 format, using only what came up in the conversation. Whatever was not decided goes under Open questions: don't make it up.
+2. Write the brief following the brief/v3 format, using only what came up in the conversation. Whatever was not decided goes under Open questions: don't make it up.
 3. `status: ready` only if the user says it is ready or that development starts now; otherwise `draft`.
+
+## Area briefing
+
+The same way of working, for one area of an existing project: adding a front of work (marketing, research, support…) or opening the next milestone of one.
+
+- Ask only what the project files do not say: the area's goal, its milestone and the criteria that tell it is reached, its folder, pace and priority against the other areas, and any limit of its own (for instance: nothing is published without the user).
+- For the next milestone, start from what the last one achieved and propose the next with its criteria; the user confirms or changes them.
+- Criteria are things one can check: a page drafted, tests passing, 200 sign-ups. Not "good quality".
+- Close as for the brief: list your unconfirmed proposals and wait for the user's confirmation before writing anything.

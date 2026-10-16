@@ -1,6 +1,6 @@
 # The briefing
 
-Every Jérôme project starts from a brief: a short, structured document with the project's goal, constraints, decisions and open questions. The contract is the brief's format, `brief/v2`, not a particular tool: you can run the briefing wherever you like, and the CLI imports any brief in that format.
+Every Jérôme project starts from a brief: a short, structured document with the project's goal, constraints, decisions and open questions. The contract is the brief's format, `brief/v3`, not a particular tool: you can run the briefing wherever you like, and the CLI imports any brief in that format.
 
 ## How a briefing goes
 
@@ -12,7 +12,7 @@ The briefing happens in the language you write in. The brief's section headings 
 
 | Where | How | What you get |
 |---|---|---|
-| Claude Code, inside a Jérôme project | The template's `project-brief` skill: say "I have an idea" or "let's do the briefing" | The brief split into `PROJECT.md`, `decisions.md` and `open.md`, with a full copy in `brief.md` |
+| Claude Code, inside a Jérôme project | The template's `project-brief` skill: say "I have an idea" or "let's do the briefing" | The brief split into `PROJECT.md`, `scope.md`, `areas.md`, `decisions.md` and `open.md`, with a full copy in `brief.md` |
 | Any chat: claude.ai, ChatGPT, Gemini… | Paste the output of [`jerome prompt`](commands/prompt.md) as your first message | The brief in a single markdown block, to copy |
 | claude.ai, with the skill uploaded (optional) | The same skill as in Claude Code | The brief in a single markdown block, to copy |
 
@@ -29,7 +29,7 @@ or save it to a file and pass its path instead of `-`. On a phone, copy the brie
 Both use the same files, in the skill's `references/` folder:
 
 - `briefing.md`, how to run the briefing and close it;
-- `brief-v2.md`, the format.
+- `brief-v3.md`, the format.
 
 `jerome prompt` prints them, without the parts that only make sense in Claude Code, so the instructions you paste into a chat always match the installed version of Jérôme.
 
@@ -45,4 +45,8 @@ Then upload `project-brief.zip` in the Skills section of your claude.ai settings
 
 ## Format
 
-The format is `brief/v2`, described in [`references/brief-v2.md`](../template/.claude/skills/project-brief/references/brief-v2.md). Briefs in the older `brief/v1` format, which had Italian section headings, are still accepted on import.
+The format is `brief/v3`, described in [`references/brief-v3.md`](../template/.claude/skills/project-brief/references/brief-v3.md). It adds to `brief/v2` an optional `## Areas` section: the project's fronts of work, one `### <name>` each, with goal, milestone, criteria, folder, pace and priority (see [areas.md](areas.md)). A brief without areas, and briefs in `brief/v2` or in the older `brief/v1`, which had Italian section headings, are still accepted on import, with one area, `main`, made from the goal and the success criteria.
+
+## Adding an area later
+
+The same skill holds the area briefing, for a project that already exists: to add an area, such as marketing once the MVP is out, or to plan an area's next milestone. See [areas.md](areas.md#the-area-briefing). It runs in Claude Code only.

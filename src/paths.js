@@ -9,6 +9,7 @@ export const LEAD_FILE = '.claude/rules/jerome.md';
 export const STATE = {
   project: '.jerome/PROJECT.md',
   scope: '.jerome/scope.md',
+  areas: '.jerome/areas.md',
   decisions: '.jerome/decisions.md',
   open: '.jerome/open.md',
   archive: '.jerome/archive.md',

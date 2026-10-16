@@ -37,9 +37,10 @@ Heartbeats run on macOS through launchd: `jerome schedule` writes a job to `~/Li
    - the working tree has no uncommitted changes (`.jerome/digest.md` and `.jerome/project.json` excepted);
    - `jerome doctor` passes: setup, lean profile, hooks and permission rules. Its `/context` check uses no tokens.
 4. **Limits.** If a subscription window is at or over its global limit, or the project's spend today or this week is at or over its limit, it skips, at zero tokens, until the window resets; you get one notification per pause (see [limits.md](limits.md)). A reading older than 3 hours is mentioned in the reason; one whose window has reset since is ignored.
-5. **Nothing changed.** If neither the commits, `open.md`, `decisions.md`, `scope.md` nor the answered decision requests changed since a heartbeat found no work, it stops here at zero tokens.
-6. **Triage.** A call on Haiku, with no tools and outside the project, reads `open.md`, the success criteria, the latest commits, the decision requests and the latest digest lines, and answers whether there is one task the lead agent can do now without you. A task that depends on an open request or question is not one. About 5,000 tokens.
-7. **Lead agent.** Only then: a new session, never a resumed one, on Opus by default, with the task, the turn cap and the project's permission rules. It works on a branch, delegates the heavy work to the project's agents, merges into `main` when the tests pass with no conflicts, opens a decision request instead when they fail or there is a conflict, appends one line to `.jerome/digest.md`, and ends on `main` with a clean tree. The token cap is enforced from the usage it streams: over the cap, the run is stopped.
+5. **Areas.** The [areas](areas.md) that are paused, waiting for a decision request of their own, or whose pace has not come round since their last heartbeat are left out, at zero tokens. If none is left, it stops here with the reason. A project without `areas.md` has one area, always due.
+6. **Nothing changed.** If neither the commits, `open.md`, `decisions.md`, `scope.md`, `areas.md`, the areas due nor the answered decision requests changed since a heartbeat found no work, it stops here at zero tokens.
+7. **Triage.** A call on Haiku, with no tools and outside the project, reads the areas due, highest priority first, with their goal, milestone and criteria, then `open.md`, the latest commits, the decision requests and the latest digest lines. It answers whether there is one task the lead agent can do now without you, and in which area. A task that depends on an open request or question is not one; an answered request that changes an area's milestone comes first; when an area's criteria look all met, the task is to check them. An area that was not due is never taken. The subscription windows its stream carries update `account.json`. About 5,000 tokens.
+8. **Lead agent.** Only then: a new session, never a resumed one, on Opus by default, with the task, its area's folder, agents, milestone and criteria, the turn cap and the project's permission rules. It works on a branch, delegates the heavy work to the project's agents, merges into `main` when the tests pass with no conflicts, opens a decision request instead when they fail or there is a conflict, appends one line to `.jerome/digest.md`, and ends on `main` with a clean tree. If the area's milestone criteria are met, it opens a decision request proposing the next milestone and stops. The token cap is enforced from the usage it streams: over the cap, the run is stopped.
 
 Long sessions are where the lead agent's usage grows: on one project it made about 90% of the tokens over a week. A heartbeat therefore always starts a new session, and keeps the lead agent's own work to deciding and delegating.
 
@@ -49,14 +50,14 @@ Its usage is recorded by the [hooks](hooks.md), and the subscription windows it 
 
 A heartbeat never asks: nobody reads it. The lead agent runs `jerome request open --question … --options … --recommendation …` and stops that line of work. The heartbeat's own checks open requests the same way. You get a macOS notification when a request is opened or a heartbeat fails.
 
-When you next open a session in the project, the lead agent is told about the open requests and brings them up. Once you answer, it records the answer with `jerome request answer <id> "<answer>"` (and in `decisions.md` if it is a decision), or drops it with `jerome request drop <id>`. The next heartbeat sees the answer and starts again. `jerome state` and `jerome view` list the open requests.
+When you next open a session in the project, the lead agent is told about the open requests and brings them up. Once you answer, it records the answer with `jerome request answer <id> "<answer>"` (and in `decisions.md` if it is a decision), or drops it with `jerome request drop <id>`. The next heartbeat sees the answer and starts again. A request opened in a heartbeat belongs to its area (`jerome request open --area <name>` sets one by hand): while it is open, that area gets no work, and the others go on. `jerome state` and `jerome view` list the open requests.
 
 ## Digest
 
-At the end of each heartbeat the lead agent appends one line to `.jerome/digest.md`:
+At the end of each heartbeat the lead agent appends one line to `.jerome/digest.md`, with the area it worked on:
 
 ```
-- 2026-10-15 14:24 · checked the rupture report for the rigid hook fields · hook-rigid-fields-rupture · R2
+- 2026-10-15 14:24 · development · checked the rupture report for the rigid hook fields · hook-rigid-fields-rupture · R2
 ```
 
 `jerome digest [--since 7d]` puts those lines together with the figures of the period, at zero tokens: runs by kind and status, usage and its API equivalent, decision requests, and commits on `main`.

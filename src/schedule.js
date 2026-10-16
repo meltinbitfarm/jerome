@@ -8,6 +8,7 @@ import { homedir, userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { MARKER, readMarker, updateMarker } from './template.js';
 import { notProjectMessage } from './paths.js';
+import { areaWarnings } from './areas.js';
 
 export const EVERY = ['hourly', 'daily', 'weekly'];
 export const DEFAULT_CAPS = { maxTokens: 500_000, maxTurns: 40 };
@@ -89,9 +90,12 @@ export async function schedule(dirArg, { every, at, day, maxTokens, maxTurns, of
     console.error(`launchctl could not load the job: ${loaded.message}`);
     return 1;
   }
-  updateMarker(dir, (m) => { m.heartbeat = heartbeat; });
+  // The lead agent's model for heartbeats, set by hand in project.json, survives a new schedule.
+  updateMarker(dir, (m) => { m.heartbeat = { ...heartbeat, ...(m.heartbeat?.model ? { model: m.heartbeat.model } : {}) }; });
   console.log(`✓ Heartbeat scheduled ${describe(heartbeat)}, at most ${caps.maxTokens.toLocaleString('en')} tokens and ${caps.maxTurns} turns per run`);
   console.log(`  job ${label}, log ${logPath(label)}`);
+  // An area paced faster than the heartbeats gets at most one per heartbeat (D100).
+  for (const w of areaWarnings(dir, { every }).filter((x) => / pace, but heartbeats run /.test(x.message))) console.log(`! ${w.message}`);
   return 0;
 }
 

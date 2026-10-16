@@ -1,10 +1,37 @@
 # Jérôme
 
-A lean setup for running projects with [Claude Code](https://docs.claude.com/en/docs/claude-code) on a Claude subscription. Each project gets one **lead agent** that runs the briefing, creates the subagents the work needs, coordinates them and reports back. Token usage is the first constraint: sessions start with the smallest possible context, and the tracking runs outside the model.
+A lean setup for running projects with [Claude Code](https://docs.claude.com/en/docs/claude-code) on a Claude subscription. A project is a product or an initiative, not only code: each one gets a **lead agent** that runs the briefing, creates the subagents the work needs, coordinates them across the project's areas (development, marketing, research…) and reports back. Token usage is the first constraint: sessions start with the smallest possible context, and the tracking runs outside the model.
 
 The name is a nod to Saint Jerome, patron saint of translators: the lead agent translates ideas into tasks.
 
 > **Status: early development.** All the phases of the [roadmap](#roadmap) are in place: projects (`jerome new`, `jerome init`), the lead agent and its team, usage tracking, the viewer, heartbeats and limits. They have been tried on real projects, but not yet on a clean machine.
+
+## How it works
+
+```mermaid
+flowchart TD
+  you([You]) -->|brief, answers| lead
+  lead -->|decision requests| you
+  subgraph project [Project]
+    lead[Lead agent<br/>the main Claude Code session]
+    state[(.jerome/<br/>PROJECT.md · areas.md<br/>decisions.md · open.md)]
+    lead <--> state
+    subgraph dev [Area: development · milestone MVP]
+      developer[developer · Opus]
+      analyst[analyst · Sonnet]
+    end
+    subgraph mkt [Area: marketing · milestone pre-launch]
+      writer[writer · Opus]
+      researcher[researcher · Sonnet]
+    end
+  end
+  lead --> developer
+  lead --> analyst
+  lead --> writer
+  lead --> researcher
+```
+
+You start from a brief. The lead agent keeps the project's state, proposes a team of agents for each **area**, and works with you in your sessions and on its own in scheduled **heartbeats**, one task at a time, towards each area's current **milestone**. When something is yours to decide, it leaves a **decision request** and waits; when a milestone is reached, it proposes the next. [docs/guide.md](docs/guide.md) follows a project from the idea to its second area, step by step, and [docs/configuration.md](docs/configuration.md) lists every setting: where it lives and how to change it.
 
 ## Requirements
 
@@ -53,8 +80,8 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report; relinks the database of a project that moved |
 | [`jerome forget <key>`](docs/commands/forget.md) | Removes the database of a project that is gone, after a backup |
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
-| [`jerome state [dir] [--json]`](docs/commands/state.md) | Shows a project's usage, runs and open decision requests in a few lines, with dollars as API equivalents |
-| [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, runs, usage, subscription windows and the messages between agents |
+| [`jerome state [dir] [--json]`](docs/commands/state.md) | Shows a project's usage, areas, runs and open decision requests in a few lines, with dollars as API equivalents |
+| [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, areas, runs, usage, subscription windows and the messages between agents |
 | [`jerome schedule [dir] hourly\|daily\|weekly`](docs/commands/schedule.md) | Schedules heartbeats, runs of the lead agent without you, with a cap per run (macOS) |
 | [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it |
 | [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
@@ -79,6 +106,7 @@ my-project/
 ├── .jerome/
 │   ├── project.json     Jérôme's record: version, template files, limits, schedule
 │   ├── PROJECT.md       loaded at every turn: goal, constraints, agent limits
+│   ├── areas.md         the areas: goal, milestone and criteria, folder, agents, pace, priority
 │   ├── scope.md, decisions.md, open.md, archive.md, brief.md, digest.md
 │   ├── docs-queue.md    documentation changes waiting for the documentarist
 │   └── notes/           the agents' detailed reports
@@ -100,11 +128,11 @@ After the brief, the lead agent proposes a team from Jérôme's catalog (develop
 
 ## Heartbeats
 
-Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work, within a token and turn cap. When it needs you it leaves a decision request instead of asking. Heartbeats pause when a global or project limit is reached, and start again when it resets. See [docs/heartbeat.md](docs/heartbeat.md) and [docs/limits.md](docs/limits.md).
+Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work and in which area, by each area's priority and pace, within a token and turn cap. When it needs you it leaves a decision request instead of asking. Heartbeats pause when a global or project limit is reached, and start again when it resets. See [docs/heartbeat.md](docs/heartbeat.md) and [docs/limits.md](docs/limits.md).
 
 ## The briefing
 
-Every project starts from a brief in the `brief/v2` format. You can run the briefing anywhere: in Claude Code inside the project, with the template's `project-brief` skill, which writes the project files directly; or in any chat (claude.ai, ChatGPT, Gemini…) with the instructions printed by `jerome prompt`, then import the result with `jerome new --from-file`. A text that is not a valid brief is accepted too: the lead agent converts it in the first session, with your confirmation. See [docs/project-brief.md](docs/project-brief.md).
+Every project starts from a brief in the `brief/v3` format, with the areas to start from; more are added later with an area briefing (see [docs/areas.md](docs/areas.md)). You can run the briefing anywhere: in Claude Code inside the project, with the template's `project-brief` skill, which writes the project files directly; or in any chat (claude.ai, ChatGPT, Gemini…) with the instructions printed by `jerome prompt`, then import the result with `jerome new --from-file`. A text that is not a valid brief is accepted too: the lead agent converts it in the first session, with your confirmation. See [docs/project-brief.md](docs/project-brief.md).
 
 ## Roadmap
 
@@ -117,6 +145,7 @@ Every project starts from a brief in the `brief/v2` format. You can run the brie
 7. ✓ Read-only local viewer (`jerome view`)
 8. ✓ Scheduled headless runs, with a lock and a cap per run (`jerome schedule`, `jerome heartbeat`, `jerome request`)
 9. ✓ Daily and weekly limits with automatic pause (`jerome limits`)
+10. Areas and milestones, with the area briefing (`.jerome/areas.md`): in place and tested, not yet tried on a real project
 
 Along the way: `jerome deps` lists what Jérôme depends on in Claude Code, and `jerome forget` removes the database of a project that is gone.
 

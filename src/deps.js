@@ -38,7 +38,7 @@ export const DEPS = [
   d('cli', '--permission-mode', '"acceptEdits" for heartbeats', { kind: 'flag', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
 
   // Result of -p --output-format json.
-  d('result', 'result', 'final text of the documentarist and of the triage', { decisions: ['D43', 'D73'], phase: 4, code: ['src/docs.js', 'src/heartbeat.js'] }),
+  d('result', 'result', 'final text of the documentarist', { decisions: ['D43', 'D73'], phase: 4, code: ['src/docs.js', 'src/heartbeat.js'] }),
   d('result', 'is_error', 'failed run', { decisions: ['D43'], phase: 4, code: ['src/docs.js'] }),
   d('result', 'duration_ms', 'start time of a service run', { presence: 'sometimes', decisions: ['D63'], phase: 6, code: ['src/docs.js'] }),
   d('result', 'modelUsage.*.inputTokens', 'usage of service calls, which leave no transcript', { decisions: ['D63', 'D73'], phase: 6, code: ['src/docs.js'] }),
@@ -48,12 +48,13 @@ export const DEPS = [
 
   // Stream of -p --output-format stream-json --verbose.
   d('stream', 'type', '"assistant", "rate_limit_event", "result"', { decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
+  d('stream', 'result.modelUsage', 'the triage\'s verdict (result) and usage, read from the last event of its stream, which carries the fields of the json result', { event: 'result', decisions: ['D73', 'D100'], phase: 10, code: ['src/heartbeat.js'] }),
   d('stream', 'message.id', 'deduplicating the live usage; repeats with growing usage', { event: 'assistant', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
   d('stream', 'message.usage.input_tokens', 'heartbeat token cap', { event: 'assistant', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
   d('stream', 'message.usage.output_tokens', 'heartbeat token cap', { event: 'assistant', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
   d('stream', 'message.usage.cache_read_input_tokens', 'heartbeat token cap', { event: 'assistant', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
   d('stream', 'message.usage.cache_creation_input_tokens', 'heartbeat token cap', { event: 'assistant', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
-  d('stream', 'rate_limit_info.unifiedWindows.five_hour.utilization', 'subscription window, 0 to 1', { event: 'rate_limit_event', presence: 'sometimes', documented: false, decisions: ['D20', 'D52'], phase: 8, code: ['src/heartbeat.js'], note: 'the event may not come in every run' }),
+  d('stream', 'rate_limit_info.unifiedWindows.five_hour.utilization', 'subscription window, 0 to 1, from the lead agent\'s and the triage\'s streams', { event: 'rate_limit_event', presence: 'sometimes', documented: false, decisions: ['D20', 'D52'], phase: 8, code: ['src/heartbeat.js'], note: 'the event may not come in every run' }),
   d('stream', 'rate_limit_info.unifiedWindows.five_hour.resetsAt', 'window reset, Unix seconds', { event: 'rate_limit_event', presence: 'sometimes', documented: false, decisions: ['D20', 'D52'], phase: 8, code: ['src/heartbeat.js'] }),
   d('stream', 'rate_limit_info.unifiedWindows.seven_day.utilization', 'subscription window, 0 to 1', { event: 'rate_limit_event', presence: 'sometimes', documented: false, decisions: ['D20', 'D52'], phase: 8, code: ['src/heartbeat.js'] }),
   d('stream', 'rate_limit_info.unifiedWindows.seven_day.resetsAt', 'window reset, Unix seconds', { event: 'rate_limit_event', presence: 'sometimes', documented: false, decisions: ['D20', 'D52'], phase: 8, code: ['src/heartbeat.js'] }),

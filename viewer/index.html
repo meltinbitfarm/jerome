@@ -52,6 +52,8 @@
   tr.run:hover td, tr.run.open td { background: var(--hl); }
   .running { color: var(--cyan); } .done { color: var(--green); } .failed, .blocked, .stopped { color: var(--red); }
   .detail > td { white-space: normal; padding: 4px 0 8px 2ch; }
+  td.wrap { white-space: normal; }
+  tr.sub td { padding-bottom: 4px; }
   .delegation { border-left: 2px solid var(--line); padding: 0 0 0 1.5ch; margin: 6px 0; }
   .request { border-left: 2px solid var(--yellow); padding-left: 1.5ch; margin: 4px 0; white-space: pre-wrap; }
   details { margin: 2px 0; }
@@ -95,6 +97,7 @@
   <div id="error" class="error" hidden></div>
   <section id="windows"></section>
   <section id="cards"></section>
+  <section id="areas" hidden></section>
   <section id="requests"></section>
   <section id="team"></section>
   <section id="runs"></section>
@@ -108,7 +111,7 @@ const token = new URLSearchParams(location.search).get('t') || '';
 const api = (path) => `${path}?t=${encodeURIComponent(token)}`;
 const REPLY_LIMIT = 150;
 const BAR = 24;
-const state = { data: null, open: new Set(), details: new Map(), period: 'week', kind: 'all' };
+const state = { data: null, open: new Set(), details: new Map(), period: 'week', kind: 'all', area: 'all' };
 
 // Elements are built with textContent only: transcripts can hold anything, and none of it is ever read as HTML.
 function el(tag, attrs = {}, ...children) {
@@ -200,9 +203,15 @@ function renderHeader(d) {
   fill('updated', `data as of ${when(d.at)} · checked every 10 s while this tab is visible`);
   const names = { five_hour: '5h', seven_day: '7d' };
   const rows = [];
-  const latest = Object.values(d.windows).sort((a, b) => b.readAt.localeCompare(a.readAt))[0];
+  const latest = Object.values(d.windows).filter((w) => !w.stale).sort((a, b) => b.readAt.localeCompare(a.readAt))[0];
   for (const [name, w] of Object.entries(d.windows)) {
     const limit = d.limits?.[name];
+    // A window that has reset since its reading: the old figure says nothing about now.
+    if (w.stale) {
+      rows.push(el('div', { class: 'row', title: `last reading ${when(w.readAt)} (${w.source})` }, el('span', {}, names[name]), el('span', { class: 'muted' }, '·'.repeat(BAR)),
+        el('span', { class: 'muted' }, `no reading since its reset at ${when(new Date(w.resetsAt * 1000).toISOString())}`, typeof limit === 'number' ? ` · limit ${limit}%` : '')));
+      continue;
+    }
     const lvl = level(w.used, limit);
     rows.push(el('div', { class: 'row', title: limit ? `global limit ${limit}%` : 'no global limit set' },
       el('span', {}, `${names[name]}`), bar(w.used, 100, limit, lvl),
@@ -231,9 +240,33 @@ function renderCards(d) {
     el('div', {}, el('span', { class: 'label' }, 'open'), el('span', { class: open ? 'warn' : 'ok' }, String(open)), ` decision ${open === 1 ? 'request' : 'requests'}`)));
 }
 
+// Areas (D102): each with its milestone, pace, priority, last heartbeat, what holds it, and its usage over 7 days.
+function renderAreas(d) {
+  const box = document.getElementById('areas');
+  box.hidden = !d.areas || d.areasImplicit;
+  if (box.hidden) return;
+  const top = Math.max(0, ...d.areas.map((a) => a.week.apiUsd), d.shared.apiUsd);
+  const rows = [];
+  for (const a of [...d.areas].sort((x, y) => x.priority - y.priority)) {
+    const held = a.pace === 'paused' ? el('span', { class: 'warn' }, '⏸ paused')
+      : a.request ? el('a', { href: a.request.runId ? `#run-${a.request.runId}` : '#requests', class: 'warn', title: a.request.question }, `waiting R${a.request.id}`) : el('span', { class: 'ok' }, 'active');
+    rows.push(el('tr', {},
+      el('td', {}, el('strong', {}, a.name)), el('td', { class: 'cyan' }, a.milestone ?? '—'), el('td', {}, a.pace), el('td', { class: 'num' }, String(a.priority)),
+      el('td', {}, a.lastHeartbeat ? when(a.lastHeartbeat) : el('span', { class: 'muted' }, 'never')), el('td', {}, held),
+      el('td', { class: 'num' }, n(a.week.tokens)), el('td', { class: 'num' }, usd(a.week)), el('td', {}, top ? bar(a.week.apiUsd, top, null, 'cyan') : '')));
+    rows.push(el('tr', { class: 'sub' }, el('td', {}, ''), el('td', { colspan: 8, class: 'muted wrap' }, `criteria: ${a.criteria ?? 'none'} · folder ${a.folder}${a.agents.length ? ` · ${a.agents.join(', ')}` : ''}`)));
+  }
+  rows.push(el('tr', {}, el('td', { class: 'muted' }, 'shared'), el('td', { colspan: 5, class: 'muted' }, 'lead agent and agents of several areas, in sessions'),
+    el('td', { class: 'num' }, n(d.shared.tokens)), el('td', { class: 'num' }, usd(d.shared)), el('td', {}, top ? bar(d.shared.apiUsd, top, null, 'cyan') : '')));
+  fill('areas', prompt('cat .jerome/areas.md', meta('areas · usage over 7 days')),
+    el('div', { class: 'scroll' }, el('table', {},
+      el('thead', {}, el('tr', {}, ['Area', 'Milestone', 'Pace', 'Prio', 'Last heartbeat', 'Status', 'Tokens', 'API equivalent', 'Share'].map((h, i) => el('th', { class: i === 3 || i === 6 || i === 7 ? 'num' : null }, h)))),
+      el('tbody', {}, rows))));
+}
+
 function renderRequests(d) {
   const items = d.requests.map((r) => el('div', { class: 'request' },
-    el('div', {}, el('span', { class: 'warn' }, `R${r.id}`), '  ', r.question),
+    el('div', {}, el('span', { class: 'warn' }, `R${r.id}`), r.area ? el('span', { class: 'cyan' }, `  ${r.area}`) : '', '  ', r.question),
     r.options ? el('div', {}, el('span', { class: 'muted' }, 'options         '), r.options) : null,
     r.recommendation ? el('div', {}, el('span', { class: 'muted' }, 'recommendation  '), r.recommendation) : null,
     el('div', { class: 'muted' }, `opened ${when(r.openedAt)}`, r.runId ? [' · ', el('a', { href: `#run-${r.runId}` }, `→ run ${r.runId}`)] : null)));
@@ -267,24 +300,33 @@ function renderRuns(d) {
   const kinds = ['all', ...new Set(d.runs.map((r) => r.kind))];
   const filter = el('select', { onchange: (e) => { state.kind = e.target.value; renderRuns(state.data); } },
     kinds.map((k) => el('option', { value: k, selected: k === state.kind }, k)));
+  // With areas (D102), each run shows its own, and the list can be narrowed to one.
+  const withAreas = d.areas && !d.areasImplicit;
+  const areaNames = ['all', ...(withAreas ? d.areas.map((a) => a.name) : []), 'none'];
+  const areaFilter = withAreas ? el('select', { onchange: (e) => { state.area = e.target.value; renderRuns(state.data); } },
+    areaNames.map((k) => el('option', { value: k, selected: k === state.area }, k))) : null;
+  const columns = withAreas ? 8 : 7;
   const rows = [];
-  for (const r of d.runs.filter((x) => state.kind === 'all' || x.kind === state.kind)) {
+  for (const r of d.runs.filter((x) => (state.kind === 'all' || x.kind === state.kind) && (!withAreas || state.area === 'all' || (x.area ?? 'none') === state.area))) {
     const open = state.open.has(r.id);
     rows.push(el('tr', { class: `run${open ? ' open' : ''}`, id: `run-${r.id}`, tabindex: 0, onclick: () => toggleRun(r),
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleRun(r); } } },
       el('td', {}, el('span', { class: 'muted' }, open ? '▾ ' : '▸ '), when(r.startedAt)),
       el('td', {}, r.kind),
+      withAreas ? el('td', { class: r.area ? 'cyan' : 'muted' }, r.area ?? '—') : null,
       el('td', {}, el('span', { class: r.status }, `${MARKS[r.status] ?? '✗'} ${r.status}`), r.reason && r.status !== 'done' ? el('span', { class: 'muted' }, ` ${r.reason}`) : ''),
       el('td', { class: 'num' }, duration(r.durationMs)),
       el('td', { class: 'num' }, n(r.tokens)),
       el('td', { class: 'num' }, usd(r)),
       el('td', { class: 'muted' }, r.agents.join(', '))));
-    if (open) rows.push(el('tr', { class: 'detail' }, el('td', { colspan: 7 }, runDetail(r))));
+    if (open) rows.push(el('tr', { class: 'detail' }, el('td', { colspan: columns }, runDetail(r))));
   }
-  fill('runs', prompt(`jerome state --runs ${d.runs.length || 50}`, meta(el('label', {}, 'kind '), filter)),
+  const heads = ['Start', 'Kind', ...(withAreas ? ['Area'] : []), 'Status', 'Duration', 'Tokens', 'API equivalent', 'Agents'];
+  const numeric = new Set(['Duration', 'Tokens', 'API equivalent']);
+  fill('runs', prompt(`jerome state --runs ${d.runs.length || 50}`, meta(el('label', {}, 'kind '), filter, areaFilter ? [' ', el('label', {}, 'area '), areaFilter] : null)),
     el('div', { class: 'scroll' }, el('table', {},
-      el('thead', {}, el('tr', {}, ['Start', 'Kind', 'Status', 'Duration', 'Tokens', 'API equivalent', 'Agents'].map((h, i) => el('th', { class: i >= 3 && i <= 5 ? 'num' : null }, h)))),
-      el('tbody', {}, rows.length ? rows : el('tr', {}, el('td', { colspan: 7, class: 'muted' }, 'No runs yet.'))))));
+      el('thead', {}, el('tr', {}, heads.map((h) => el('th', { class: numeric.has(h) ? 'num' : null }, h)))),
+      el('tbody', {}, rows.length ? rows : el('tr', {}, el('td', { colspan: columns, class: 'muted' }, 'No runs yet.'))))));
 }
 
 async function toggleRun(r) {
@@ -371,7 +413,7 @@ function renderReplies(d) {
 }
 
 function render(d) {
-  renderHeader(d); renderCards(d); renderRequests(d); renderTeam(d); renderRuns(d); renderUsage(d); renderReplies(d);
+  renderHeader(d); renderCards(d); renderAreas(d); renderRequests(d); renderTeam(d); renderRuns(d); renderUsage(d); renderReplies(d);
   fill('footer', `# Dollar amounts are API equivalents at the list prices of ${d.pricesDate}: a subscription is not billed per token. Read-only: the viewer never writes anything.`);
 }
 

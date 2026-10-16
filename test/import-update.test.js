@@ -16,7 +16,7 @@ test('new --from-file imports a valid brief into the project files', () => {
   writeFileSync(join(root, 'brief.txt'), BRIEF_V2);
   const r = run('new', 'demo', '--from-file', 'brief.txt');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /✓ Brief imported into \.jerome\/: PROJECT\.md, scope\.md, decisions\.md, open\.md and brief\.md/);
+  assert.match(r.stdout, /✓ Brief imported \(brief\/v2\) into \.jerome\/: PROJECT\.md, scope\.md, areas\.md, decisions\.md, open\.md and brief\.md/);
   const dir = join(root, 'demo');
   assert.match(readFileSync(join(dir, '.jerome', 'PROJECT.md'), 'utf8'), /^# Demo app\n/);
   assert.doesNotMatch(readFileSync(join(dir, '.jerome', 'PROJECT.md'), 'utf8'), /## (Context|Success|Out of scope)/);
@@ -41,9 +41,9 @@ test('new --from-file - reads standard input and removes code fences', () => {
 
 test('new --from-file with an unknown format, an empty input or a missing file creates nothing', () => {
   const { root, run, runInput } = sandbox();
-  let r = runInput(BRIEF_V2.replace('brief/v2', 'brief/v3'), 'new', 'demo', '--from-file', '-');
+  let r = runInput(BRIEF_V2.replace('brief/v2', 'brief/v4'), 'new', 'demo', '--from-file', '-');
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /brief\/v3.*update Jérôme/);
+  assert.match(r.stderr, /brief\/v4.*update Jérôme/);
   r = runInput('  \n', 'new', 'demo', '--from-file', '-');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /empty/);
@@ -57,7 +57,7 @@ test('new --from-file with free text writes a provisional PROJECT.md that doctor
   const { root, runInput, run } = sandbox();
   const r = runInput('An app to track my plants, maybe with reminders.\n', 'new', 'demo', '--from-file', '-');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /brief\.md is not a valid brief\/v2 \(no front matter\)/);
+  assert.match(r.stdout, /brief\.md is not a valid brief\/v3 \(no front matter\)/);
   const dir = join(root, 'demo');
   assert.equal(readFileSync(join(dir, '.jerome', 'brief.md'), 'utf8'), 'An app to track my plants, maybe with reminders.\n');
   assert.match(readFileSync(join(dir, '.jerome', 'PROJECT.md'), 'utf8'), /^<!-- jerome:provisional -->/);
@@ -112,7 +112,7 @@ test('prompt prints the briefing instructions', () => {
   const r = run('prompt');
   assert.equal(r.status, 0);
   assert.match(r.stdout, /^You are going to run a project briefing/);
-  assert.match(r.stdout, /format: brief\/v2/);
+  assert.match(r.stdout, /format: brief\/v3/);
   assert.equal(run('prompt', 'extra').status, 2);
 });
 
