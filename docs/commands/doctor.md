@@ -101,7 +101,7 @@ Warnings, such as a file over its token budget, a provisional `PROJECT.md`, an a
   "project": "/Users/you/my-project",
   "checks": [
     { "id": "project", "ok": true, "label": "Jérôme project", "detail": "/Users/you/my-project" },
-    { "id": "limits", "ok": true, "label": "Default limits", "detail": "70 permission rules in place" },
+    { "id": "limits", "ok": true, "label": "Default limits", "detail": "71 permission rules in place" },
     { "id": "hooks", "ok": true, "label": "Hooks and status line", "detail": "in place" },
     { "id": "db", "ok": true, "label": "Project database", "detail": "schema 1" },
     { "id": "node", "ok": true, "label": "Node ≥ 24", "detail": "24.13.0" },
