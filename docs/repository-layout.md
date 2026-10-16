@@ -7,7 +7,7 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 ├── bin/, src/           the jerome CLI (Node.js, no dependencies)
 ├── test/                tests, run with `npm test`
 ├── migrations/          the project database's schema, applied by the CLI
-├── viewer/              the page served by `jerome view`
+├── viewer/              the pages served by `jerome view` and `jerome projects --view`, and their stylesheet
 ├── template/            what ends up in every project
 │   ├── MANIFEST         the paths copied into projects and kept in sync (not copied itself)
 │   ├── .claude/rules/jerome.md  the lead agent's instructions

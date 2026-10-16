@@ -9,7 +9,7 @@ import { projectAgents } from './agents.js';
 import { projectStatus, projectOver, projectSummary, globalLimits } from './budget.js';
 import { callPrice, TIER_SQL } from './models.js';
 import { readAccount, WINDOWS } from './account.js';
-import { notProjectMessage } from './paths.js';
+import { notProjectHint } from './paths.js';
 import { readAreas, agentAreas } from './areas.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
@@ -17,7 +17,7 @@ export const STATE_SCHEMA = 'jerome.state/v1';
 export async function state(dirArg, { json = false, runs = 3, agent = null, replies = false } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
-    console.error(notProjectMessage(dir));
+    console.error(notProjectHint(dir));
     return 1;
   }
   let report;
@@ -60,6 +60,7 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
 
     const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area, triage FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
     const perRun = db.prepare(`SELECT agent, model, ${TIER_SQL} long_prompt, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model, long_prompt`);
+    const heartbeat = db.prepare("SELECT id, status, started_at, ended_at, reason, area FROM runs WHERE kind = 'heartbeat' ORDER BY started_at DESC LIMIT 1").get();
     const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at, area FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
     const areas = areaUsage(dir, db, since.week, requests);
 
@@ -93,6 +94,8 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
           tokens: t.tokens, calls: t.calls, apiUsd: t.apiUsd, unpriced: t.unpriced, agents: [...new Set(usage.map((u) => u.agent))],
         };
       }),
+      // The latest heartbeat, whatever came after it (D114).
+      lastHeartbeat: heartbeat ? { id: heartbeat.id, status: heartbeat.status, area: heartbeat.area, startedAt: heartbeat.started_at, endedAt: heartbeat.ended_at, reason: heartbeat.reason } : null,
       requests: requests.map((r) => ({ id: r.id, runId: r.run_id, area: r.area, question: r.question, options: r.options, recommendation: r.recommendation, openedAt: r.opened_at })),
       replies: replyStats(db, since.week, agent),
     };

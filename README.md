@@ -82,6 +82,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
 | [`jerome state [dir] [--json]`](docs/commands/state.md) | Shows a project's usage, areas, runs and open decision requests in a few lines, with dollars as API equivalents |
 | [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, areas, runs, usage, subscription windows and the messages between agents |
+| [`jerome projects [--json] [--view]`](docs/commands/projects.md) | Shows every project on this machine, from any folder, with what needs you first; `--view` as a page in the browser |
 | [`jerome schedule [dir] hourly\|daily\|weekly`](docs/commands/schedule.md) | Schedules heartbeats, runs of the lead agent without you, with a cap per run (macOS) |
 | [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it |
 | [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
@@ -142,7 +143,7 @@ Every project starts from a brief in the `brief/v3` format, with the areas to st
 4. ✓ Rules for creating subagents, including a documentation agent (`jerome docs`)
 5. ✓ A SQLite database per project, outside the working tree, read with `jerome state` and `jerome digest`
 6. ✓ Usage tracking through hooks and the status line (`jerome hook`, `jerome statusline`)
-7. ✓ Read-only local viewer (`jerome view`)
+7. ✓ Read-only local viewer (`jerome view`), and every project at a glance (`jerome projects`)
 8. ✓ Scheduled headless runs, with a lock and a cap per run (`jerome schedule`, `jerome heartbeat`, `jerome request`)
 9. ✓ Daily and weekly limits with automatic pause (`jerome limits`)
 10. Areas and milestones, with the area briefing (`.jerome/areas.md`): in place and tested, not yet tried on a real project

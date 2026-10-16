@@ -1,6 +1,7 @@
 // `jerome view [dir]`: the local read-only viewer (D11, D64-D69). A node:http server on 127.0.0.1 serves one page
-// and two JSON endpoints; every request must carry the random token of this run, and come for localhost, so neither
-// a web page nor another user of the machine can read the data. Nothing is ever written (D65).
+// and two JSON endpoints, or, for `jerome projects --view` (D114), the overview and every project's page; every
+// request must carry the random token of this run, and come for localhost, so neither a web page nor another user
+// of the machine can read the data. Nothing is ever written (D65).
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -12,15 +13,19 @@ import { readState } from './state.js';
 import { readAccount, accountPath } from './account.js';
 import { findTranscript, delegations, leadCalls } from './delegations.js';
 import { PRICES_DATE } from './models.js';
-import { notProjectMessage, STATE } from './paths.js';
+import { notProjectHint, STATE } from './paths.js';
+import { stores } from './store.js';
+import { readProjects } from './projects.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'index.html');
+const PROJECTS_PAGE = join(import.meta.dirname, '..', 'viewer', 'projects.html');
+const STYLE = join(import.meta.dirname, '..', 'viewer', 'style.css');
 const RUNS = 50;
 
 export async function view(dirArg, { port = 0, open = true } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
-    console.error(notProjectMessage(dir));
+    console.error(notProjectHint(dir));
     return 1;
   }
   if (!existsSync(dbPath(dir))) {
@@ -44,6 +49,24 @@ export async function view(dirArg, { port = 0, open = true } = {}) {
   return 0;
 }
 
+export async function viewProjects({ port = 0, open = true } = {}) {
+  let viewer;
+  try {
+    viewer = await startProjectsViewer({ port });
+  } catch (err) {
+    console.error(`Cannot start the viewer: ${err.message}`);
+    return 1;
+  }
+  console.log(`Jérôme viewer for all the projects of this machine\n${viewer.url}\nRead-only. Press Ctrl+C to stop.`);
+  if (open) openBrowser(viewer.url);
+  await new Promise((done) => {
+    const stop = () => viewer.server.close(() => done());
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+  });
+  return 0;
+}
+
 function openBrowser(url) {
   const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   try {
@@ -54,9 +77,32 @@ function openBrowser(url) {
 }
 
 export function startViewer(dir, { port = 0, token = randomBytes(18).toString('base64url') } = {}) {
+  return listen(port, token, (url, req, res) => routeProject(dir, token, url.pathname, req, res));
+}
+
+// `jerome projects --view` (D114): the overview at `/`, and each project's own viewer under `/p/<key>/`, found by
+// its registry key, never by a path from the address. A key whose folder no longer holds a project is not served.
+export function startProjectsViewer({ port = 0, token = randomBytes(18).toString('base64url') } = {}) {
+  return listen(port, token, (url, req, res) => {
+    if (url.pathname === '/') return sendPage(res, PROJECTS_PAGE);
+    if (url.pathname === '/api/projects') return send(res, 200, { ...readProjects(), pricesDate: PRICES_DATE });
+    const m = url.pathname.match(/^\/p\/([^/]+)(\/.*)?$/);
+    if (!m) return send(res, 404, { error: 'not found' });
+    const store = stores().find((s) => s.key === m[1] && !s.orphan);
+    if (!store) return send(res, 404, { error: 'no such project' });
+    if (!m[2]) {
+      res.writeHead(302, { location: `/p/${m[1]}/?t=${encodeURIComponent(token)}` });
+      return res.end();
+    }
+    return routeProject(store.record.path, token, m[2], req, res);
+  });
+}
+
+function listen(port, token, route) {
   const server = createServer((req, res) => {
     try {
-      handle(dir, token, server, req, res);
+      const url = authorize(token, server, req, res);
+      if (url) route(url, req, res);
     } catch (err) {
       send(res, 500, { error: err.message });
     }
@@ -70,21 +116,26 @@ export function startViewer(dir, { port = 0, token = randomBytes(18).toString('b
   });
 }
 
-function handle(dir, token, server, req, res) {
+// The request's URL when it may be answered: for localhost, with this run's token, a GET. Otherwise null, answered.
+function authorize(token, server, req, res) {
   const { port } = server.address();
   const host = String(req.headers.host ?? '');
-  if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return send(res, 403, { error: 'forbidden host' });
+  const refuse = (status, error) => {
+    send(res, status, { error });
+    return null;
+  };
+  if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return refuse(403, 'forbidden host');
   const url = new URL(req.url, `http://127.0.0.1:${port}`);
   const given = Buffer.from(url.searchParams.get('t') ?? '');
   const expected = Buffer.from(token);
-  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return send(res, 403, { error: 'missing or wrong token' });
-  if (req.method !== 'GET') return send(res, 405, { error: 'read-only' });
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return refuse(403, 'missing or wrong token');
+  if (req.method !== 'GET') return refuse(405, 'read-only');
+  return url;
+}
 
-  if (url.pathname === '/') {
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
-    return res.end(readFileSync(PAGE));
-  }
-  if (url.pathname === '/api/state') {
+function routeProject(dir, token, path, req, res) {
+  if (path === '/') return sendPage(res, PAGE);
+  if (path === '/api/state') {
     const tag = etag(dir, token);
     if (req.headers['if-none-match'] === tag) {
       res.writeHead(304, { etag: tag });
@@ -93,9 +144,17 @@ function handle(dir, token, server, req, res) {
     const state = readState(dir, { runs: RUNS, readOnly: true });
     return send(res, 200, { ...state, pricesDate: PRICES_DATE }, { etag: tag });
   }
-  const run = url.pathname.match(/^\/api\/runs\/(\d+)$/);
+  const run = path.match(/^\/api\/runs\/(\d+)$/);
   if (run) return send(res, 200, runDetail(dir, Number(run[1])));
   return send(res, 404, { error: 'not found' });
+}
+
+// The two pages share one stylesheet, put inline when served: every request needs the token, a <link> would not
+// carry it.
+function sendPage(res, page) {
+  const html = readFileSync(page, 'utf8').replace('<link rel="stylesheet" href="style.css">', () => `<style>\n${readFileSync(STYLE, 'utf8')}</style>`);
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+  return res.end(html);
 }
 
 function send(res, status, body, headers = {}) {

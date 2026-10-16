@@ -25,7 +25,7 @@ Everything in `.jerome/` and `.claude/settings.json` is versioned: commit a chan
 
 ## How much of the subscription may scheduled runs use?
 
-The global limits are percentages of the subscription's 5-hour and 7-day windows. They hold for every project on the machine, since the subscription is one. They live in `~/.config/jerome/account.json`, next to the latest reading of each window.
+The global limits are percentages of the subscription's 5-hour and 7-day windows. They hold for every project on the machine, since the subscription is one: [`jerome projects`](commands/projects.md) shows them once, above every project. They live in `~/.config/jerome/account.json`, next to the latest reading of each window.
 
 ```sh
 jerome limits --five-hour 70 --seven-day 75

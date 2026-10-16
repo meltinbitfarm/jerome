@@ -270,6 +270,11 @@ function releaseLock(path) {
   if (path) rmSync(path, { force: true });
 }
 
+// The reasons of a blocked heartbeat that only the user can clear, as `checks` writes them: `jerome projects` puts
+// these projects first (D114). A lock, an open session and a limit pause clear by themselves.
+const NEEDS_YOU = [/^the folder is not trusted/, /^PROJECT\.md is provisional/, /^not a git repository/, /^uncommitted changes/, /^jerome doctor failed/];
+export const needsYou = (reason) => NEEDS_YOU.some((r) => r.test(String(reason ?? '')));
+
 // The checks that cost nothing, in order. Each failure has a reason and, when the user must act, a decision request.
 async function checks(dir, now) {
   const db = openDb(dir);

@@ -29,6 +29,10 @@ The page looks like a terminal: one monospaced system font and no web fonts, eac
 
 Dollar amounts are always API equivalents, written `≈$3.40 API`, or `<$0.01 API` below a cent: a subscription is not billed per token. The theme follows the system; the menu in the header switches it, and the browser remembers the choice. The page checks for changes every 10 seconds while its tab is visible, and the server answers "not modified" when nothing changed. `#run-<id>` at the end of the address opens that run.
 
+## All the projects
+
+[`jerome projects --view`](projects.md) serves one page with every project of the machine; each project's name opens this same page for it, under `/p/<key>/`, with a link back to the overview.
+
 ## Safety
 
 - The server listens on `127.0.0.1` only. Every request must carry the token printed in the address, which changes at every start, and come for `127.0.0.1` or `localhost`: a web page in your browser or another user of the machine cannot read the data through the port.
@@ -41,5 +45,5 @@ Dollar amounts are always API equivalents, written `≈$3.40 API`, or `<$0.01 AP
 | Code | Meaning |
 |---|---|
 | 0 | Stopped with Ctrl+C |
-| 1 | Not a Jérôme project, no database yet (run `jerome doctor`), or the port is taken |
+| 1 | Not a Jérôme project (it points to [`jerome projects`](projects.md)), no database yet (run `jerome doctor`), or the port is taken |
 | 2 | Wrong usage |

@@ -15,6 +15,7 @@ import { digest } from './digest.js';
 import { deps } from './deps.js';
 import { limits } from './limitscmd.js';
 import { forget } from './forget.js';
+import { projects } from './projects.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -42,6 +43,9 @@ const USAGE = `Usage:
   jerome view [dir]       open the read-only viewer in the browser (local server, stopped with Ctrl+C)
     --port <n>            port to listen on (default: any free port)
     --no-open             print the address without opening the browser
+  jerome projects         every project of this machine, from any folder: what needs you first
+    --json                print a machine-readable report (schema jerome.projects/v1)
+    --view                the same as a page in the browser, each project opening its viewer (--port, --no-open)
   jerome schedule [dir] hourly|daily|weekly
                           run the lead agent on a schedule (macOS, launchd)
     --at <time>           09:00 for daily and weekly (default), :15 for hourly (default :00)
@@ -98,10 +102,11 @@ const OPTIONS = {
   'no-open': { type: 'boolean' },
   relink: { type: 'string' },
   'new-db': { type: 'boolean' },
+  view: { type: 'boolean' },
 };
 
 // The options each command accepts; any other option is a usage error.
-const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'],
+const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
   schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns'], request: ['question', 'options', 'recommendation', 'area'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
 
 export async function main(argv) {
@@ -152,6 +157,14 @@ export async function main(argv) {
       const port = parsed.values.port === undefined ? 0 : Number(parsed.values.port);
       if (!Number.isInteger(port) || port < 0 || port > 65535) return usageError('--port takes a port number.');
       return view(rest[0] ?? '.', { port, open: !parsed.values['no-open'] });
+    }
+    case 'projects': {
+      if (rest.length) return usageError('jerome projects takes no folder: it shows every project of this machine.');
+      if (parsed.values.json && parsed.values.view) return usageError('--json and --view are two ways to show the projects: pick one.');
+      if (!parsed.values.view && (parsed.values.port !== undefined || parsed.values['no-open'])) return usageError('--port and --no-open go with --view.');
+      const port = parsed.values.port === undefined ? 0 : Number(parsed.values.port);
+      if (!Number.isInteger(port) || port < 0 || port > 65535) return usageError('--port takes a port number.');
+      return projects({ json: parsed.values.json, view: parsed.values.view, port, open: !parsed.values['no-open'] });
     }
     case 'schedule': {
       const v = parsed.values;

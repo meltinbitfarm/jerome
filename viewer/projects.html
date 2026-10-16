@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Jérôme projects</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1><span class="muted">jerome projects ·</span> <span id="count">…</span></h1>
+      <div class="muted" id="updated">loading…</div>
+    </div>
+    <div>
+      <label class="muted" for="theme">theme</label>
+      <select id="theme"><option value="auto">auto</option><option value="light">light</option><option value="dark">dark</option></select>
+    </div>
+  </header>
+  <div id="error" class="error" hidden></div>
+  <section id="windows"></section>
+  <section id="attention"></section>
+  <section id="projects"></section>
+  <section id="orphans" hidden></section>
+  <footer id="footer"></footer>
+</main>
+<script>
+'use strict';
+const token = new URLSearchParams(location.search).get('t') || '';
+const api = (path) => `${path}?t=${encodeURIComponent(token)}`;
+
+// Elements are built with textContent only: a reason or a question can hold anything, and none of it is read as HTML.
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') node.className = v;
+    else node.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat(Infinity)) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return node;
+}
+const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat(Infinity));
+// A section's title, written as the command that prints the same data in a terminal.
+const prompt = (command, ...meta) => el('h2', {}, el('span', { class: 'ps' }, '$'), el('span', { class: 'cmd' }, command), ...meta);
+const meta = (...children) => el('span', { class: 'meta' }, ...children);
+
+function n(v) {
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  if (v >= 1e3) return `${Math.round(v / 1e3)}k`;
+  return String(v ?? 0);
+}
+function usd(t) {
+  const v = t.apiUsd ?? 0;
+  const amount = v > 0 && v < 0.005 ? '<$0.01' : v === 0 ? '$0.00' : `≈$${v.toFixed(2)}`;
+  return `${amount}${t.unpriced ? '+?' : ''} API`;
+}
+// "40 minutes ago", "5 hours ago", "3 days ago", as `jerome projects` writes it.
+function ago(iso) {
+  const ms = Math.max(0, Date.now() - Date.parse(iso));
+  const plural = (v, unit) => `${v} ${unit}${v === 1 ? '' : 's'} ago`;
+  if (ms < 3_600_000) return plural(Math.max(1, Math.floor(ms / 60_000)), 'minute');
+  if (ms < 48 * 3_600_000) return plural(Math.floor(ms / 3_600_000), 'hour');
+  return plural(Math.floor(ms / 86_400_000), 'day');
+}
+
+// Theme: the system's, or the one picked here, remembered in this browser only (the same as in each project's page).
+const themeSelect = document.getElementById('theme');
+function applyTheme(value) {
+  if (value === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', value);
+}
+try { themeSelect.value = localStorage.getItem('jerome-theme') || 'auto'; } catch { themeSelect.value = 'auto'; }
+applyTheme(themeSelect.value);
+themeSelect.addEventListener('change', () => {
+  applyTheme(themeSelect.value);
+  try { localStorage.setItem('jerome-theme', themeSelect.value); } catch { /* not remembered */ }
+});
+
+const link = (p) => el('a', { href: `/p/${encodeURIComponent(p.key)}/?t=${encodeURIComponent(token)}` }, p.name);
+
+function render(d) {
+  const needing = d.projects.filter((p) => p.attention.length).length;
+  fill('count', `${d.projects.length} ${d.projects.length === 1 ? 'project' : 'projects'}`, needing ? el('span', { class: 'warn' }, ` · ${needing} ${needing === 1 ? 'needs' : 'need'} you`) : '');
+  fill('updated', `read at ${new Date(d.at).toLocaleTimeString()} · every project of this machine, read-only`);
+
+  const windows = Object.entries(d.windows);
+  fill('windows', prompt('jerome limits', meta('the account’s, for all projects')),
+    windows.length
+      ? el('div', {}, windows.map(([name, w], i) => [i ? ' · ' : '', `${name === 'five_hour' ? '5h' : '7d'} `,
+        w.stale ? el('span', { class: 'muted' }, 'no reading since its reset') : el('span', { class: w.level || '' }, `${w.used}%${w.limit !== null ? ` / ${w.limit}%` : ''}`)]))
+      : el('div', { class: 'muted' }, 'no reading of the subscription windows yet'));
+
+  const attention = d.projects.filter((p) => p.attention.length);
+  const section = document.getElementById('attention');
+  section.hidden = !attention.length;
+  fill('attention', prompt('jerome projects', meta('what needs you')),
+    attention.map((p) => el('div', { class: 'request' }, el('strong', {}, link(p)), el('span', { class: 'muted path' }, `  ${p.path}`),
+      p.attention.map((r) => el('div', { class: 'warn' }, `! ${r}`)))));
+
+  const rows = d.projects.map((p) => {
+    const h = p.lastHeartbeat;
+    return el('tr', {},
+      el('td', {}, p.attention.length ? el('span', { class: 'warn' }, '! ') : '  ', link(p)),
+      el('td', {}, p.error ? '—' : p.areasImplicit ? el('span', { class: 'muted' }, '—') : p.areas.map((a, i) => [i ? ', ' : '', a.name, el('span', { class: 'cyan' }, a.milestone ? ` ${a.milestone}` : ''), a.pace === 'paused' ? el('span', { class: 'muted' }, ' paused') : ''])),
+      el('td', { class: 'num' }, p.error ? '—' : el('span', { class: p.requests.length ? 'warn' : 'muted' }, String(p.requests.length))),
+      el('td', {}, p.error ? el('span', { class: 'error' }, 'unreadable') : h ? [el('span', { class: 'muted' }, `${ago(h.startedAt)} `), el('span', { class: h.status, title: h.reason || null }, h.status)] : el('span', { class: 'muted' }, p.schedule ? 'none yet' : 'not scheduled')),
+      el('td', { class: 'num' }, p.error ? '—' : n(p.week.tokens)),
+      el('td', { class: 'num' }, p.error ? '—' : usd(p.week)),
+      el('td', { class: 'muted' }, p.path));
+  });
+  fill('projects', prompt('jerome projects', meta('newest activity first, after what needs you')),
+    d.projects.length
+      ? el('div', { class: 'scroll' }, el('table', {},
+        el('thead', {}, el('tr', {}, ['project', 'areas', 'requests', 'last heartbeat', '7d tokens', '7d API', 'folder'].map((t, i) => el('th', { class: i === 2 || i === 4 || i === 5 ? 'num' : null }, t)))),
+        el('tbody', {}, rows)))
+      : el('div', { class: 'muted' }, 'No project on this machine yet: `jerome new <name>` creates one, `jerome init` brings Jérôme into an existing one.'));
+
+  const orphans = document.getElementById('orphans');
+  orphans.hidden = !d.orphans.length;
+  fill('orphans', prompt('jerome doctor', meta('databases whose folder no longer holds a project')),
+    d.orphans.map((o) => el('div', {}, `${o.text}, ${o.summary}`)),
+    el('div', { class: 'muted' }, 'If the project moved, run `jerome doctor` in its new folder to relink it; if it is gone, `jerome forget <key>` removes the database after a backup.'));
+
+  fill('footer', `# Dollar amounts are API equivalents at the list prices of ${d.pricesDate}: a subscription is not billed per token. Read-only: the viewer never writes anything.`);
+}
+
+let last = '';
+async function refresh() {
+  try {
+    const res = await fetch(api('/api/projects'), { cache: 'no-cache' });
+    const text = await res.text();
+    const data = JSON.parse(text);
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    document.getElementById('error').hidden = true;
+    if (text !== last) {
+      last = text;
+      render(data);
+    }
+  } catch (err) {
+    const box = document.getElementById('error');
+    box.textContent = `error: cannot read the projects: ${err.message}`;
+    box.hidden = false;
+  }
+}
+
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 10_000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+</script>
+</body>
+</html>

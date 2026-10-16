@@ -82,6 +82,9 @@ test('the viewer listens on 127.0.0.1 and refuses requests without the token, fr
   const page = await get('/');
   assert.equal(page.status, 200);
   assert.match(page.body, /<title>Jérôme viewer<\/title>/);
+  // The shared stylesheet is put inline: a <link> would not carry the token.
+  assert.match(page.body, /<style>[\s\S]*prefers-color-scheme: dark[\s\S]*<\/style>/);
+  assert.doesNotMatch(page.body, /<link rel="stylesheet"/);
 });
 
 test('/api/state serves the state with the team, the thresholds and room for project limits, and answers 304 when unchanged', async () => {
@@ -127,7 +130,6 @@ test('a run shows its delegations, read now from the transcripts, with the refus
 test('the page builds every text with textContent, so transcript contents are never read as HTML', () => {
   const page = readFileSync(new URL('../viewer/index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(page, /innerHTML|insertAdjacentHTML|outerHTML/);
-  assert.match(page, /prefers-color-scheme: dark/);
   assert.match(page, /'Cache read', 'Cache write'/);
   assert.match(page, /no data yet/);
   assert.match(page, /count === 1 \? 'word' : 'words'/);

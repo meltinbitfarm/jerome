@@ -53,3 +53,8 @@ export function notProjectMessage(dir) {
     ? `${dir} uses the layout from before Jérôme kept its files in .jerome/: run \`jerome update\` to move them.`
     : `${dir} is not a Jérôme project (${PROJECT_FILE} is missing).`;
 }
+
+// For the commands about one project, which point to the overview of all of them (D114).
+export function notProjectHint(dir) {
+  return isLegacy(dir) ? notProjectMessage(dir) : `${notProjectMessage(dir)}\nAll the projects of this machine: \`jerome projects\`.`;
+}
