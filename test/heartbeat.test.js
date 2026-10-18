@@ -137,6 +137,8 @@ test('with work to do, the lead agent runs in a new session within its caps, and
   const run = p.lastRun();
   assert.equal(run.status, 'done');
   assert.equal(run.reason, 'Write the report writer');
+  // Its caps are kept with it (D115), for the live view.
+  assert.deepEqual(JSON.parse(run.caps), { maxTokens: 500000, maxTurns: 40, once: false });
   const lead = p.calls().split('\n').find((l) => l.includes('--max-turns'));
   assert.match(lead, /--model opus --max-turns 40 --permission-mode acceptEdits --output-format stream-json --verbose --session-id /);
   assert.ok(lead.includes(run.session_id));
@@ -427,6 +429,7 @@ test('caps given to one heartbeat by hand replace those of the project for that 
   assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 2,500 \(this run; main \dk\)$/);
   p.runWith({ FAKE_LEAD_RESULT: 'error_max_turns' }, 'heartbeat', 'demo', '--max-turns', '7');
   assert.equal(p.lastRun().reason, 'turn cap: 7 turns (this run)');
+  assert.deepEqual(JSON.parse(p.lastRun().caps), { maxTokens: 500000, maxTurns: 7, once: true });
   assert.match(p.calls().split(/^-p /m).filter((c) => c.includes('--max-turns')).pop(), /--max-turns 7 /);
   assert.equal(marker(), before, 'project.json is not touched');
   assert.equal(p.run('heartbeat', 'demo', '--max-tokens', 'lots').status, 2);

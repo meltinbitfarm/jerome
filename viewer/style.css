@@ -74,3 +74,38 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
   .bars .row { grid-template-columns: 12ch 1fr; }
   .bars .row > :last-child { grid-column: 1 / -1; padding-left: 2ch; }
 }
+
+/* The live view of a running run (D115). Lines move only with real data: a dash flows on the line to an agent at
+   work, a pulse runs back when its result arrives, a finished agent's line is still and fainter. */
+.live-head { display: flex; flex-wrap: wrap; gap: 4px 2ch; align-items: baseline; padding: 4px 0 10px; border-top: 1px solid var(--line); }
+.live-head #live-status { margin-left: auto; }
+.live-graph { position: relative; padding: 4px 0 16px; }
+.live-graph .links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.lead-row { display: flex; justify-content: center; margin-bottom: 36px; }
+.agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(32ch, 1fr)); gap: 16px 2ch; padding-left: 2ch; }
+.box { position: relative; z-index: 1; background: var(--bg); border: 1px solid var(--line); padding: 2px 1ch 4px; min-width: 0; }
+.box.lead { min-width: min(44ch, 100%); }
+.box.busy { border-color: var(--cyan); }
+.box.idle { opacity: .8; }
+.box .title { border-bottom: 1px solid var(--line); margin-bottom: 2px; }
+.link { fill: none; stroke-width: 1.5; }
+.link.flow { stroke: var(--cyan); stroke-dasharray: 6 4; animation: flow .9s linear infinite; }
+.link.done { stroke: var(--green); opacity: .45; }
+.link.still { stroke: var(--track); opacity: .6; }
+.pulse { fill: var(--green); }
+@keyframes flow { to { stroke-dashoffset: -20; } }
+@media (prefers-reduced-motion: reduce) {
+  .link.flow { animation: none; }
+}
+.log { max-height: 360px; overflow: auto; }
+.log .line { display: grid; grid-template-columns: 9ch 14ch 10ch 1fr; gap: 0 1ch; }
+.log .detail { overflow-wrap: anywhere; }
+.log .agent.main { font-weight: 700; }
+.log .action.error { color: var(--red); } .log .action.done { color: var(--green); }
+.statusbar { position: sticky; bottom: 0; background: var(--hl); border-top: 1px solid var(--line); padding: 2px 1ch; white-space: normal; }
+@media (max-width: 600px) {
+  .log .line { grid-template-columns: 9ch 9ch 1fr; }
+  .log .agent { grid-column: 2 / -1; }
+  .log .action { grid-column: 2; }
+  .log .detail { grid-column: 3; }
+}

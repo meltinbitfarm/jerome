@@ -88,7 +88,7 @@ function attention(row, dir, now) {
   if (row.requests.length) reasons.push(`${row.requests.length} open decision ${row.requests.length === 1 ? 'request' : 'requests'}: ${row.requests.map((r) => `R${r.id}`).join(', ')}`);
   const h = row.lastHeartbeat;
   // A limit is not a reason: it shows with the limits, and reaching it pauses heartbeats by itself.
-  if (h && (h.status === 'failed' || (h.status === 'stopped' && !oneRunCap(h.reason)) || (h.status === 'blocked' && needsYou(h.reason)))) reasons.push(`heartbeat ${h.status}: ${h.reason}`);
+  if (h && (h.status === 'failed' || (h.status === 'stopped' && !(h.caps?.once ?? oneRunCap(h.reason))) || (h.status === 'blocked' && needsYou(h.reason)))) reasons.push(`heartbeat ${h.status}: ${h.reason}`);
   const late = lateHeartbeat(row, dir, now);
   if (late) reasons.push(late);
   return reasons;

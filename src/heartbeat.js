@@ -61,7 +61,8 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
   // Caps given for this run only (D108) take the place of the project's, which stay as they are.
   const caps = { maxTokens: maxTokens ?? settings.maxTokens ?? DEFAULT_CAPS.maxTokens, maxTurns: maxTurns ?? settings.maxTurns ?? DEFAULT_CAPS.maxTurns };
   const once = (given) => (given !== null ? ' (this run)' : '');
-  const run = startRun(dir, now);
+  // Saved with the run (D115): the live view shows the run's tokens against them, `jerome projects` knows a trial.
+  const run = startRun(dir, now, { ...caps, once: maxTokens !== null || maxTurns !== null });
   const finish = (status, reason, request) => {
     const opened = endRun(dir, run, status, reason, request);
     log(`${status}: ${reason}${opened ? ` (decision request R${opened})` : ''}`);
@@ -152,12 +153,12 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
 // One row per heartbeat (D13). Its session id is given to Claude Code, so the hooks of the lead agent's session
 // update this same row instead of adding one.
-function startRun(dir, now) {
+function startRun(dir, now, caps) {
   const db = openDb(dir);
   try {
     const sessionId = randomUUID();
-    const id = Number(db.prepare("INSERT INTO runs (session_id, kind, started_at, status) VALUES (?, 'heartbeat', ?, 'running')")
-      .run(sessionId, now.toISOString()).lastInsertRowid);
+    const id = Number(db.prepare("INSERT INTO runs (session_id, kind, started_at, status, caps) VALUES (?, 'heartbeat', ?, 'running', ?)")
+      .run(sessionId, now.toISOString(), JSON.stringify(caps)).lastInsertRowid);
     return { id, sessionId };
   } finally {
     db.close();
@@ -274,7 +275,8 @@ function releaseLock(path) {
 // these projects first (D114). A lock, an open session and a limit pause clear by themselves.
 const NEEDS_YOU = [/^the folder is not trusted/, /^PROJECT\.md is provisional/, /^not a git repository/, /^uncommitted changes/, /^jerome doctor failed/];
 export const needsYou = (reason) => NEEDS_YOU.some((r) => r.test(String(reason ?? '')));
-// A stop by a cap given for that run only (D108): a manual trial, not something to call the user for.
+// A stop by a cap given for that run only (D108): a manual trial, not something to call the user for. Runs keep
+// their caps since D115; the reason's text tells it for the runs from before.
 export const oneRunCap = (reason) => /^(token|turn) cap: .*\(this run[;)]/.test(String(reason ?? ''));
 
 // The checks that cost nothing, in order. Each failure has a reason and, when the user must act, a decision request.

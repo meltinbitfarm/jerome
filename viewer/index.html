@@ -21,6 +21,8 @@
     </div>
   </header>
   <div id="error" class="error" hidden></div>
+  <div id="live" hidden></div>
+  <div id="overview">
   <section id="windows"></section>
   <section id="cards"></section>
   <section id="areas" hidden></section>
@@ -29,6 +31,7 @@
   <section id="runs"></section>
   <section id="usage"></section>
   <section id="replies"></section>
+  </div>
   <footer id="footer"></footer>
 </main>
 <script>
@@ -257,6 +260,11 @@ function renderRuns(d) {
 }
 
 async function toggleRun(r) {
+  // A running run opens its live view (D115).
+  if (r.status === 'running' && !state.open.has(r.id)) {
+    location.hash = `live-${r.id}`;
+    return;
+  }
   if (state.open.has(r.id)) state.open.delete(r.id);
   else {
     state.open.add(r.id);
@@ -372,6 +380,181 @@ async function refresh() {
   }
 }
 
+// The live view of a running run (D115): the lead agent, its subagents linked to it by lines, a log and a status
+// bar, asked every 2 seconds while the run is running and the tab visible. Lines move only with real data: the line
+// to an agent flows while it works on a task, a pulse runs back when its result arrives, a finished agent's line is
+// still. With reduced motion, only colours change.
+const live = { id: null, timer: null, statuses: new Map(), data: null, paths: new Map(), svg: null, follow: true };
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SVG = 'http://www.w3.org/2000/svg';
+const clock = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const agentKey = (a) => a.toolUseId || a.agentId;
+
+function showLive(id) {
+  if (live.id !== id) {
+    live.id = id; live.statuses = new Map(); live.data = null; live.paths = new Map(); live.svg = null; live.follow = true;
+    fill('live', el('div', { class: 'muted' }, 'loading the live view…'));
+  }
+  document.getElementById('overview').hidden = true;
+  document.getElementById('live').hidden = false;
+  pollLive();
+}
+
+function hideLive() {
+  clearTimeout(live.timer);
+  live.id = null;
+  document.getElementById('live').hidden = true;
+  document.getElementById('overview').hidden = false;
+}
+
+async function pollLive() {
+  clearTimeout(live.timer);
+  const id = live.id;
+  if (!id) return;
+  try {
+    const res = await fetch(api(`/api/runs/${id}/live`), { cache: 'no-store' });
+    const data = await res.json();
+    if (live.id !== id) return;
+    if (data.error) throw new Error(data.error);
+    renderLive(data);
+    // Asked again only while the run is running and the tab visible; a hidden tab asks again when shown.
+    if (data.run.status === 'running' && !document.hidden) live.timer = setTimeout(pollLive, 2000);
+  } catch (err) {
+    fill('live', el('div', { class: 'error' }, `error: cannot read the run: ${err.message}`), el('a', { href: '#' }, '← runs'));
+  }
+}
+
+function renderLive(d) {
+  const ended = live.data !== null && live.data.run.status === 'running' && d.run.status !== 'running';
+  live.data = d;
+  const running = d.run.status === 'running';
+  const box = (cls, title, ...lines) => el('div', { class: `box ${cls}` }, el('div', { class: 'title' }, title), ...lines);
+  const lead = d.lead;
+  const leadBox = box(`lead ${running ? 'busy' : 'idle'}`, [el('strong', {}, 'main'), el('span', { class: 'muted' }, ' · lead agent')],
+    el('div', {}, lead.model ?? 'no call yet', ' · ', el('span', { class: d.run.status }, d.run.status)),
+    lead.lastCall ? el('div', {}, `last call ${clock(lead.lastCall.at)} · context ${n(lead.lastCall.context)} · output ${n(lead.lastCall.output)}`) : el('div', { class: 'muted' }, 'no call yet'),
+    lead.waitingFor.length ? el('div', { class: 'cyan' }, `waiting for ${lead.waitingFor.join(', ')}`) : null);
+  const agentBoxes = d.agents.map((a) => box(`agent ${a.status === 'running' || a.status === 'starting' ? 'busy' : 'idle'}`, [el('strong', {}, a.label), a.background ? el('span', { class: 'muted' }, ' · background') : null],
+    el('div', {}, a.model ?? '—', ' · ', el('span', { class: a.status === 'done' ? 'done' : a.status === 'ended' ? 'muted' : 'running' }, a.status)),
+    a.description ? el('div', { class: 'wrap' }, a.description) : null,
+    el('div', { class: 'muted' }, `${n(a.tokens)} tokens · ${a.endedAt ? `ended ${clock(a.endedAt)}` : a.lastAt ? `last ${clock(a.lastAt)}` : 'starting'}`)));
+  agentBoxes.forEach((b, i) => { b.dataset.key = agentKey(d.agents[i]); });
+
+  let graph = document.getElementById('live-graph');
+  if (!graph) {
+    live.svg = document.createElementNS(SVG, 'svg');
+    live.svg.setAttribute('class', 'links');
+    live.svg.setAttribute('aria-hidden', 'true');
+    graph = el('div', { id: 'live-graph', class: 'live-graph' }, live.svg, el('div', { class: 'lead-row', id: 'live-lead' }), el('div', { class: 'agents', id: 'live-agents' }));
+    const logBox = el('div', { class: 'log', id: 'live-log' });
+    logBox.addEventListener('scroll', () => { live.follow = logBox.scrollTop + logBox.clientHeight >= logBox.scrollHeight - 4; });
+    fill('live',
+      el('div', { class: 'live-head' }, el('a', { href: '#' }, '← runs'), el('span', { id: 'live-title' }), el('span', { id: 'live-status' })),
+      graph,
+      el('section', {}, el('h2', {}, el('span', { class: 'muted' }, '#'), el('span', { class: 'cmd', id: 'live-log-title' })), logBox),
+      el('div', { class: 'statusbar', id: 'live-bar' }));
+    new ResizeObserver(() => drawLinks()).observe(graph);
+  }
+  fill('live-title', ` live · run ${d.run.id} · ${d.run.kind}${d.run.area ? ` · ${d.run.area}` : ''}`);
+  fill('live-status', el('span', { class: d.run.status }, `● ${d.run.status}`), ` ${duration(d.elapsedMs)}`);
+  fill('live-lead', leadBox);
+  fill('live-agents', agentBoxes.length ? agentBoxes : el('div', { class: 'muted' }, 'no delegation yet'));
+
+  fill('live-log-title', `log · run ${d.run.id}${d.logTotal > d.log.length ? ` · latest ${d.log.length} of ${d.logTotal}` : ''}`);
+  const logBox = document.getElementById('live-log');
+  logBox.replaceChildren(...(d.log.length ? d.log.map((l) => el('div', { class: 'line' },
+    el('span', { class: 'muted' }, clock(l.at)), el('span', { class: l.agent === 'main' ? 'agent main' : 'agent cyan' }, l.agent),
+    el('span', { class: l.action === 'blocked' || l.action === 'error' ? 'action error' : l.action === 'result' || l.action === 'handback' ? 'action done' : 'action' }, l.action),
+    el('span', { class: 'detail' }, l.detail))) : [el('div', { class: 'muted' }, d.transcript === 'available' ? 'nothing yet' : 'the transcript is not there yet')]));
+  if (live.follow) logBox.scrollTop = logBox.scrollHeight;
+
+  const cap = d.cap;
+  fill('live-bar',
+    d.run.area ? `area ${d.run.area} · ` : '',
+    `agents running ${d.active} · ${duration(d.elapsedMs)} · `,
+    cap ? [`${n(d.tokens.total)} / ${n(cap.tokens)} tokens `, bar(d.tokens.total, Math.max(cap.tokens, d.tokens.total), cap.tokens, level(d.tokens.total, cap.tokens)),
+      el('span', { class: level(d.tokens.total, cap.tokens) }, ` ${Math.round(cap.share * 100)}%`), ` · turns cap ${cap.turns}${cap.once ? ' (this run)' : ''}`]
+      : `${n(d.tokens.total)} tokens · ${d.run.kind === 'heartbeat' ? 'cap not recorded' : 'no cap (interactive session)'}`);
+
+  drawLinks();
+  // A result that arrived since the last reading: a pulse back to the lead agent.
+  for (const a of d.agents) {
+    const before = live.statuses.get(agentKey(a));
+    if ((before === 'running' || before === 'starting') && a.status === 'done') pulse(agentKey(a));
+    live.statuses.set(agentKey(a), a.status);
+  }
+  if (ended) document.getElementById('live-status').append(el('span', { class: 'muted' }, ' · ended, no longer asked'));
+}
+
+// One line per subagent, from the lead's box: to the top of a box in the first row, along the left gutter to the
+// others. Paths are kept between readings, so a flowing line does not restart.
+function drawLinks() {
+  const graph = document.getElementById('live-graph');
+  if (!graph || !live.data) return;
+  const origin = graph.getBoundingClientRect();
+  const leadBox = graph.querySelector('.box.lead');
+  if (!leadBox) return;
+  live.svg.setAttribute('width', origin.width);
+  live.svg.setAttribute('height', origin.height);
+  const l = leadBox.getBoundingClientRect();
+  const x0 = l.left + l.width / 2 - origin.left;
+  const y0 = l.bottom - origin.top;
+  const boxes = [...graph.querySelectorAll('.box.agent')];
+  const firstTop = Math.min(...boxes.map((b) => b.getBoundingClientRect().top));
+  const keep = new Set();
+  for (const b of boxes) {
+    const key = b.dataset.key;
+    const a = live.data.agents.find((x) => agentKey(x) === key);
+    if (!a) continue;
+    keep.add(key);
+    const r = b.getBoundingClientRect();
+    const top = r.top - origin.top;
+    const mid = y0 + (firstTop - origin.top - y0) / 2;
+    const d = r.top - firstTop < 2
+      ? `M ${x0} ${y0} V ${mid} H ${r.left + r.width / 2 - origin.left} V ${top}`
+      : `M ${x0} ${y0} V ${mid} H 4 V ${top + 12} H ${r.left - origin.left}`;
+    let path = live.paths.get(key);
+    if (!path) {
+      path = document.createElementNS(SVG, 'path');
+      live.svg.append(path);
+      live.paths.set(key, path);
+    }
+    path.setAttribute('d', d);
+    const cls = a.status === 'running' || a.status === 'starting' ? 'link flow' : a.status === 'done' ? 'link done' : 'link still';
+    if (path.getAttribute('class') !== cls) path.setAttribute('class', cls);
+  }
+  for (const [key, path] of live.paths) if (!keep.has(key)) { path.remove(); live.paths.delete(key); }
+}
+
+// A short pulse from the agent back to the lead agent, along its line; none with reduced motion.
+function pulse(key) {
+  const path = live.paths.get(key);
+  if (!path || reducedMotion()) return;
+  const dot = document.createElementNS(SVG, 'circle');
+  dot.setAttribute('r', '3.5');
+  dot.setAttribute('class', 'pulse');
+  const motion = document.createElementNS(SVG, 'animateMotion');
+  motion.setAttribute('dur', '0.9s');
+  motion.setAttribute('fill', 'freeze');
+  motion.setAttribute('keyPoints', '1;0');
+  motion.setAttribute('keyTimes', '0;1');
+  motion.setAttribute('calcMode', 'linear');
+  motion.setAttribute('path', path.getAttribute('d'));
+  dot.append(motion);
+  live.svg.append(dot);
+  motion.beginElement?.();
+  setTimeout(() => dot.remove(), 1000);
+}
+
+function route() {
+  const id = Number((location.hash.match(/^#live-(\d+)$/) || [])[1]);
+  if (id) showLive(id);
+  else {
+    if (live.id) hideLive();
+    openFromHash();
+  }
+}
+
 // #run-<id> opens that run, e.g. from a decision request.
 async function openFromHash() {
   const id = Number((location.hash.match(/^#run-(\d+)$/) || [])[1]);
@@ -383,7 +566,7 @@ async function openFromHash() {
   }
   document.getElementById(`run-${id}`)?.scrollIntoView({ block: 'start' });
 }
-window.addEventListener('hashchange', openFromHash);
+window.addEventListener('hashchange', route);
 
 // Opened from `jerome projects --view`: a way back to the overview.
 if (location.pathname.startsWith('/p/')) {
@@ -391,9 +574,13 @@ if (location.pathname.startsWith('/p/')) {
   document.getElementById('back').hidden = false;
 }
 
-refresh().then(openFromHash);
+refresh().then(route);
 setInterval(() => { if (!document.hidden) refresh(); }, 10_000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  refresh();
+  if (live.id && live.data?.run.status === 'running') pollLive();
+});
 </script>
 </body>
 </html>

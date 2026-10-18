@@ -25,9 +25,44 @@ Read-only. Press Ctrl+C to stop.
 - **Usage by agent and model** for today, 7 or 30 days, with cache reads and cache writes in separate columns, since on the API they cost very differently, and each row's share of the API equivalent as a bar.
 - **Reply lengths** per agent over 7 days, against the 150-word limit. An agent with no reply recorded yet shows "no data yet".
 
-The page looks like a terminal: one monospaced system font and no web fonts, each section titled with the command that prints the same data (`$ jerome limits`, `$ jerome state --runs 50`), bars drawn with block characters, where a vertical line marks the limit, and terminal colours for levels and statuses: green, yellow, red, and cyan for what is running. Nothing on it moves.
+The page looks like a terminal: one monospaced system font and no web fonts, each section titled with the command that prints the same data (`$ jerome limits`, `$ jerome state --runs 50`), bars drawn with block characters, where a vertical line marks the limit, and terminal colours for levels and statuses: green, yellow, red, and cyan for what is running. Nothing on it moves, except the lines of a live view, and only with what happens (see below).
 
-Dollar amounts are always API equivalents, written `≈$3.40 API`, or `<$0.01 API` below a cent: a subscription is not billed per token. The theme follows the system; the menu in the header switches it, and the browser remembers the choice. The page checks for changes every 10 seconds while its tab is visible, and the server answers "not modified" when nothing changed. `#run-<id>` at the end of the address opens that run.
+Dollar amounts are always API equivalents, written `≈$3.40 API`, or `<$0.01 API` below a cent: a subscription is not billed per token. The theme follows the system; the menu in the header switches it, and the browser remembers the choice. The page checks for changes every 10 seconds while its tab is visible, and the server answers "not modified" when nothing changed. `#run-<id>` at the end of the address opens that run, `#live-<id>` the live view of one in progress.
+
+## A run in progress
+
+Opening a run that is still `running` opens its live view (`#live-<id>` at the end of the address), in place of the page; `← runs` goes back. It shows only what Jérôme measures, read from the session's transcripts and the database:
+
+```
+← runs  live · run 182 · heartbeat · development                    ● running 4:12
+
+                  ┌ main · lead agent ─────────────────────────────┐
+                  │ claude-opus-5-5 · running                      │
+                  │ last call 10:41:07 · context 61k · output 1.2k │
+                  │ waiting for developer                          │
+                  └───────────────────────┬────────────────────────┘
+             ┌────────────────────────────┼────────────────────────────┐
+┌ analyst ───┴─────────────┐ ┌ developer ─╎─────────────┐ ┌ researcher ╎ background ┐
+│ claude-sonnet-5-5 · done │ │ claude-opus-5-5 · running│ │ claude-sonnet-5-5 · running │
+│ Review the criteria of v1│ │ Fix the parser           │ │ Read the hooks page         │
+│ 41k tokens · ended 10:39 │ │ 112k tokens · last 10:41 │ │ 40k tokens · last 10:40     │
+└──────────────────────────┘ └──────────────────────────┘ └─────────────────────────────┘
+
+# log · run 182
+10:40:01  main       delegate  → developer: Fix the parser
+10:40:33  developer  Edit      src/parse.js
+10:41:01  developer  blocked   git add && git commit (chained commands refused)
+
+area development · agents running 2 · 4:12 · 370k / 500k tokens ████████▏░░│ 74% · turns cap 40
+```
+
+- **The lead agent:** the run's status, its model, the context and output of its last call and when, and `waiting for <agent>` while a subagent in the foreground has not returned.
+- **Each subagent of the run:** its type (`developer 2` when there are two), its model, the task's description, `starting`, `running`, `done` or `ended` (the run ended first), its tokens and its last activity. One in the foreground is done when its result reaches the lead agent; one in the background when it hands back.
+- **The lines** from the lead agent to each subagent move only with what happens: the line to an agent at work flows, a short pulse runs back to the lead agent when its result arrives, and a finished agent's line is still and fainter. With the system's reduced motion setting, nothing moves: only the colours change.
+- **The log**, oldest first, of every agent's calls with time, agent, and tool with what it touched, the delegations, results and handbacks, the chained commands the hook refused and hook errors; the latest 200 lines.
+- **The status bar:** the area, the agents running, the elapsed time, and the run's tokens counted from the transcripts as the heartbeat counts them, against its token cap (the caps a heartbeat ran with are kept with its run). The turn cap is shown as a number: turns are not counted while the run goes on. An interactive session has no cap.
+
+There is no progress bar and no estimate: Jérôme does not know how far a task has gone, nor how full a model's context window is. The view asks the server every 2 seconds while the run is running and the tab is visible, and stops once the run ends, showing its final status. The server reads each transcript from where it stopped, keeps that in memory only, and forgets a run 5 minutes after it was last asked for.
 
 ## All the projects
 

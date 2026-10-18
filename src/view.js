@@ -16,6 +16,7 @@ import { PRICES_DATE } from './models.js';
 import { notProjectHint, STATE } from './paths.js';
 import { stores } from './store.js';
 import { readProjects } from './projects.js';
+import { liveRun } from './live.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'index.html');
 const PROJECTS_PAGE = join(import.meta.dirname, '..', 'viewer', 'projects.html');
@@ -146,6 +147,9 @@ function routeProject(dir, token, path, req, res) {
   }
   const run = path.match(/^\/api\/runs\/(\d+)$/);
   if (run) return send(res, 200, runDetail(dir, Number(run[1])));
+  // The live view of a run (D115), asked every 2 seconds while it runs.
+  const live = path.match(/^\/api\/runs\/(\d+)\/live$/);
+  if (live) return send(res, 200, liveRun(dir, Number(live[1])));
   return send(res, 404, { error: 'not found' });
 }
 

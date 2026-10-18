@@ -104,7 +104,7 @@ export function leadCalls(transcript) {
   return [...calls.values()];
 }
 
-function toolHint(name, input) {
+export function toolHint(name, input) {
   const short = (s) => {
     const one = String(s ?? '').replace(/\s+/g, ' ').trim();
     return one.length > 70 ? `${one.slice(0, 67)}...` : one;

@@ -58,9 +58,9 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
     const agents = new Map();
     for (const r of periods.week) agents.set(r.agent, total([agents.get(r.agent) ?? total([]), totals([r])]));
 
-    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area, triage FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
+    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area, triage, caps FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
     const perRun = db.prepare(`SELECT agent, model, ${TIER_SQL} long_prompt, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model, long_prompt`);
-    const heartbeat = db.prepare("SELECT id, status, started_at, ended_at, reason, area FROM runs WHERE kind = 'heartbeat' ORDER BY started_at DESC LIMIT 1").get();
+    const heartbeat = db.prepare("SELECT id, status, started_at, ended_at, reason, area, caps FROM runs WHERE kind = 'heartbeat' ORDER BY started_at DESC LIMIT 1").get();
     const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at, area FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
     const areas = areaUsage(dir, db, since.week, requests);
 
@@ -89,13 +89,13 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
         const usage = perRun.all(r.id);
         const t = totals(usage);
         return {
-          id: r.id, sessionId: r.session_id, kind: r.kind, area: r.area, triage: parseJson(r.triage), status: r.status, startedAt: r.started_at, endedAt: r.ended_at,
+          id: r.id, sessionId: r.session_id, kind: r.kind, area: r.area, triage: parseJson(r.triage), caps: parseJson(r.caps), status: r.status, startedAt: r.started_at, endedAt: r.ended_at,
           durationMs: r.ended_at ? Date.parse(r.ended_at) - Date.parse(r.started_at) : null, reason: r.reason,
           tokens: t.tokens, calls: t.calls, apiUsd: t.apiUsd, unpriced: t.unpriced, agents: [...new Set(usage.map((u) => u.agent))],
         };
       }),
       // The latest heartbeat, whatever came after it (D114).
-      lastHeartbeat: heartbeat ? { id: heartbeat.id, status: heartbeat.status, area: heartbeat.area, startedAt: heartbeat.started_at, endedAt: heartbeat.ended_at, reason: heartbeat.reason } : null,
+      lastHeartbeat: heartbeat ? { id: heartbeat.id, status: heartbeat.status, area: heartbeat.area, startedAt: heartbeat.started_at, endedAt: heartbeat.ended_at, reason: heartbeat.reason, caps: parseJson(heartbeat.caps) } : null,
       requests: requests.map((r) => ({ id: r.id, runId: r.run_id, area: r.area, question: r.question, options: r.options, recommendation: r.recommendation, openedAt: r.opened_at })),
       replies: replyStats(db, since.week, agent),
     };

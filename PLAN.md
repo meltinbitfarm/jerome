@@ -191,6 +191,7 @@ Local viewer separate from execution (D11): `jerome view` starts a local server 
 **Status: done (2026-10-15).**
 - `jerome view`, `viewer/index.html`, `src/view.js`, `src/delegations.js`, and `readState` extended within `jerome.state/v1`; 93 tests with `npm test`, including access (no token, another host, POST), the 304, the delegations read from transcripts, and the database unchanged byte for byte.
 - claude-watch: the API returned the team (lead agent on Opus 5.5, analyst on Sonnet, developer on Opus, documentarist on Haiku), 10 runs, and for the interactive run of phase 6 the background delegation to the analyst with its task and reply, and the refused `git branch + git branch` chain; a request without the token got 403; the database was unchanged. Screenshots in Chrome headless, dark and light theme and in a 390-pixel frame: the page fits, tables scroll inside their panels, and with test thresholds `5h 32% / 35%` showed red and `7d 20% / 70%` green. The server stopped cleanly on SIGTERM.
+- Later, D115: the live view of a run in progress, its agents linked by lines that move only with what happens.
 - Later, D114: `jerome projects` and `jerome projects --view`, every project of the machine from the database registry, with what needs the user first, each project opening its viewer under `/p/<key>/`.
 - Not tested: shutting the viewer down while a run is in progress. The viewer shares nothing with runs but read access to the database, which in WAL mode lets readers and writers work at the same time.
 

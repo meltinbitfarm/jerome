@@ -19,7 +19,7 @@ jerome schedule --off                            # stop
 | `--max-tokens` | 500,000 tokens per run, counted as in `jerome state` (cache included). Normal runs on a real project took 90,000 to 340,000. |
 | `--max-turns` | 40 turns per run |
 
-The schedule and the caps are saved in the project's `.jerome/project.json`. Raise the caps for a project that needs more.
+The schedule and the caps are saved in the project's `.jerome/project.json`. Raise the caps for a project that needs more. Each heartbeat also keeps the caps it ran with in its run, noting those given to it alone, so the [viewer](commands/view.md#a-run-in-progress) can show its tokens against them while it runs.
 
 ## How it is started
 
