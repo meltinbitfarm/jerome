@@ -136,6 +136,16 @@ Open a session with `claude` and ask the lead agent to propose the team. With th
 
 In your sessions you talk to the lead agent in your language. It reads `areas.md`, `scope.md` and `decisions.md` before choosing or planning work, delegates to the agents, has each task done on a branch, and merges it into `main` itself when the tests pass without conflicts. Decisions you make are recorded in `decisions.md`, one line each with its reason, and are not reopened without a concrete problem.
 
+It asks you only what matters: a choice that cannot be undone, costs money, goes outside the project (publishing, sending, a provider), changes the goal or the scope, or goes against a recorded decision. Every other choice it makes itself, with a sensible default, and notes it in `open.md` as an assumption to confirm, not as a decision:
+
+```
+## Assumptions
+- A3: shopping list items sorted by aisle, not by insertion — what most list apps do
+- A4: a household is limited to 8 members — easy to raise later
+```
+
+When you come back, the lead agent puts the open assumptions to you in one block, after any decision requests: "OK" confirms them all, and you correct only those you want otherwise. Confirmed ones become decisions; corrected ones become the correction's decision, and the work is changed to match. Asking does not stop it either: while a question waits for you, it goes on with everything that does not depend on the answer.
+
 To see where things stand, at zero tokens:
 
 ```
@@ -162,7 +172,7 @@ Every morning, launchd starts a heartbeat. It goes through cheap checks first (n
 
 ## 5. Decision requests
 
-A heartbeat never asks, since nobody reads it. On Listo, the developer has the app ready to deploy, and the hosting provider is still Q1, so the lead agent opens a request and stops that line of work:
+A heartbeat never asks, since nobody reads it. On Listo, the developer has the app ready to deploy, and the hosting provider is still Q1, so the lead agent opens a request and goes on with the parts of its task that do not depend on it, such as the database migrations and the guide's provider-neutral steps:
 
 ```
 R2  Deploy guide ready: Fly.io or Render for the EU hosting?
@@ -170,7 +180,7 @@ R2  Deploy guide ready: Fly.io or Render for the EU hosting?
     recommendation  Fly.io: Postgres in Frankfurt, cheaper at this size
 ```
 
-You get a macOS notification. While R2 is open, heartbeats give the development area no work, and the other areas go on. In your next session the lead agent brings R2 up first; you answer, it records the answer with `jerome request answer 2 "Fly.io"` and the decision in `decisions.md`, and the next heartbeat goes on from there. See [`jerome request`](commands/request.md).
+You get a macOS notification. While R2 is open, the development area still gets work that does not depend on it: the triage leaves the deploy for later and picks another task, and the lead agent is told R2 is already asked, so it does not ask again. Only a milestone request, like R5 below, holds up its whole area until you answer. In your next session the lead agent brings R2 up first; you answer, it records the answer with `jerome request answer 2 "Fly.io"` and the decision in `decisions.md`, and the next heartbeat goes on from there. See [`jerome request`](commands/request.md).
 
 ## 6. A milestone is reached
 
@@ -182,7 +192,7 @@ R5  development: MVP met (sign-up, live shared list, tests, deploy guide). Open 
     recommendation  open beta: criteria "invite a second member; offline edits sync; 10 households onboarded"
 ```
 
-Answer "open beta" and the lead agent updates the area's milestone and criteria in `areas.md`, in a heartbeat too, and records `D9: development: MVP done → beta — …`. Answer "area briefing" when the next milestone needs a conversation: in a session, the lead agent asks a few questions and proposes the milestone with its criteria for you to confirm.
+Until you answer, heartbeats give the development area no work, and the other areas go on. Answer "open beta" and the lead agent updates the area's milestone and criteria in `areas.md`, in a heartbeat too, and records `D9: development: MVP done → beta — …`. Answer "area briefing" when the next milestone needs a conversation: in a session, the lead agent asks a few questions and proposes the milestone with its criteria for you to confirm.
 
 ## 7. A new area: marketing
 

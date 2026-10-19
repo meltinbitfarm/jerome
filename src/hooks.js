@@ -8,6 +8,7 @@ import { openDb, prune } from './db.js';
 import { ingestTranscript } from './usage.js';
 import { checkChain } from './chain.js';
 import { projectStatus, projectSummary, globalLimits } from './budget.js';
+import { readAssumptions } from './assumptions.js';
 
 export const HOOK_EVENTS = ['session-start', 'subagent-stop', 'stop', 'session-end', 'pre-tool-use'];
 const RUN_KINDS = ['heartbeat', 'service'];
@@ -122,7 +123,10 @@ function sessionStart(db, payload, env, dir) {
   // A heartbeat is told what to do by its own prompt.
   if (kind !== 'interactive' || payload.source === 'compact') return null;
   const open = db.prepare("SELECT id, question, options, recommendation FROM requests WHERE status = 'open' ORDER BY id").all();
-  return { context: open.length ? requestsContext(projectDir(payload, env), open) : null, message: limitsWarning(db, dir) };
+  // The assumptions waiting for the user (D116) come with them, so both are put in one block.
+  const assumptions = readAssumptions(dir);
+  const context = [open.length ? requestsContext(projectDir(payload, env), open) : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
+  return { context: context || null, message: limitsWarning(db, dir) };
 }
 
 // A warning for the user, not the model, when a limit is at 90% or more (D84): interactive sessions are never
@@ -141,6 +145,12 @@ function limitsWarning(db, dir) {
   }
   if (!parts.length) return null;
   return `Jérôme: usage near or over its limits: ${parts.join('; ')}. Heartbeats pause at a limit; this session is not blocked.`;
+}
+
+// The assumptions of open.md (D116), in full: each is one line.
+export function assumptionsContext(assumptions) {
+  return ['Assumptions waiting for the user, in open.md `## Assumptions`. In your first reply put them to the user in one block, after any requests: record each confirmed one as a D-entry, each corrected one as a D-entry with the correction and change the work to match, and remove both from open.md.', '',
+    ...assumptions.map((a) => `${a.id}: ${a.text}`)].join('\n');
 }
 
 // The full open requests (D78): question, options, recommendation, and the project files they cite, so the lead

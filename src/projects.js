@@ -51,7 +51,7 @@ function safeAccount() {
 
 function projectRow(s, now, account) {
   const dir = s.record.path;
-  const row = { key: s.key, name: basename(dir), path: dir, error: null, areas: [], areasImplicit: true, requests: [], lastHeartbeat: null, lastActivity: null, week: null, projectLimits: null, schedule: null, attention: [] };
+  const row = { key: s.key, name: basename(dir), path: dir, error: null, areas: [], areasImplicit: true, requests: [], assumptions: 0, lastHeartbeat: null, lastActivity: null, week: null, projectLimits: null, schedule: null, attention: [] };
   try {
     const h = readMarker(dir).heartbeat;
     if (h?.every) row.schedule = { every: h.every, text: describe(h) };
@@ -74,6 +74,8 @@ function projectRow(s, now, account) {
   row.areas = st.areas.map((a) => ({ name: a.name, milestone: a.milestone ?? null, pace: a.pace ?? null }));
   row.areasImplicit = st.areasImplicit;
   row.requests = st.requests.map((r) => ({ id: r.id, question: r.question, area: r.area, openedAt: r.openedAt }));
+  // Assumptions hold nothing up (D116): counted, never a reason for attention.
+  row.assumptions = st.assumptions.length;
   row.lastHeartbeat = st.lastHeartbeat;
   row.lastActivity = st.runs[0]?.startedAt ?? null;
   row.week = { tokens: st.usage.week.tokens, apiUsd: st.usage.week.apiUsd, unpriced: st.usage.week.unpriced };
@@ -156,11 +158,12 @@ export function formatProjects(p) {
       `${x.attention.length ? '!' : ' '} ${x.name}`,
       x.error ? '—' : x.areasImplicit ? '—' : x.areas.map((a) => `${a.name} ${short(a.milestone ?? '')}`.trim()).join(', '),
       x.error ? '—' : String(x.requests.length),
+      x.error ? '—' : String(x.assumptions),
       x.error ? 'unreadable' : x.lastHeartbeat ? `${ago(x.lastHeartbeat.startedAt, now)} ${x.lastHeartbeat.status}` : x.schedule ? 'none yet' : 'not scheduled',
       x.error ? '—' : `${n(x.week.tokens)} ${dollars(x.week.apiUsd)}${x.week.unpriced ? '+?' : ''}`,
       tilde(x.path),
     ]);
-    const head = ['  PROJECT', 'AREAS', 'REQ', 'LAST HEARTBEAT', '7 DAYS', 'FOLDER'];
+    const head = ['  PROJECT', 'AREAS', 'REQ', 'ASSUMED', 'LAST HEARTBEAT', '7 DAYS', 'FOLDER'];
     const widths = head.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
     const line = (r) => r.map((c, i) => (i === r.length - 1 ? c : c.padEnd(widths[i]))).join('  ');
     lines.push('', line(head), ...rows.map(line));

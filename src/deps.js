@@ -108,7 +108,7 @@ export const DEPS = [
   d('hook-input', 'transcript_path', 'the session\'s transcript', { event: '*', decisions: ['D20', 'D59'], phase: 6, code: ['src/hooks.js'] }),
   d('hook-input', 'cwd', 'the project, when CLAUDE_PROJECT_DIR is missing', { event: '*', decisions: ['D59'], phase: 6, code: ['src/hooks.js'] }),
   d('hook-input', 'CLAUDE_PROJECT_DIR', 'the project, from the hook\'s environment', { event: '*', kind: 'env', decisions: ['D59'], phase: 6, code: ['src/hooks.js', 'src/statusline.js'] }),
-  d('hook-input', 'source', 'startup, resume, clear, compact, fork: a new session id (startup, clear, fork) opens a run, resume reopens its own; open requests are given except after compact; calls a fork copies are counted once', { event: 'SessionStart', decisions: ['D59', 'D74'], phase: 6, code: ['src/hooks.js'] }),
+  d('hook-input', 'source', 'startup, resume, clear, compact, fork: a new session id (startup, clear, fork) opens a run, resume reopens its own; open requests and assumptions are given except after compact; calls a fork copies are counted once', { event: 'SessionStart', decisions: ['D59', 'D74'], phase: 6, code: ['src/hooks.js'] }),
   d('hook-input', 'agent_id', 'which subagent stopped', { event: 'SubagentStop', decisions: ['D20', 'D59'], phase: 6, code: ['src/hooks.js'] }),
   d('hook-input', 'agent_type', 'usage per agent, reply lengths', { event: 'SubagentStop', decisions: ['D20', 'D59', 'D62'], phase: 6, code: ['src/hooks.js'] }),
   d('hook-input', 'agent_transcript_path', 'the subagent\'s transcript', { event: 'SubagentStop', decisions: ['D20', 'D59'], phase: 6, code: ['src/hooks.js'] }),
@@ -120,7 +120,7 @@ export const DEPS = [
   d('hook-output', 'hookSpecificOutput.permissionDecision', '"deny" refuses the call', { event: 'PreToolUse', decisions: ['D61'], phase: 6, code: ['src/hooks.js'] }),
   d('hook-output', 'hookSpecificOutput.permissionDecisionReason', 'shown to the model', { event: 'PreToolUse', decisions: ['D61'], phase: 6, code: ['src/hooks.js'] }),
   d('hook-output', 'systemMessage', 'a warning shown to the user, not the model, when limits are near or reached', { event: 'SessionStart', decisions: ['D84'], phase: 9, code: ['src/hooks.js'] }),
-  d('hook-output', 'hookSpecificOutput.additionalContext', 'open decision requests shown to the model at session start', { event: 'SessionStart', decisions: ['D74'], phase: 8, code: ['src/hooks.js'] }),
+  d('hook-output', 'hookSpecificOutput.additionalContext', 'open decision requests and the assumptions of open.md shown to the model at session start', { event: 'SessionStart', decisions: ['D74', 'D116'], phase: 8, code: ['src/hooks.js', 'src/assumptions.js'] }),
 
   // Status line.
   d('statusline-config', 'statusLine.type, command', 'Jérôme\'s status line, and the user\'s own one', { kind: 'setting', decisions: ['D60'], phase: 6, code: ['src/hookconfig.js', 'src/statusline.js'] }),

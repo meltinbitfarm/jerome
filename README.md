@@ -121,7 +121,7 @@ The project database is not in the folder: it lives in `~/.local/share/jerome/pr
 
 ## The lead agent
 
-The template's `.claude/rules/jerome.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to the project's agents, and only drafts things it is not allowed to do, such as deploying. It is kept within 680 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
+The template's `.claude/rules/jerome.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to the project's agents, and only drafts things it is not allowed to do, such as deploying. It is kept within 760 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
 
 ## Agents and limits
 

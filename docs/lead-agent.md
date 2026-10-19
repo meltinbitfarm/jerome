@@ -7,11 +7,25 @@ Every Jérôme project has one lead agent: the main Claude Code session you talk
 - **Speaks your language**, briefly, with at most one question per reply.
 - **Keeps the project state.** It is the only one that edits `PROJECT.md`, `decisions.md` and `open.md`. Subagents report to it, and it records what matters.
 - **Respects decisions.** It cites entries by ID ("see D4") and does not reopen a recorded decision unless a concrete problem appears.
-- **Records only what you confirmed.** A decision it proposed is not recorded until you explicitly confirm it: silence is not confirmation. Before recording, it lists its unconfirmed proposals so you can confirm them in one block.
-- **Asks when it must.** When you need to decide, it ends with a decision request: the question, the options and its recommendation.
+- **Records only what you confirmed.** A decision it proposed is not recorded until you explicitly confirm it: silence is not confirmation. Before recording, it lists its unconfirmed proposals and assumptions so you can confirm them in one block.
+- **Asks only what matters.** For an important decision it ends with a decision request: the question, the options and its recommendation. Minor choices it makes itself, as assumptions you confirm later, and a question never stops the work that does not depend on it (see [below](#questions-and-assumptions)).
 - **Delegates cheaply.** It uses subagents, never agent teams. It passes file paths instead of contents, asks for a short summary with the details written to a file, and picks the cheapest model that fits the task.
 - **Stays within limits.** It follows the agent limits in `PROJECT.md`. By default it only prepares drafts and proposals: it never sends, publishes, deploys, pushes, buys or emails.
 - **Works on branches.** Every task runs on its own branch. When the tests pass and there are no conflicts, the lead agent merges it into `main` by itself and says so in its reply; it asks you only when tests fail or there is a conflict. Subagents never merge, and nobody pushes: that stays with you. Commands that change the repository run one at a time, each result checked before the next, so a blocked command never leaves it unclear what already ran.
+
+## Questions and assumptions
+
+The lead agent asks you only for important decisions (D116):
+
+- irreversible, such as deleting data or a migration with no way back;
+- costly: money, a paid service, or a large share of the subscription;
+- outward-facing: anything that publishes, sends or commits the project to someone else;
+- changing the goal or the scope;
+- against a recorded decision.
+
+Every other choice is minor and reversible: it picks a sensible default and notes it in `open.md`, under `## Assumptions`, one line each, `A3: choice — reason`. Assumptions are not decisions, and are not written to `decisions.md` until you confirm them. At the start of each session, the [`SessionStart` hook](hooks.md#open-decision-requests-at-session-start) gives the lead agent the open assumptions, and it puts them to you in one block, after any decision requests. A confirmed one becomes a D-entry; a corrected one becomes the correction's D-entry, and the work is changed to match; both leave `open.md`. `jerome state`, the [viewer](commands/view.md) and [`jerome projects`](commands/projects.md) count them, and they never hold anything up.
+
+A question does not stop the work either (D117). In a session the lead agent goes on with everything that does not depend on the answer and ends with the decision request. In a [heartbeat](heartbeat.md#decision-requests) it opens the request and goes on with the rest of its task; later heartbeats keep giving the area work that does not depend on it, and are told it is already asked. Only a milestone request, opened when an area's criteria are met, holds up its whole area.
 
 ## What it reads, and when
 
@@ -68,7 +82,7 @@ The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens
 
 | File | Budget | Current |
 |---|---:|---:|
-| `jerome.md` | 680 tokens | 679, measured with `/context` |
+| `jerome.md` | 760 tokens | 751, measured with `/context` |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
 `jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome/project.json`:

@@ -11,15 +11,15 @@ account 5h 34%/70% · 7d 61%/75%
     1 open decision request: R4
     heartbeat blocked: uncommitted changes (src/app.js)
 
-  PROJECT     AREAS                           REQ  LAST HEARTBEAT       7 DAYS       FOLDER
-! listo       development v1, marketing beta  1    2 hours ago blocked  1.4M ≈$2.10  ~/Projects/listo
-  site        —                               0    19 hours ago done    320k ≈$0.48  ~/Projects/site
-  notes       —                               0    not scheduled        12k ≈$0.02   ~/Projects/notes
+  PROJECT     AREAS                           REQ  ASSUMED  LAST HEARTBEAT       7 DAYS       FOLDER
+! listo       development v1, marketing beta  1    2        2 hours ago blocked  1.4M ≈$2.10  ~/Projects/listo
+  site        —                               0    0        19 hours ago done    320k ≈$0.48  ~/Projects/site
+  notes       —                               0    0        not scheduled        12k ≈$0.02   ~/Projects/notes
 ```
 
 | Option | Effect |
 |---|---|
-| `--json` | the same as one JSON object, schema `jerome.projects/v1`: `windows`, then `projects`, each with `key`, `name`, `path`, `areas`, `requests`, `lastHeartbeat`, `lastActivity`, `week`, `projectLimits`, `schedule`, `attention` (its reasons) and `error`, then `orphans` |
+| `--json` | the same as one JSON object, schema `jerome.projects/v1`: `windows`, then `projects`, each with `key`, `name`, `path`, `areas`, `requests`, `assumptions` (how many), `lastHeartbeat`, `lastActivity`, `week`, `projectLimits`, `schedule`, `attention` (its reasons) and `error`, then `orphans` |
 | `--view` | the same as a page in the browser, in the style of [`jerome view`](view.md); with `--port <n>` and `--no-open` as there |
 
 ## What needs you
@@ -32,7 +32,7 @@ A project comes first, with its reasons, when:
 - its database **cannot be read**, or needs `jerome doctor` for its schema;
 - it has a heartbeat scheduled but **none ran in twice its interval**: `no heartbeat for 3 days (scheduled every day at 09:00)`. With no heartbeat at all, the time since the launchd job was written counts.
 
-A limit near or reached is not listed either: it shows with the limits, in `jerome state` and in each project's viewer, and once reached it pauses heartbeats by itself.
+The assumptions waiting for you in `open.md` are only counted, in `ASSUMED`: they hold nothing up (see [lead-agent.md](../lead-agent.md#questions-and-assumptions)). A limit near or reached is not listed either: it shows with the limits, in `jerome state` and in each project's viewer, and once reached it pauses heartbeats by itself.
 
 The other projects follow, the most recently active first. The subscription windows belong to the account, not to a project: they are shown once, at the top.
 

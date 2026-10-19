@@ -260,6 +260,18 @@ test('the session start context carries each open request in full, with the proj
   assert.doesNotMatch(text, /--- notes\/missing\.md|notes\/missing\.md \(/);
 });
 
+test('the session start context carries the assumptions of open.md, to put to the user in one block (D116)', () => {
+  const { dir, hookCall, run } = project();
+  assert.equal(hookCall('session-start', {}).stdout, '');
+  writeFileSync(join(dir, '.jerome', 'open.md'), '# Open\n\n## Open questions\n- Q1: Which host?\n\n## Assumptions\n- A1: CSV export with a comma — the common default\n- A2: dates as ISO 8601 — sortable\n\n## Parked\n- P1: Later.\n');
+  const out = JSON.parse(hookCall('session-start', { session_id: 's2' }).stdout).hookSpecificOutput.additionalContext;
+  assert.match(out, /^Assumptions waiting for the user[\s\S]*in one block[\s\S]*\n\nA1: CSV export with a comma — the common default\nA2: dates as ISO 8601 — sortable$/);
+  assert.doesNotMatch(out, /Which host|Later/);
+  const state = run('state', 'demo').stdout;
+  assert.match(state, /^assumed A1 CSV export with a comma — the common default · A2 dates as ISO 8601 — sortable$/m);
+  assert.deepEqual(JSON.parse(run('state', 'demo', '--json').stdout).assumptions.map((a) => a.id), ['A1', 'A2']);
+});
+
 test('a stop of Claude Code\'s own helpers, with no agent type, is not counted as a reply', () => {
   const { run, hookCall, db } = project();
   hookCall('session-start', {});

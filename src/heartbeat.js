@@ -132,7 +132,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
     const before = openRequests(dir);
     const startBranch = currentBranch(dir);
-    const lead = await runLead(dir, run, triage.task, caps, settings.model ?? 'opus', env, plan.implicit ? null : area);
+    const lead = await runLead(dir, run, triage.task, caps, settings.model ?? 'opus', env, plan.implicit ? null : area, area.requests);
     closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
     writeLast(dir, { fingerprint: projectFingerprint(dir), verdict: 'work', at: new Date().toISOString() });
     const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
@@ -444,7 +444,7 @@ Goal: ${a.goal ?? 'none'}${a.milestone ? `\nMilestone: ${a.milestone}` : ''}
 ${a.milestone ? 'Criteria' : 'Success criteria'}: ${a.criteria ?? 'none'}`).join('\n\n');
   return `You decide whether a scheduled heartbeat of a project should start its lead agent, and on which area of work.
 Answer with one JSON object and nothing else: {"work": true|false, "area": "<area name>", "task": "<one task, one sentence>", "milestone": true|false, "reason": "<one sentence>"}.
-Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. When the history shows an area's criteria all met, set "milestone": true and make checking them the task.
+Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. An open request holds up only what depends on it: choose another task of the same area. The assumptions of open.md hold nothing up. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. When the history shows an area's criteria all met, set "milestone": true and make checking them the task.
 
 ## Areas due now
 ${areas}
@@ -462,15 +462,17 @@ ${requests.map((r) => `R${r.id} [${r.status}]${r.area ? ` (${r.area})` : ''} ${r
 ${digestLines.join('\n') || 'none'}`;
 }
 
-export function leadPrompt(task, area = null) {
+export function leadPrompt(task, area = null, requests = area?.requests ?? []) {
   const where = area ? `
 Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'none listed'}). Milestone: ${area.milestone} — criteria: ${area.criteria}${area.watch?.files.length ? `
 - The pages this area follows are saved whole in ${area.watch.files.join(', ')}: have them read there with Read, not with WebFetch, which returns summaries.` : ''}
-- Work in the area's folder, with its agents. If its milestone's criteria are met, open a decision request proposing the next milestone and its criteria (options: open it / continue / area briefing), and stop.` : '';
+- Work in the area's folder, with its agents. If its milestone's criteria are met, open a decision request with \`jerome request open --milestone\` proposing the next milestone and its criteria (options: open it / continue / area briefing), and stop.` : '';
+  const asked = requests.length ? `
+- Already asked, still open: ${requests.map((r) => `R${r.id} ${r.question}`).join(' · ')}. Do not ask again, nor do what depends on them.` : '';
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
 Task chosen by the triage: ${task}${where}
 - Do this task only. Work on a new branch. Delegate reading and work to the agents in .claude/agents/, and keep your own turns few.
-- Never ask the user. When you need a decision, run \`jerome request open --question "…" --options "…" --recommendation "…"\` and stop that line of work.
+- Never ask the user. For an important decision (see jerome.md), run \`jerome request open --question "…" --options "…" --recommendation "…"\`, then go on with the parts of the task that do not depend on it. Make minor, reversible choices yourself, as assumptions in open.md.${asked}
 - When the tests pass and there are no conflicts, merge the branch into main and report it; if tests fail or there is a conflict, open a decision request instead.
 - Before ending, append one line to .jerome/digest.md: \`- YYYY-MM-DD HH:MM · ${area ? `${area.name} · ` : ''}what you did · branches merged · requests opened\`. Commit it with your work, and end on main with a clean working tree.
 - End with at most 3 lines.`;
@@ -481,9 +483,9 @@ Task chosen by the triage: ${task}${where}
 // from the session's transcripts, subagents included; the larger count decides.
 const METER_MS = Number(process.env.JEROME_METER_MS) || 3000;
 
-function runLead(dir, run, task, caps, model, env, area) {
+function runLead(dir, run, task, caps, model, env, area, requests) {
   return new Promise((done) => {
-    const child = spawn('claude', ['-p', leadPrompt(task, area), '--model', model, '--max-turns', String(caps.maxTurns),
+    const child = spawn('claude', ['-p', leadPrompt(task, area, requests), '--model', model, '--max-turns', String(caps.maxTurns),
       '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose', '--session-id', run.sessionId], {
       cwd: dir, stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...env, JEROME_RUN_KIND: 'heartbeat', JEROME_SESSION_ID: run.sessionId },

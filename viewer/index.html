@@ -55,7 +55,7 @@ function el(tag, attrs = {}, ...children) {
   for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
   return node;
 }
-const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat());
+const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat().filter((c) => c !== null && c !== undefined));
 // A section's title, written as the command that prints the same data in a terminal.
 const prompt = (command, ...meta) => el('h2', {}, el('span', { class: 'ps' }, '$'), el('span', { class: 'cmd' }, command), ...meta);
 const meta = (...children) => el('span', { class: 'meta' }, ...children);
@@ -167,7 +167,8 @@ function renderCards(d) {
   const open = d.requests.length;
   fill('cards', prompt('jerome state'), el('div', { class: 'totals' },
     line('today', d.usage.today), line('7 days', d.usage.week), line('30 days', d.usage.month),
-    el('div', {}, el('span', { class: 'label' }, 'open'), el('span', { class: open ? 'warn' : 'ok' }, String(open)), ` decision ${open === 1 ? 'request' : 'requests'}`)));
+    el('div', {}, el('span', { class: 'label' }, 'open'), el('span', { class: open ? 'warn' : 'ok' }, String(open)), ` decision ${open === 1 ? 'request' : 'requests'}`),
+    d.assumptions.length ? el('div', {}, el('span', { class: 'label' }, 'assumed'), String(d.assumptions.length), ` ${d.assumptions.length === 1 ? 'assumption' : 'assumptions'} to confirm`) : null));
 }
 
 // Areas (D102): each with its milestone, pace, priority, last heartbeat, what holds it, and its usage over 7 days.
@@ -196,11 +197,15 @@ function renderAreas(d) {
 
 function renderRequests(d) {
   const items = d.requests.map((r) => el('div', { class: 'request' },
-    el('div', {}, el('span', { class: 'warn' }, `R${r.id}`), r.area ? el('span', { class: 'cyan' }, `  ${r.area}`) : '', '  ', r.question),
+    el('div', {}, el('span', { class: 'warn' }, `R${r.id}`), r.area ? el('span', { class: 'cyan' }, `  ${r.area}`) : '', r.kind === 'milestone' ? el('span', { class: 'muted' }, ' · milestone, holds the area') : '', '  ', r.question),
     r.options ? el('div', {}, el('span', { class: 'muted' }, 'options         '), r.options) : null,
     r.recommendation ? el('div', {}, el('span', { class: 'muted' }, 'recommendation  '), r.recommendation) : null,
     el('div', { class: 'muted' }, `opened ${when(r.openedAt)}`, r.runId ? [' · ', el('a', { href: `#run-${r.runId}` }, `→ run ${r.runId}`)] : null)));
-  fill('requests', prompt('jerome state --json | jq .requests', meta('decision requests')), items.length ? items : el('div', { class: 'muted' }, 'None open.'));
+  // Assumptions (D116): minor choices made without asking, to confirm or correct in one block; they hold nothing up.
+  const assumed = d.assumptions.length ? el('div', { class: 'request' },
+    el('div', { class: 'muted' }, 'assumptions in open.md, to confirm or correct in one block'),
+    d.assumptions.map((a) => el('div', {}, el('span', { class: 'cyan' }, a.id), '  ', a.text))) : null;
+  fill('requests', prompt('jerome state --json | jq .requests', meta('decision requests')), items.length ? items : el('div', { class: 'muted' }, 'None open.'), assumed);
 }
 
 function renderTeam(d) {

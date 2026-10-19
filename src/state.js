@@ -11,6 +11,7 @@ import { callPrice, TIER_SQL } from './models.js';
 import { readAccount, WINDOWS } from './account.js';
 import { notProjectHint } from './paths.js';
 import { readAreas, agentAreas } from './areas.js';
+import { readAssumptions } from './assumptions.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
 
@@ -61,7 +62,7 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
     const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area, triage, caps FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
     const perRun = db.prepare(`SELECT agent, model, ${TIER_SQL} long_prompt, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model, long_prompt`);
     const heartbeat = db.prepare("SELECT id, status, started_at, ended_at, reason, area, caps FROM runs WHERE kind = 'heartbeat' ORDER BY started_at DESC LIMIT 1").get();
-    const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at, area FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
+    const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at, area, kind FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
     const areas = areaUsage(dir, db, since.week, requests);
 
     return {
@@ -96,8 +97,10 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
       }),
       // The latest heartbeat, whatever came after it (D114).
       lastHeartbeat: heartbeat ? { id: heartbeat.id, status: heartbeat.status, area: heartbeat.area, startedAt: heartbeat.started_at, endedAt: heartbeat.ended_at, reason: heartbeat.reason, caps: parseJson(heartbeat.caps) } : null,
-      requests: requests.map((r) => ({ id: r.id, runId: r.run_id, area: r.area, question: r.question, options: r.options, recommendation: r.recommendation, openedAt: r.opened_at })),
+      requests: requests.map((r) => ({ id: r.id, runId: r.run_id, area: r.area, kind: r.kind, question: r.question, options: r.options, recommendation: r.recommendation, openedAt: r.opened_at })),
       replies: replyStats(db, since.week, agent),
+      // Minor choices the lead agent made on its own, waiting for the user (D116): they hold nothing up.
+      assumptions: readAssumptions(dir),
     };
   } finally {
     db.close();
@@ -121,7 +124,8 @@ function areaUsage(dir, db, since, requests) {
   return {
     implicit,
     areas: areas.map((a) => {
-      const request = requests.find((q) => q.area === a.name);
+      // Only a milestone request holds up its area (D117).
+      const request = requests.find((q) => q.area === a.name && q.kind === 'milestone');
       return { ...a, lastHeartbeat: last.get(a.name) ?? null, request: request ? { id: request.id, question: request.question, runId: request.run_id } : null, week: totals(groups.get(a.name) ?? []) };
     }),
     shared: totals(groups.get('shared') ?? []),
@@ -241,6 +245,10 @@ export function formatState(s, { replies = false } = {}) {
   lines.push(`open    ${s.requests.length ? s.requests.map((r) => `R${r.id} ${r.question} (${when(r.openedAt, now)})`).join(' · ') : 'no decision requests'}`);
   // The lead agent learns how to close a request where it reads it, at no cost to CLAUDE.md (D74).
   if (s.requests.length) lines.push('        propose them to the user; record each answer with `jerome request answer <id> "<answer>"`, or `jerome request drop <id>`');
+  if (s.assumptions.length) {
+    lines.push(`assumed ${s.assumptions.map((a) => `${a.id} ${a.text}`).join(' · ')}`);
+    lines.push('        put them to the user in one block; record confirmed and corrected ones as D-entries and remove them from open.md');
+  }
   return lines.join('\n');
 }
 

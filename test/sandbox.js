@@ -57,7 +57,7 @@ case "$1" in
         i=$((i + 1))
       done
       echo '{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.42,"resetsAt":4102444800},"seven_day":{"utilization":0.1,"resetsAt":4102444800}}}}'
-      [ -n "$FAKE_LEAD_REQUEST" ] && "$FAKE_NODE" "$JEROME_BIN" request open --question "$FAKE_LEAD_REQUEST" > /dev/null
+      [ -n "$FAKE_LEAD_REQUEST" ] && "$FAKE_NODE" "$JEROME_BIN" request open --question "$FAKE_LEAD_REQUEST" \${FAKE_LEAD_MILESTONE:+--milestone} > /dev/null
       echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"\${FAKE_LEAD_RESULT:-success}\\",\\"is_error\\":$([ "\${FAKE_LEAD_RESULT:-success}" = success ] && echo false || echo true),\\"result\\":\\"done\\"}"
       exit 0;;
     esac

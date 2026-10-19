@@ -106,6 +106,7 @@ function render(d) {
       el('td', {}, p.attention.length ? el('span', { class: 'warn' }, '! ') : '  ', link(p)),
       el('td', {}, p.error ? '—' : p.areasImplicit ? el('span', { class: 'muted' }, '—') : p.areas.map((a, i) => [i ? ', ' : '', a.name, el('span', { class: 'cyan' }, a.milestone ? ` ${a.milestone}` : ''), a.pace === 'paused' ? el('span', { class: 'muted' }, ' paused') : ''])),
       el('td', { class: 'num' }, p.error ? '—' : el('span', { class: p.requests.length ? 'warn' : 'muted' }, String(p.requests.length))),
+      el('td', { class: 'num' }, p.error ? '—' : el('span', { class: p.assumptions ? null : 'muted' }, String(p.assumptions))),
       el('td', {}, p.error ? el('span', { class: 'error' }, 'unreadable') : h ? [el('span', { class: 'muted' }, `${ago(h.startedAt)} `), el('span', { class: h.status, title: h.reason || null }, h.status)] : el('span', { class: 'muted' }, p.schedule ? 'none yet' : 'not scheduled')),
       el('td', { class: 'num' }, p.error ? '—' : n(p.week.tokens)),
       el('td', { class: 'num' }, p.error ? '—' : usd(p.week)),
@@ -114,7 +115,7 @@ function render(d) {
   fill('projects', prompt('jerome projects', meta('newest activity first, after what needs you')),
     d.projects.length
       ? el('div', { class: 'scroll' }, el('table', {},
-        el('thead', {}, el('tr', {}, ['project', 'areas', 'requests', 'last heartbeat', '7d tokens', '7d API', 'folder'].map((t, i) => el('th', { class: i === 2 || i === 4 || i === 5 ? 'num' : null }, t)))),
+        el('thead', {}, el('tr', {}, ['project', 'areas', 'requests', 'assumed', 'last heartbeat', '7d tokens', '7d API', 'folder'].map((t, i) => el('th', { class: [2, 3, 5, 6].includes(i) ? 'num' : null }, t)))),
         el('tbody', {}, rows)))
       : el('div', { class: 'muted' }, 'No project on this machine yet: `jerome new <name>` creates one, `jerome init` brings Jérôme into an existing one.'));
 

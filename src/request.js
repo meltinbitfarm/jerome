@@ -1,6 +1,6 @@
 // `jerome request`: decision requests (D56, D74). In a heartbeat nobody reads the reply, so the lead agent opens a
-// request instead of asking, and stops that line of work; in a session it proposes the open ones to the user and
-// records the answer. The CLI writes, the model only passes the text.
+// request instead of asking, and goes on with what does not depend on it (D117); in a session it proposes the open
+// ones to the user and records the answer. The CLI writes, the model only passes the text.
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { MARKER } from './template.js';
@@ -8,7 +8,7 @@ import { openDb } from './db.js';
 import { notProjectMessage } from './paths.js';
 import { readAreas } from './areas.js';
 
-export async function request(action, args, { dir: dirArg = '.', question, options, recommendation, area = null, env = process.env } = {}) {
+export async function request(action, args, { dir: dirArg = '.', question, options, recommendation, area = null, milestone = false, env = process.env } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
     console.error(notProjectMessage(dir));
@@ -32,8 +32,11 @@ export async function request(action, args, { dir: dirArg = '.', question, optio
           return 2;
         }
       }
-      const id = openRequest(db, { question, options, recommendation, area, sessionId: env.JEROME_SESSION_ID ?? null });
-      console.log(`R${id} opened. Stop this line of work until the user answers.`);
+      const id = openRequest(db, { question, options, recommendation, area, kind: milestone ? 'milestone' : 'question', sessionId: env.JEROME_SESSION_ID ?? null });
+      const held = db.prepare('SELECT area FROM requests WHERE id = ?').get(id).area;
+      console.log(milestone
+        ? `R${id} opened. ${held ? `Area ${held} waits` : 'Stop this line of work'} until the user answers.`
+        : `R${id} opened. Go on with what does not depend on it.`);
       return 0;
     }
     const id = Number(String(args[0] ?? '').replace(/^R/i, ''));
@@ -65,14 +68,15 @@ export async function request(action, args, { dir: dirArg = '.', question, optio
 }
 
 // Opens a request, linked to the run of the session that asked for it when known, and returns its id. Its area
-// (D100) is the one given, or that of the heartbeat that opened it: while it is open, that area gets no work.
+// (D100) is the one given, or that of the heartbeat that opened it; while a milestone request is open, that area
+// gets no work, while a question holds up only what depends on it (D117).
 // The same question already open is not opened twice.
-export function openRequest(db, { question, options = null, recommendation = null, area = null, sessionId = null, runId = null }) {
+export function openRequest(db, { question, options = null, recommendation = null, area = null, kind = 'question', sessionId = null, runId = null }) {
   const open = db.prepare("SELECT id FROM requests WHERE status = 'open' AND question = ?").get(question);
   if (open) return open.id;
   const run = runId !== null
     ? db.prepare('SELECT id, area FROM runs WHERE id = ?').get(runId)
     : sessionId ? db.prepare('SELECT id, area FROM runs WHERE session_id = ?').get(sessionId) : null;
-  return Number(db.prepare('INSERT INTO requests (run_id, opened_at, question, options, recommendation, area) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(run?.id ?? runId, new Date().toISOString(), question, options, recommendation, area ?? run?.area ?? null).lastInsertRowid);
+  return Number(db.prepare('INSERT INTO requests (run_id, opened_at, question, options, recommendation, area, kind) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(run?.id ?? runId, new Date().toISOString(), question, options, recommendation, area ?? run?.area ?? null, kind).lastInsertRowid);
 }

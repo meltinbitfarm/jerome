@@ -70,6 +70,21 @@ test('a new migration keeps the existing data, and a newer database is refused',
   assert.throws(() => openDb(dir), new RegExp(`schema version ${LATEST + 1}, this Jérôme knows up to ${LATEST}`));
 });
 
+test('migration 005: requests already open with an area keep holding it up, as milestone requests (D117)', () => {
+  const dir = temp();
+  const db = openDb(dir, { create: true, migrate: false });
+  const upTo4 = migrations().filter((m) => m.version <= 4);
+  applyMigrations(db, upTo4);
+  const add = db.prepare("INSERT INTO requests (opened_at, question, status, area) VALUES (?, ?, ?, ?)");
+  add.run(NOW.toISOString(), 'Open beta?', 'open', 'development');
+  add.run(NOW.toISOString(), 'Commit the changes?', 'open', null);
+  add.run(NOW.toISOString(), 'Old one', 'answered', 'development');
+  applyMigrations(db, migrations());
+  assert.deepEqual(db.prepare('SELECT question, kind FROM requests ORDER BY id').all().map((r) => [r.question, r.kind]),
+    [['Open beta?', 'milestone'], ['Commit the changes?', 'question'], ['Old one', 'question']]);
+  db.close();
+});
+
 test('transcripts are read from the saved offset, deduplicated, and from the start when they get shorter', () => {
   const dir = temp();
   const db = openDb(dir, { create: true });

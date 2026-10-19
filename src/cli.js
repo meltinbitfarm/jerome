@@ -58,7 +58,7 @@ const USAGE = `Usage:
   jerome heartbeat [dir]  one scheduled run, as launchd starts it
     --max-tokens <n>, --max-turns <n>
                           caps for this run only, in place of the project's
-  jerome request open --question <q> [--options <o>] [--recommendation <r>] [--area <name>]
+  jerome request open --question <q> [--options <o>] [--recommendation <r>] [--area <name>] [--milestone]
   jerome request answer <id> <answer> | drop <id>
                           open or close a decision request
   jerome digest [dir]     what happened recently, at no token cost
@@ -94,6 +94,7 @@ const OPTIONS = {
   options: { type: 'string' },
   recommendation: { type: 'string' },
   area: { type: 'string' },
+  milestone: { type: 'boolean' },
   since: { type: 'string' },
   'five-hour': { type: 'string' },
   'seven-day': { type: 'string' },
@@ -107,7 +108,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns'], request: ['question', 'options', 'recommendation', 'area'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
 
 export async function main(argv) {
   let parsed;
@@ -191,7 +192,7 @@ export async function main(argv) {
     case 'request': {
       const [action, ...args] = rest;
       if (!['open', 'answer', 'drop'].includes(action)) return usageError('jerome request takes open, answer or drop.');
-      return request(action, args, { question: parsed.values.question, options: parsed.values.options, recommendation: parsed.values.recommendation, area: parsed.values.area ?? null });
+      return request(action, args, { question: parsed.values.question, options: parsed.values.options, recommendation: parsed.values.recommendation, area: parsed.values.area ?? null, milestone: parsed.values.milestone === true });
     }
     case 'digest':
       if (rest.length > 1) return usageError('jerome digest takes at most one folder.');

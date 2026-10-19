@@ -10,7 +10,7 @@ my-project/
 │   ├── scope.md                context, out of scope, success, tools, pace, each area's context: read when needed
 │   ├── areas.md                the areas: goal, milestone, criteria, folder, agents, pace, priority
 │   ├── decisions.md            the decisions, one per line
-│   ├── open.md                 open questions and parked topics
+│   ├── open.md                 open questions, assumptions to confirm, parked topics
 │   ├── archive.md              closed entries, with their IDs
 │   ├── brief.md                the original brief
 │   ├── digest.md               one line per heartbeat

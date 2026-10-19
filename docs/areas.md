@@ -59,7 +59,7 @@ With `- Trigger: watch` in `areas.md`, the pages also decide when the area works
 
 ## Milestones
 
-Only the current milestone is in `areas.md`. When its criteria look met, the lead agent checks them and opens a [decision request](heartbeat.md#decision-requests) that proposes the next milestone with its criteria, with three options: open it, continue the current one, or hold an area briefing. Until you answer, heartbeats give that area no work, rather than look for some in vain.
+Only the current milestone is in `areas.md`. When its criteria look met, the lead agent checks them and opens a milestone [decision request](heartbeat.md#decision-requests) that proposes the next milestone with its criteria, with three options: open it, continue the current one, or hold an area briefing. Until you answer, heartbeats give that area no work, rather than look for some in vain. Any other request holds up only the work that depends on it.
 
 When you accept the proposed milestone, the lead agent updates `Milestone` and `Criteria`, in a heartbeat too, and records the closed one in `decisions.md`:
 
@@ -73,7 +73,7 @@ The `project-brief` skill has a second mode, for an existing project: to add an 
 
 ## Heartbeats
 
-Before the [triage](heartbeat.md#what-a-heartbeat-does), the CLI leaves out, at zero tokens, the areas that are paused, those waiting for a decision request of their own, and those whose pace has not come round since their last heartbeat. The triage on Haiku gets the others, highest priority first, and picks one task in one of them. The run records its area, and the lead agent gets the area's folder, agents, milestone and criteria. A decision request opened in that heartbeat belongs to the area. When no area is due, the heartbeat ends with the reason, for example `no area due: development waiting for R4 · marketing weekly pace, last heartbeat 2026-10-15 09:00`.
+Before the [triage](heartbeat.md#what-a-heartbeat-does), the CLI leaves out, at zero tokens, the areas that are paused, those waiting for a milestone request of their own, and those whose pace has not come round since their last heartbeat. The triage on Haiku gets the others, highest priority first, and picks one task in one of them. The run records its area, and the lead agent gets the area's folder, agents, milestone and criteria. A decision request opened in that heartbeat belongs to the area. When no area is due, the heartbeat ends with the reason, for example `no area due: development waiting for R4 · marketing weekly pace, last heartbeat 2026-10-15 09:00`.
 
 ## Usage per area
 

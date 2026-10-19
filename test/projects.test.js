@@ -41,6 +41,8 @@ function project(name, { marker = {}, heartbeats = [], request = null, tokens = 
 
 before(async () => {
   project('calm', { heartbeats: [['done', 'main: a task', ago(HOUR)]] });
+  // Assumptions are counted, and hold nothing up (D116).
+  writeFileSync(join(root, 'calm', '.jerome', 'open.md'), '# Open\n\n## Open questions\n- Q1: Which host?\n\n## Assumptions\n- A1: CSV export with a comma — the common default\n- A2: dates as ISO 8601 — sortable\n');
   // A lock or a limit pause clears by itself: not a reason to call the user.
   project('locked', { heartbeats: [['blocked', 'locked: another heartbeat of this project is running', ago(2 * HOUR)]] });
   project('paused', { heartbeats: [['blocked', 'project limit: today ≈$5.10 / $5 API (3.0M tokens), resets at midnight', ago(3 * HOUR)]] });
@@ -109,8 +111,8 @@ test('the text shows the reasons, a table and the databases without a project', 
   const text = formatProjects(readProjects());
   assert.match(text, /^jerome projects · 12 projects, 6 need you/);
   assert.match(text, /! dirty {2}\S+\/dirty\n {4}heartbeat blocked: uncommitted changes \(a\.txt\)/);
-  assert.match(text, /PROJECT +AREAS +REQ +LAST HEARTBEAT +7 DAYS +FOLDER/);
-  assert.match(text, / {2}calm +— +0 +1 hour ago done/);
+  assert.match(text, /PROJECT +AREAS +REQ +ASSUMED +LAST HEARTBEAT +7 DAYS +FOLDER/);
+  assert.match(text, / {2}calm +— +0 +2 +1 hour ago done/);
   assert.match(text, /A database belongs to a folder that no longer holds a Jérôme project:\n {2}gone-\w+ \(was \S+\/gone\), 0 runs\n {2}If the project moved/);
   assert.equal(span(90 * 60_000), '1 hour');
   assert.equal(span(30 * HOUR), '30 hours');

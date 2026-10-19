@@ -91,11 +91,13 @@ export function isDue(area, lastAt, now = new Date()) {
 }
 
 // The areas a heartbeat may work on now (D100), highest priority first, then the one waiting longest, and the others
-// with the reason they are left out. `db` gives each area's last heartbeat and open requests.
+// with the reason they are left out. `db` gives each area's last heartbeat and open requests: a milestone request
+// holds up its area, a question only what depends on it, so the area keeps it to tell the lead agent (D117).
 export function areaPlan(dir, db, now = new Date()) {
   const { areas, implicit } = readAreas(dir);
   const last = new Map(db.prepare("SELECT area, max(started_at) at FROM runs WHERE kind = 'heartbeat' AND area IS NOT NULL GROUP BY area").all().map((r) => [r.area, r.at]));
-  const open = new Map(db.prepare("SELECT area, min(id) id FROM requests WHERE status = 'open' AND area IS NOT NULL GROUP BY area").all().map((r) => [r.area, r.id]));
+  const open = new Map(db.prepare("SELECT area, min(id) id FROM requests WHERE status = 'open' AND kind = 'milestone' AND area IS NOT NULL GROUP BY area").all().map((r) => [r.area, r.id]));
+  const questions = db.prepare("SELECT id, question, area FROM requests WHERE status = 'open' AND kind != 'milestone' ORDER BY id").all();
   const due = [];
   const skipped = [];
   for (const a of areas) {
@@ -103,7 +105,8 @@ export function areaPlan(dir, db, now = new Date()) {
     if (a.pace === 'paused') skipped.push({ name: a.name, why: 'paused' });
     else if (open.has(a.name)) skipped.push({ name: a.name, why: `waiting for R${open.get(a.name)}` });
     else if (!isDue(a, lastAt, now)) skipped.push({ name: a.name, why: `${a.pace} pace, last heartbeat ${lastAt.slice(0, 16).replace('T', ' ')}` });
-    else due.push({ ...a, lastAt });
+    // A question about no area, or of the implicit area, may concern any work.
+    else due.push({ ...a, lastAt, requests: questions.filter((r) => r.area === a.name || r.area === null || implicit).map(({ id, question }) => ({ id, question })) });
   }
   due.sort((x, y) => x.priority - y.priority || (x.lastAt ?? '').localeCompare(y.lastAt ?? ''));
   return { due, skipped, implicit };

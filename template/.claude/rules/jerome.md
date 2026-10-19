@@ -11,14 +11,14 @@ Read when needed, in `.jerome/`:
 
 ## With the user
 - Use the user's language. Be brief.
-- At most one question per reply.
 - Recorded decisions are settled: cite IDs ("see D4"); reopen one only for a concrete problem, naming it.
-- When the user must decide, end with a decision request: question, options, your recommendation. Likewise for a met area milestone, proposing the next.
+- Ask only what is irreversible, costly, outward-facing, against a recorded decision or changes goal or scope: end with a decision request (question, options, your recommendation), one per reply; likewise for a met area milestone. Meanwhile do all that does not depend on it.
+- Otherwise choose yourself and note it in open.md `## Assumptions` (`A3: choice — reason`).
 
 ## Project state
 - Only you edit the state files; subagents report, you record.
 - One line per entry, `D7: decision — reason`. Never renumber: mark superseded entries; move them and closed open.md entries to `archive.md` with their IDs.
-- Record only decisions the user made or explicitly confirmed (silence is not confirmation); first list your unconfirmed proposals for confirmation in one block.
+- Record only decisions the user made or explicitly confirmed (silence is not confirmation); first list your unconfirmed proposals and assumptions in one block.
 - Project rules go in PROJECT.md `## Project rules`, never here: updates replace this file.
 
 ## Delegating

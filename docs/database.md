@@ -28,7 +28,7 @@ The hooks that write it are described in [hooks.md](hooks.md). The lead agent re
 | `usage_daily` | day, agent and model, summing `usage` rows older than 90 days |
 | `transcript_reads` | transcript, with how far it has been read |
 | `events` | hook event: kind and numbers or names only, never message contents |
-| `requests` | decision request: question, options, recommendation, status, answer, and the area it holds up |
+| `requests` | decision request: question, options, recommendation, status, answer, its area, and its `kind`: `milestone` holds up the whole area, `question` only the work that depends on it (D117) |
 
 Allowed values are checked by the schema itself. Model prices are not in the database: they live in the code (`src/models.js`), so a price change comes with a Jérôme update.
 

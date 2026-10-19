@@ -357,15 +357,15 @@ test('the triage chooses among the areas due; paused areas, open requests and pa
   // Each call is logged with its arguments, the prompt's lines included: one entry per `-p`.
   const triages = () => p.calls().split(/^-p /m).filter((c) => c.includes('--model haiku'));
 
-  // The triage picks marketing; the lead agent works there and opens a request, which belongs to the area.
-  p.runWith({ FAKE_TRIAGE: '{"work": true, "area": "marketing", "task": "Draft the landing page"}', FAKE_LEAD_REQUEST: 'Pre-launch met: open launch?' }, 'heartbeat', 'demo');
+  // The triage picks marketing; the lead agent works there and opens a milestone request, which belongs to the area.
+  p.runWith({ FAKE_TRIAGE: '{"work": true, "area": "marketing", "task": "Draft the landing page"}', FAKE_LEAD_REQUEST: 'Pre-launch met: open launch?', FAKE_LEAD_MILESTONE: '1' }, 'heartbeat', 'demo');
   let run = p.lastRun();
   assert.deepEqual([run.status, run.area, run.reason], ['done', 'marketing', 'marketing: Draft the landing page']);
   assert.match(triages()[0], /### development · priority 1 · daily pace · last heartbeat never[\s\S]*### marketing · priority 2[\s\S]*### research · priority 3/);
   const lead = p.calls().split(/^-p /m).filter((c) => c.includes('--max-turns')).pop();
   assert.match(lead, /Area: marketing \(folder marketing\/; agents writer\)\. Milestone: pre-launch — criteria: landing page draft; three posts ready/);
   const d = p.db();
-  assert.deepEqual({ ...d.prepare('SELECT id, area FROM requests').get() }, { id: 1, area: 'marketing' });
+  assert.deepEqual({ ...d.prepare('SELECT id, area, kind FROM requests').get() }, { id: 1, area: 'marketing', kind: 'milestone' });
   d.close();
 
   // Marketing now waits for R1, and its weekly pace has not come round: a triage that picks it is not trusted.
@@ -418,6 +418,36 @@ test('jerome request open takes an area, which must exist', () => {
   const d = p.db();
   assert.equal(d.prepare("SELECT area FROM requests WHERE question = 'Which audience first?'").get().area, 'marketing');
   d.close();
+});
+
+test('a question holds up only what depends on it: its area stays due, and the lead agent is told not to ask again (D117)', () => {
+  const p = project();
+  writeFileSync(join(p.dir, '.jerome', 'areas.md'), AREAS);
+  p.git('add', '-A');
+  p.git('commit', '-q', '-m', 'areas');
+  const req = (...args) => spawnSync(process.execPath, [join(import.meta.dirname, '..', 'bin', 'jerome.js'), 'request', 'open', ...args],
+    { cwd: p.dir, encoding: 'utf8', env: { ...process.env, HOME: p.root, XDG_DATA_HOME: '', XDG_CONFIG_HOME: '', XDG_CACHE_HOME: '' } });
+  const question = req('--question', 'Which parser library?', '--area', 'development');
+  assert.match(question.stdout, /R1 opened\. Go on with what does not depend on it\./);
+  const milestone = req('--question', 'Survey done: open the report?', '--area', 'research', '--milestone');
+  assert.match(milestone.stdout, /R2 opened\. Area research waits until the user answers\./);
+
+  p.runWith({ FAKE_TRIAGE: '{"work": true, "area": "development", "task": "Write the CLI help"}' }, 'heartbeat', 'demo');
+  assert.deepEqual([p.lastRun().status, p.lastRun().area], ['done', 'development']);
+  const calls = p.calls().split(/^-p /m);
+  const triage = calls.filter((c) => c.includes('--model haiku')).pop();
+  assert.match(triage, /### development[\s\S]*### marketing/);
+  assert.doesNotMatch(triage, /### research/);
+  assert.match(triage, /An open request holds up only what depends on it: choose another task of the same area\. The assumptions of open\.md hold nothing up\./);
+  const lead = calls.filter((c) => c.includes('--max-turns')).pop();
+  assert.match(lead, /Already asked, still open: R1 Which parser library\?\. Do not ask again, nor do what depends on them\./);
+  assert.match(lead, /then go on with the parts of the task that do not depend on it/);
+  assert.doesNotMatch(lead, /Survey done/);
+
+  // jerome state: only the milestone request holds its area.
+  const state = p.run('state', 'demo').stdout;
+  assert.match(state, /development MVP 7d/);
+  assert.match(state, /research survey waiting R2/);
 });
 
 test('caps given to one heartbeat by hand replace those of the project for that run only (D108)', () => {
