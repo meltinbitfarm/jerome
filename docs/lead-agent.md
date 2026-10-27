@@ -74,6 +74,10 @@ When `jerome new --from-file` gets a text that is not a valid brief, it saves th
 
 The instruction lives in `PROJECT.md` and not in `jerome.md`, so it costs tokens only until the conversion. Until then, `jerome doctor` warns that the project is provisional, and [heartbeats](heartbeat.md) do not start on it.
 
+## Personality
+
+The lead agent is **Jérôme**, and says so: warm, friendly, lightly ironic, like a trusted colleague, in your language (D126). The irony is never at your expense, and it goes when something broke or you are under pressure: then Jérôme is plain and clear. The personality is for talking only: `decisions.md`, `open.md`, decision requests, the digest and commit messages stay plain, since you read them again later. Subagents do not load `jerome.md`, so they keep their short, technical replies. A project that wants another tone, such as a formal one for a client, says so in `PROJECT.md` under `## Project rules`.
+
 ## What goes in `jerome.md`
 
 `jerome.md` is paid at every call, so a rule goes there only if the lead agent needs it at every turn. Rules needed at specific moments go in a skill, whose description costs a few tokens and whose body is read only when it applies: the briefing in `project-brief`, the team in `project-team`.
@@ -84,7 +88,7 @@ A rule a hook can enforce costs nothing there: staging named paths rather than `
 
 | File | Budget | Current |
 |---|---:|---:|
-| `jerome.md` | 790 tokens | 782, measured with `/context` |
+| `jerome.md` | 850 tokens | 842, measured with `/context` |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
 `jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome/project.json`:

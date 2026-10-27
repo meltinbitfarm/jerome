@@ -117,7 +117,7 @@ Ask the lead agent, for example "pause the marketing area until January" or "put
 
 ## How much may the files loaded at every turn weigh?
 
-`jerome.md` (790 tokens) and `PROJECT.md` (800 tokens) are loaded into every session and every heartbeat, so `jerome doctor` warns when one goes over its budget, as measured by Claude Code's `/context`. It never blocks anything. To raise a budget, add it to `.jerome/project.json`:
+`jerome.md` (850 tokens) and `PROJECT.md` (800 tokens) are loaded into every session and every heartbeat, so `jerome doctor` warns when one goes over its budget, as measured by Claude Code's `/context`. It never blocks anything. To raise a budget, add it to `.jerome/project.json`:
 
 ```json
 "budgets": { "PROJECT.md": 1200 }

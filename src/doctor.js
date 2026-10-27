@@ -28,7 +28,7 @@ export const DOCTOR_SCHEMA = 'jerome.doctor/v1';
 // Token budgets for the files loaded into every session. Going over them only warns, and a project can
 // change them in `.jerome` under "budgets" (D37).
 // Keyed by file name: jerome.md is the lead agent's instructions (D87), CLAUDE.md before it.
-export const BUDGETS = { 'jerome.md': 790, 'PROJECT.md': 800 };
+export const BUDGETS = { 'jerome.md': 850, 'PROJECT.md': 800 };
 
 export async function doctor(dirArg, { json = false, check = false, yes = false, relink: relinkKey = null, newDb = false } = {}) {
   const ask = !json && process.stdin.isTTY ? askChoice : null;

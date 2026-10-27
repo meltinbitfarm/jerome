@@ -112,17 +112,17 @@ test('doctor moves a profile left in settings.json to the local settings', () =>
 });
 
 test('doctor warns, without failing, when the files loaded every session are over budget', () => {
-  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '800' } });
+  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '900' } });
   assert.equal(run('new', 'demo').status, 0);
   writeFileSync(join(root, 'demo', '.jerome', 'PROJECT.md'), '# Demo\n');
   const r = run('doctor', 'demo');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /! jerome\.md: 800 tokens, over its 790-token budget/);
+  assert.match(r.stdout, /! jerome\.md: 900 tokens, over its 850-token budget/);
   assert.match(r.stdout, /! PROJECT\.md: 1100 tokens, over its 800-token budget/);
 });
 
 test('a project can raise its budgets in .jerome, and bad entries only warn', () => {
-  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '800' } });
+  const { root, run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '900' } });
   assert.equal(run('new', 'demo').status, 0);
   const dir = join(root, 'demo');
   writeFileSync(join(dir, '.jerome', 'PROJECT.md'), '# Demo\n');
@@ -131,7 +131,7 @@ test('a project can raise its budgets in .jerome, and bad entries only warn', ()
   const r = run('doctor', 'demo', '--check', '--json');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const warnings = JSON.parse(r.stdout).warnings;
-  assert.deepEqual(warnings.filter((w) => w.id === 'budget').map((w) => [w.file, w.budget]), [['jerome.md', 790]]);
+  assert.deepEqual(warnings.filter((w) => w.id === 'budget').map((w) => [w.file, w.budget]), [['jerome.md', 850]]);
   assert.deepEqual(warnings.filter((w) => w.id === 'budgets-config').length, 2);
   // jerome update rewrites .jerome but keeps the budgets.
   run('update', 'demo', '--yes');
@@ -186,7 +186,7 @@ for (const [variant, problem] of [
 }
 
 test('doctor --json: schema, checks, sections, counts and warnings, with a matching exit code', () => {
-  const { run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '800' } });
+  const { run } = sandbox({ env: { FAKE_CLAUDE_MD_TOKENS: '900' } });
   assert.equal(run('new', 'demo').status, 0);
   const r = run('doctor', 'demo', '--json');
   assert.equal(r.status, 0, r.stdout + r.stderr);
@@ -207,7 +207,7 @@ test('doctor --json: schema, checks, sections, counts and warnings, with a match
   assert.deepEqual(report.context.counts, { categories: 1, skills: 3, projectSkills: 3, memoryFiles: 1 });
   assert.deepEqual(report.limits, { added: [], missing: [] });
   assert.equal(report.context.totalTokens, 12100);
-  assert.deepEqual(report.warnings.map((w) => [w.id, w.file, w.tokens, w.budget]), [['budget', 'jerome.md', 800, 790]]);
+  assert.deepEqual(report.warnings.map((w) => [w.id, w.file, w.tokens, w.budget]), [['budget', 'jerome.md', 900, 850]]);
 });
 
 test('doctor --json reports a broken /context with ok false and exit code 1', () => {
