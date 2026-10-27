@@ -7,6 +7,8 @@ Where each setting of a Jérôme project lives, and how to change it. Each secti
 | Global limits on the subscription windows | `~/.config/jerome/account.json` | `jerome limits --five-hour 70 --seven-day 75` |
 | The project's spending limits | `.jerome/project.json`, `limits` | `jerome limits --daily 5 --weekly 20` |
 | How often heartbeats run, and their caps | `.jerome/project.json`, `heartbeat`, and the launchd job | `jerome schedule daily --at 09:00 --max-tokens 300000` |
+| Slots, branches, max duration, test command, quota and alert channel of the runs | `.jerome/project.json`, `heartbeat` (`slots`, `mainBranch`, `workBranch`, `maxMinutes`, `test`, `quota`, `alerts`) | edit it, or ask the lead agent, then `jerome heartbeat install` |
+| Lift the limits on one project's runs for today | `~/.cache/jerome/heartbeat/` | `jerome heartbeat override --today` |
 | An agent's model | `.claude/agents/<name>.md`, `model` | ask the lead agent |
 | The lead agent's model in your sessions | Claude Code: `--model`, `/model`, or `model` in `.claude/settings.json` | `claude --model sonnet` |
 | The lead agent's model in heartbeats | `.jerome/project.json`, `heartbeat.model` | `jerome schedule daily --model sonnet` (default `opus`) |
@@ -64,7 +66,7 @@ jerome schedule --off
 "heartbeat": { "every": "daily", "hour": 9, "minute": 0, "maxTokens": 500000, "maxTurns": 40 }
 ```
 
-Scheduling again replaces the schedule and the caps (defaults: 500,000 tokens and 40 turns). For one heartbeat run by hand, `jerome heartbeat --max-tokens 50000 --max-turns 10` sets caps for that run only. Each heartbeat works on one area: how often each area gets one is its own pace, below. See [`jerome schedule`](commands/schedule.md).
+Scheduling again replaces the schedule and the caps (defaults: 500,000 tokens and 40 turns). For several runs a day, or different work at different times, a project has slots instead, with the other settings of its runs (branches, max duration, test command, quota, alert channel) beside them: see [heartbeat.md](heartbeat.md#slots), then `jerome heartbeat install`. For one heartbeat run by hand, `jerome heartbeat --max-tokens 50000 --max-turns 10` sets caps for that run only. Each heartbeat works on one area: how often each area gets one is its own pace, below. See [`jerome schedule`](commands/schedule.md).
 
 ## Which model does an agent use?
 
@@ -115,7 +117,7 @@ Ask the lead agent, for example "pause the marketing area until January" or "put
 
 ## How much may the files loaded at every turn weigh?
 
-`jerome.md` (760 tokens) and `PROJECT.md` (800 tokens) are loaded into every session and every heartbeat, so `jerome doctor` warns when one goes over its budget, as measured by Claude Code's `/context`. It never blocks anything. To raise a budget, add it to `.jerome/project.json`:
+`jerome.md` (790 tokens) and `PROJECT.md` (800 tokens) are loaded into every session and every heartbeat, so `jerome doctor` warns when one goes over its budget, as measured by Claude Code's `/context`. It never blocks anything. To raise a budget, add it to `.jerome/project.json`:
 
 ```json
 "budgets": { "PROJECT.md": 1200 }

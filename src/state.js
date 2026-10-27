@@ -12,6 +12,7 @@ import { readAccount, WINDOWS } from './account.js';
 import { notProjectHint } from './paths.js';
 import { readAreas, agentAreas } from './areas.js';
 import { readAssumptions } from './assumptions.js';
+import { openAlerts } from './alerts.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
 
@@ -59,7 +60,7 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
     const agents = new Map();
     for (const r of periods.week) agents.set(r.agent, total([agents.get(r.agent) ?? total([]), totals([r])]));
 
-    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area, triage, caps FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
+    const recent = db.prepare('SELECT id, session_id, kind, status, started_at, ended_at, reason, area, triage, caps, mode, slot, exit_code, outcome FROM runs ORDER BY started_at DESC LIMIT ?').all(runs);
     const perRun = db.prepare(`SELECT agent, model, ${TIER_SQL} long_prompt, ${SUMS} FROM usage WHERE run_id = ? GROUP BY agent, model, long_prompt`);
     const heartbeat = db.prepare("SELECT id, status, started_at, ended_at, reason, area, caps FROM runs WHERE kind = 'heartbeat' ORDER BY started_at DESC LIMIT 1").get();
     const requests = db.prepare(`SELECT id, run_id, question, options, recommendation, opened_at, area, kind FROM requests WHERE status = 'open' ORDER BY opened_at`).all();
@@ -91,6 +92,7 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
         const t = totals(usage);
         return {
           id: r.id, sessionId: r.session_id, kind: r.kind, area: r.area, triage: parseJson(r.triage), caps: parseJson(r.caps), status: r.status, startedAt: r.started_at, endedAt: r.ended_at,
+          mode: r.mode, slot: r.slot, exitCode: r.exit_code, outcome: parseJson(r.outcome),
           durationMs: r.ended_at ? Date.parse(r.ended_at) - Date.parse(r.started_at) : null, reason: r.reason,
           tokens: t.tokens, calls: t.calls, apiUsd: t.apiUsd, unpriced: t.unpriced, agents: [...new Set(usage.map((u) => u.agent))],
         };
@@ -101,6 +103,8 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
       replies: replyStats(db, since.week, agent),
       // Minor choices the lead agent made on its own, waiting for the user (D116): they hold nothing up.
       assumptions: readAssumptions(dir),
+      // What went wrong with the autonomous runs (D121), first in the text output.
+      alerts: openAlerts(db),
     };
   } finally {
     db.close();
@@ -217,6 +221,10 @@ function total(parts) {
 export function formatState(s, { replies = false } = {}) {
   const now = new Date(s.at);
   const lines = [`${s.project}${s.agent ? ` · agent ${s.agent}` : ''} · state at ${when(s.at, now, true)}`];
+  if (s.alerts?.length) {
+    lines.push(`ALERTS  ${s.alerts.map((a) => `A${a.id} ${a.reason}${a.count > 1 ? ` (${a.count} times)` : ''} (${when(a.lastAt, now)})`).join(' · ')}`);
+    lines.push('        tell the user first; `jerome heartbeat status` gives the detail');
+  }
   const { today, week } = s.usage;
   lines.push(`usage   today ${n(today.tokens)} (in ${n(today.input)} · out ${n(today.output)} · cache read ${n(today.cacheRead)} · write ${n(today.cacheWrite)}) ${usd(today)} · 7d ${n(week.tokens)} ${usd(week)}`);
   const windows = Object.entries(s.windows);

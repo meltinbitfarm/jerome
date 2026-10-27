@@ -2,15 +2,16 @@
 // only the database registry (D93) and, for each project, the same readState as `jerome state`, read-only and
 // without migrations: no agents, no new state. The projects that need the user come first, with their reasons;
 // databases whose folder no longer holds a project are listed with doctor's hints, never hidden.
-import { existsSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 import { stores, describeStore, storeSummary } from './store.js';
 import { readState, n, dollars } from './state.js';
 import { readAccount } from './account.js';
 import { globalLimits } from './budget.js';
 import { readMarker } from './template.js';
-import { describe, jobLabel, launchAgentsDir } from './schedule.js';
+import { describe, launchd } from './schedule.js';
+import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { needsYou, oneRunCap } from './heartbeat.js';
 
 export const PROJECTS_SCHEMA = 'jerome.projects/v1';
@@ -51,10 +52,15 @@ function safeAccount() {
 
 function projectRow(s, now, account) {
   const dir = s.record.path;
-  const row = { key: s.key, name: basename(dir), path: dir, error: null, areas: [], areasImplicit: true, requests: [], assumptions: 0, lastHeartbeat: null, lastActivity: null, week: null, projectLimits: null, schedule: null, attention: [] };
+  const row = { key: s.key, name: basename(dir), path: dir, error: null, areas: [], areasImplicit: true, requests: [], alerts: [], assumptions: 0, lastHeartbeat: null, lastActivity: null, week: null, projectLimits: null, schedule: null, attention: [] };
   try {
     const h = readMarker(dir).heartbeat;
-    if (h?.every) row.schedule = { every: h.every, text: describe(h) };
+    const { slots } = heartbeatConfig(dir).config;
+    // With slots (D118), the shortest interval they may leave: hourly, daily, or weekly when some run on given days only.
+    if (slots.length) {
+      const every = slots.some((x) => x.times.some((t) => t.hour === undefined)) ? 'hourly' : slots.some((x) => x.days) ? 'weekly' : 'daily';
+      row.schedule = { every, text: `slots ${slots.map((x) => `${x.name} ${describeSlot(x)}`).join(' · ')}` };
+    } else if (h?.every) row.schedule = { every: h.every, text: describe(h) };
   } catch {
     // A marker that cannot be read leaves the project unscheduled here; doctor reports it.
   }
@@ -73,6 +79,7 @@ function projectRow(s, now, account) {
   }
   row.areas = st.areas.map((a) => ({ name: a.name, milestone: a.milestone ?? null, pace: a.pace ?? null }));
   row.areasImplicit = st.areasImplicit;
+  row.alerts = st.alerts.map((a) => ({ id: a.id, reason: a.reason, count: a.count, lastAt: a.lastAt }));
   row.requests = st.requests.map((r) => ({ id: r.id, question: r.question, area: r.area, openedAt: r.openedAt }));
   // Assumptions hold nothing up (D116): counted, never a reason for attention.
   row.assumptions = st.assumptions.length;
@@ -87,6 +94,7 @@ function projectRow(s, now, account) {
 // Why a project needs the user, in the order they are listed.
 function attention(row, dir, now) {
   const reasons = [];
+  if (row.alerts.length) reasons.push(`${row.alerts.length} heartbeat ${row.alerts.length === 1 ? 'alert' : 'alerts'}: ${row.alerts.map((a) => `A${a.id} ${a.reason}`).join(' · ')}`);
   if (row.requests.length) reasons.push(`${row.requests.length} open decision ${row.requests.length === 1 ? 'request' : 'requests'}: ${row.requests.map((r) => `R${r.id}`).join(', ')}`);
   const h = row.lastHeartbeat;
   // A limit is not a reason: it shows with the limits, and reaching it pauses heartbeats by itself.
@@ -104,9 +112,9 @@ function lateHeartbeat(row, dir, now) {
   const last = row.lastHeartbeat?.startedAt ? Date.parse(row.lastHeartbeat.startedAt) : null;
   let since = last;
   if (since === null) {
-    const plist = join(launchAgentsDir(), `${jobLabel(dir)}.plist`);
-    if (!existsSync(plist)) return null;
-    since = statSync(plist).mtimeMs;
+    const plists = launchd.installed(dir).map((l) => launchd.file(l));
+    if (!plists.length) return null;
+    since = Math.min(...plists.map((p) => statSync(p).mtimeMs));
   }
   const age = now.getTime() - since;
   if (age <= 2 * interval) return null;

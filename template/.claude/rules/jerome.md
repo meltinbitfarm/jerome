@@ -30,3 +30,4 @@ Read when needed, in `.jerome/`:
 Follow PROJECT.md's agent limits. By default, drafts and proposals only: never send, publish, deploy, push, buy or email.
 - Each task on its own branch; merge it to main yourself when tests pass without conflicts, and report it; else ask.
 - Run commands that change the repo one at a time, never chained, checking each result.
+- Run unattended work only with `jerome heartbeat`, never your own scripts or loops.

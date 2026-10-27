@@ -4,11 +4,11 @@ Jérôme records what happens in a project through Claude Code's hooks, so the m
 
 | Event | Runs | What it does |
 |---|---|---|
-| `SessionStart` | synchronously | opens the session's run, or reopens it on resume; `/clear` and a fork start a session with a new id, so a run of their own, and the calls a fork copies from its original are counted once, applies the [retention policy](database.md#retention), and in an interactive session gives the lead agent the decision requests that scheduled runs left open, in full, and the assumptions of `open.md` waiting for you |
+| `SessionStart` | synchronously | opens the session's run, or reopens it on resume; `/clear` and a fork start a session with a new id, so a run of their own, and the calls a fork copies from its original are counted once, applies the [retention policy](database.md#retention), and in an interactive session gives the lead agent the open [heartbeat alerts](heartbeat.md#alerts) first, then the decision requests that scheduled runs left open, in full, and the assumptions of `open.md` waiting for you |
 | `SubagentStop` | in the background | reads the subagent's transcript, and records the length of its reply |
 | `Stop` | in the background | reads the new lines of the session's transcript |
 | `SessionEnd` | synchronously, up to 10 seconds | reads whatever is left in the session's and subagents' transcripts, and closes the run with its reason |
-| `PreToolUse` on Bash | synchronously | refuses chained commands that change the repository (below) |
+| `PreToolUse` on Bash | synchronously | refuses chained commands that change the repository, staging everything instead of named paths, and, in your sessions while a heartbeat runs, any git command that changes the repository (below) |
 
 Each hook runs [`jerome hook <event>`](commands/hook.md). Hooks never make a session fail: they always exit with code 0, and an error is recorded as an `error` event in the [database](database.md). Each event records how long its hook took: on a real project, 18 to 24 milliseconds.
 
@@ -21,6 +21,10 @@ The run's kind is `interactive` for any session you start, `claude -p` included.
 When scheduled runs left decision requests open, `SessionStart` gives the lead agent each one in full: the question, the options, the recommendation, and the content of the project files they cite, such as a note the heartbeat wrote. A cited file over 6,000 characters, or beyond 12,000 characters in all, is only named. The lead agent can then put the requests to you in its first reply, without exploring: on a real project, before the deny rules of D80, the first reply after "ciao" went from 4 calls and 131,000 tokens to one call and 32,600 tokens, and it asked before closing a request that later decisions had made moot.
 
 The [assumptions](lead-agent.md#questions-and-assumptions) in `open.md`, minor choices the lead agent made without asking, come after the requests, one line each, so it puts them to you in one block too. With no requests and no assumptions, the hook adds nothing.
+
+## Heartbeat alerts at session start
+
+When the project's autonomous runs have open [alerts](heartbeat.md#alerts), `SessionStart` puts them before everything else, telling the lead agent to bring them up first in its first reply, and shows you a line of its own (`Jérôme: 1 heartbeat alert: A3 …`) with `systemMessage`.
 
 ## Limits at session start
 
@@ -71,3 +75,12 @@ When the project has no database, for example after its folder moved, Jérôme's
 `today` is the project's usage since midnight at API prices: a subscription is not billed per token. Claude Code sends the windows only after the first response of a session.
 
 If the project or your local settings already set another status line, `jerome doctor` leaves it and warns that interactive sessions will not record the windows. To keep both, make it call `jerome statusline` instead: your user status line still shows, with Jérôme's part after it.
+
+## Staging named paths
+
+In every session, heartbeats included, the `PreToolUse` hook refuses `git commit -a` (and `-am`, `--all`), `git add -A`, `--all`, `-u`, `--update`, `.` and `:/`, with a reason asking to stage the paths the task changed by name (D125). They sweep in whatever else is changed in the tree, such as your own edits: this is how a lead agent once committed a change of the user's along with its own. `git add -p`, `git commit --amend` and named paths are allowed. It is checked after the chain check, which it leaves as it was.
+
+## Sessions working alongside a heartbeat
+
+While a heartbeat holds the project's lock, the hook refuses, in any session that is not the heartbeat's own, the git commands that change the repository (the same list as the chain check: `commit`, `add`, `switch`, `checkout <x>`, `merge`, `stash`, `branch -d`…), with a reason naming the heartbeat's pid and suggesting a separate worktree; `git worktree add` itself is let through (D122). Reading and editing files stay allowed. A worktree has its own folder, so its sessions are never refused. See [heartbeat.md](heartbeat.md#working-alongside-a-heartbeat).
+

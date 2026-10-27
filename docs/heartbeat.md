@@ -1,6 +1,10 @@
 # Heartbeats
 
-A heartbeat is a scheduled run of the lead agent: it does one task without you, on a branch, and leaves a decision request when it needs you. Nothing runs by default. You schedule heartbeats per project, with a cap per run.
+A heartbeat is a scheduled run of the lead agent: it does one task without you, on a branch, and leaves a decision request when it needs you. Nothing runs by default. You schedule heartbeats per project, with a cap per run, and Jérôme guarantees what no ad-hoc script did: no run is skipped silently, a half-done run is finished or dropped before anything new, every run is checked when it ends, and anything wrong reaches you first.
+
+## Scheduling
+
+The simplest schedule is one run at a fixed time:
 
 ```sh
 cd my-project
@@ -19,36 +23,122 @@ jerome schedule --off                            # stop
 | `--max-tokens` | 500,000 tokens per run, counted as in `jerome state` (cache included). Normal runs on a real project took 90,000 to 340,000. |
 | `--max-turns` | 40 turns per run |
 
-The schedule and the caps are saved in the project's `.jerome/project.json`. Raise the caps for a project that needs more. Each heartbeat also keeps the caps it ran with in its run, noting those given to it alone, so the [viewer](commands/view.md#a-run-in-progress) can show its tokens against them while it runs.
+### Slots
+
+A project that runs several times a day, or wants different work at different times, has **slots** instead: each a name, one or more times, optionally days, and optionally a text added to that run's triage and lead agent prompt. They live with the other settings of its runs, under `heartbeat` in `.jerome/project.json`:
+
+```json
+"heartbeat": {
+  "slots": [
+    { "name": "morning", "at": ["09:00"] },
+    { "name": "evening", "at": ["18:00", "21:30"], "days": ["mon", "tue", "wed", "thu", "fri"], "text": "Polish copy and fix small bugs only." }
+  ],
+  "mainBranch": "main",
+  "workBranch": "agent/*",
+  "maxMinutes": 90,
+  "test": "npm test",
+  "quota": { "fiveHour": 70, "sevenDay": 80 },
+  "alerts": { "command": "curl -fsS -d @- \"$(cat ~/.config/jerome/ntfy-url)\"" },
+  "maxTokens": 500000,
+  "maxTurns": 40
+}
+```
+
+| Setting | Default | What it does |
+|---|---|---|
+| `slots` | none | `name` (lower case, digits, dashes), `at` (`"09:00"`, or `"*:15"` for every hour at :15), `days` (`mon` … `sun`; every day without it), `text` |
+| `mainBranch` | `main` | where every run must end |
+| `workBranch` | `agent/*` | the pattern of the lead agent's branches; a `*` is required |
+| `maxMinutes` | 90 | hard limit on a run's length, after which its whole process tree is stopped |
+| `test` | none | the command the lead agent verifies with before merging; without it, "the project's tests" |
+| `quota` | the global limits | this project's own thresholds on the 5-hour and 7-day windows, in % |
+| `alerts.command` | none | the push channel for [alerts](#alerts); see there |
+| `prompt` | none | one more line added to every run's lead agent prompt |
+
+Then load the jobs, one per slot:
+
+```sh
+jerome heartbeat install      # writes and loads them; again, it changes nothing
+jerome heartbeat status       # jobs, the run going on, alerts, the latest runs
+jerome heartbeat uninstall    # removes them, keeps the settings
+```
+
+`install` refuses settings it cannot use, with what to fix, and removes the jobs of slots you took out; `jerome doctor` reports both too. `jerome schedule` stays the shorthand for a single run and refuses a project with slots. Ask the lead agent to change the slots: it edits `project.json` and runs `install`.
 
 ## How it is started
 
-Heartbeats run on macOS through launchd: `jerome schedule` writes a job to `~/Library/LaunchAgents/` and loads it. launchd loads no shell profile, so a `node` installed with nvm would not be found: the job holds the absolute paths of `node`, `jerome` and `claude` found when you scheduled it, and a `PATH` built from their folders. These paths stay in the job, on your machine; `.jerome/project.json` only holds the schedule. If you switch Node version or move Claude Code, `jerome doctor` reports the broken path with the command to schedule again. A heartbeat missed while the Mac slept runs once when it wakes. Each run writes one line to `~/.cache/jerome/logs/<project>.log`.
+Heartbeats run on macOS through launchd: each job is a file in `~/Library/LaunchAgents/`, loaded with `launchctl`. launchd loads no shell profile, so a `node` installed with nvm would not be found: the job holds the absolute paths of `node`, `jerome` and `claude` found when you installed it, and a `PATH` built from their folders, Homebrew's and the system's, so the lead agent finds `jerome`, `git` and the project's test command too. These paths stay in the job, on your machine; `.jerome/project.json` only holds the settings. If you switch Node version or move Claude Code, `jerome doctor` reports the broken path with the command to install again. A heartbeat missed while the Mac slept runs once when it wakes.
+
+The scheduler is reached through one small interface in `src/schedule.js` (write, remove, loaded, installed); launchd is the only one so far, and another (systemd timers, cron) takes its place by giving the same functions.
+
+Each project has one log, `~/.cache/jerome/logs/<project>.log`: one line per run, with its status, mode, slot, length, exit code and end check, whether launchd or you started it.
 
 ## What a heartbeat does
 
-`jerome heartbeat` goes through these steps, and stops at the first one that says no. Every heartbeat leaves one run in the [database](database.md), with its status and reason, visible in `jerome state` and `jerome view`.
+`jerome heartbeat` (or `jerome heartbeat run <slot>`) goes through these steps, and stops at the first one that says no. Every heartbeat leaves one run in the [database](database.md), with its status, reason, mode, slot, exit code and end check, visible in `jerome heartbeat status`, `jerome state` and `jerome view`. None is ever skipped silently: see [alerts](#alerts).
 
-1. **Lock.** One heartbeat per project at a time: a second one stops with "locked". A lock left by a crashed heartbeat is taken over.
-2. **Interactive session.** If you have a session open in the project, it skips.
-3. **Checks**, each opening a decision request when you have to act, once until you answer it:
-   - the folder is trusted in Claude Code, which otherwise ignores the project's allow rules;
-   - `PROJECT.md` is not provisional;
-   - the working tree has no uncommitted changes (`.jerome/digest.md` and `.jerome/project.json` excepted);
-   - `jerome doctor` passes: setup, lean profile, hooks and permission rules. Its `/context` check uses no tokens.
-4. **Limits.** If a subscription window is at or over its global limit, or the project's spend today or this week is at or over its limit, it skips, at zero tokens, until the window resets; you get one notification per pause (see [limits.md](limits.md)). A reading older than 3 hours is mentioned in the reason; one whose window has reset since is ignored.
-5. **Areas.** The [areas](areas.md) that are paused, waiting for a milestone request of their own, or whose pace has not come round since their last heartbeat are left out, at zero tokens. If none is left, it stops here with the reason. A project without `areas.md` has one area, always due. The pages an area follows are fetched and saved for its agents, and an area with `Trigger: watch` is left out when none of them changed (see [areas.md](areas.md#pages-an-area-follows)).
-6. **Nothing changed.** If neither the commits, `open.md`, `decisions.md`, `scope.md`, `areas.md`, the areas due nor the answered decision requests changed since a heartbeat found no work, it stops here at zero tokens.
-7. **Triage.** A call on Haiku, with no tools and outside the project, reads the areas due, highest priority first, with their goal, milestone and criteria, then `open.md`, the latest commits, the decision requests and the latest digest lines. It answers whether there is one task the lead agent can do now without you, and in which area. A task that depends on an open request or question is not one, but an area with an open request still has the others; the assumptions of `open.md` hold nothing up; an answered request that changes an area's milestone comes first; when an area's criteria look all met, the task is to check them. An area that was not due is never taken. The subscription windows its stream carries update `account.json`. Its whole verdict (area, task, reason, whether it was a milestone check) is kept with the run, a refused one too: `jerome state --json` gives it and the viewer shows it in the run's detail. About 5,000 tokens.
-8. **Lead agent.** Only then: a new session, never a resumed one, on Opus by default, with the task, its area's folder, agents, milestone and criteria, the requests still open, not to be asked again, the turn cap and the project's permission rules. It works on a branch, delegates the heavy work to the project's agents, merges into `main` when the tests pass with no conflicts, opens a decision request instead when they fail or there is a conflict, appends one line to `.jerome/digest.md`, and ends on `main` with a clean tree. If the area's milestone criteria are met, it opens a milestone request (`--milestone`) proposing the next milestone and stops. The token cap counts the whole run, the lead agent and its subagents: the runner follows the usage the lead agent streams and, every few seconds, the session's transcripts, its own and its subagents' (the stream does not always carry a subagent's usage). Over the cap, the run is stopped, subagents included, and the reason says who used what: `token cap: 512,300 tokens over 500,000 (main 204k, researcher 308k)`.
+1. **Lock.** One heartbeat per project at a time: a second one stops with "locked". A lock left by a process that no longer exists is taken over.
+2. **Checks**, each opening a decision request when you have to act, once until you answer it: the folder is trusted in Claude Code, which otherwise ignores the project's allow rules, and `PROJECT.md` is not provisional.
+3. **Start state.** Where the repository is decides the run's mode:
+   - on `main` with a clean tracked tree: a **normal** run;
+   - on a work branch (`agent/*`), or with what a heartbeat left behind (a dirty tree, a merge or rebase in progress, a branch it ended on, after an end check that failed), or with a work branch that has commits `main` lacks: a **RESUME** run;
+   - anything else (uncommitted changes on `main` that no heartbeat left, another branch, a detached HEAD, a merge nobody's run started): **skipped with an alert at once**, and nothing is touched. Your own uncommitted work is never resumed.
+4. **Doctor.** `jerome doctor` passes: setup, lean profile, hooks and permission rules. Its `/context` check uses no tokens.
+5. **Limits.** If a subscription window is at or over its limit (the project's `quota`, else the global one), or the project's spend today or this week is at or over its limit, it skips, at zero tokens, until the window resets; you get one notification per pause (see [limits.md](limits.md)). `jerome heartbeat override --today` lifts all of it for this project until midnight. A reading older than 3 hours is mentioned in the reason; one whose window has reset since is ignored.
+6. **RESUME runs** go straight to the lead agent, with no triage: its task is to finish the half-done work (commit, verify, merge) or drop it (discard, delete the branch, note why in `open.md`), and nothing else.
+7. **Areas.** The [areas](areas.md) that are paused, waiting for a milestone request of their own, or whose pace has not come round since their last heartbeat are left out, at zero tokens. If none is left, it stops here with the reason. A project without `areas.md` has one area, always due. The pages an area follows are fetched and saved for its agents, and an area with `Trigger: watch` is left out when none of them changed (see [areas.md](areas.md#pages-an-area-follows)).
+8. **Nothing changed.** If neither the commits, `open.md`, `decisions.md`, `scope.md`, `areas.md`, the areas due, the slot nor the answered decision requests changed since a heartbeat found no work, it stops here at zero tokens.
+9. **Triage.** A call on Haiku, with no tools and outside the project, reads the areas due, highest priority first, with their goal, milestone and criteria, the slot's text, then `open.md`, the latest commits, the decision requests and the latest digest lines. It answers whether there is one task the lead agent can do now without you, and in which area. A task that depends on an open request or question is not one, nor an item marked for an interactive session or under a parked or ideas section; an area with an open request still has the others; the assumptions of `open.md` hold nothing up; an answered request that changes an area's milestone comes first; when an area's criteria look all met, the task is to check them. An area that was not due is never taken. Its whole verdict is kept with the run. About 5,000 tokens.
+10. **Lead agent.** Only then: a new session, never a resumed one, on Opus by default, with the task, its area, the slot's text, the requests still open, the turn cap and the project's permission rules. Its prompt, shipped with Jérôme and the same for every project, says: one task, on a new `agent/<name>` branch; delegate to the project's agents in the foreground and wait for every result; never ask, push, deploy, publish or send mail; verify with the project's `test` command and what `PROJECT.md` asks for (such as screenshots of visual changes); merge into `main` when that passes with no conflicts, one repository-changing command per call, staging named paths; otherwise a decision request; append its line to `.jerome/digest.md`, update `open.md`, and end on `main` with a clean tree.
+11. **End check**, after every run of the lead agent: back on `main`, tracked tree clean, no merge or rebase in progress, a line added to `.jerome/digest.md`, and Claude Code exited with 0 within the max duration. Anything else fails the run, raises an [alert](#alerts) at once, and the next run starts in RESUME mode.
 
-A lead agent stopped by a cap, or that failed, may leave the tree on its task's branch. With a clean tree, the runner goes back to the branch the run started from and says so in the reason: a branch without commits of its own is removed, one with commits is kept for the next run or for you (`branch task/x left, 2 commits: kept, back on main`). With uncommitted changes it touches nothing and opens a decision request, since heartbeats skip until the tree is clean.
+### Bounds on the lead agent
+
+- **Subagents are waited for.** Headless `claude -p` kills background tasks 10 minutes after the lead agent's last turn; the runner starts it with `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`, which removes that ceiling, and its prompt asks for foreground delegation anyway.
+- **Max duration.** Claude Code runs in its own process group; at `maxMinutes` the whole group is stopped (`SIGTERM`, then `SIGKILL` 10 seconds later), test servers and other leftovers included, and the run ends `stopped: max duration`. Whatever Claude Code leaves running when it exits normally is stopped too.
+- **Token and turn caps.** The token cap counts the whole run, the lead agent and its subagents: the runner follows the usage the lead agent streams and, every few seconds, the session's transcripts, its own and its subagents'. Over the cap, the run is stopped, subagents included, and the reason says who used what: `token cap: 512,300 tokens over 500,000 (main 204k, researcher 308k)`.
+- **Stopping a run by hand.** Ctrl+C on a run started by hand stops its lead agent the same way and records the run as `stopped: interrupted`.
+
+A run whose end check failed may leave the tree on its branch. With a clean tree, the runner goes back to `main` and says so in the reason: a branch without commits of its own is removed, one with commits is kept for the next run, which resumes it (`branch agent/x left, 2 commits: kept, back on main; next run resumes`). With uncommitted changes it touches nothing; the next run resumes from there.
 
 A heartbeat cannot create agents or change `.claude/settings.json`: Claude Code protects the `.claude/` folder, and nobody is there to approve a write. Team and permission changes happen in your sessions.
 
 Long sessions are where the lead agent's usage grows: on one project it made about 90% of the tokens over a week. A heartbeat therefore always starts a new session, and keeps the lead agent's own work to deciding and delegating.
 
 Its usage is recorded by the [hooks](hooks.md), and the subscription windows it receives update `account.json`.
+
+## Alerts
+
+An alert is something wrong with the autonomous runs themselves, as opposed to a decision. It is raised:
+
+- **at once** for a failed end check, a run stopped at its max duration, a start state that no heartbeat left (your changes on `main`, another branch, a detached HEAD, a merge in progress), or a slot job whose slot is gone;
+- **on the second time in a row** for any other skip or failure with the same reason: a limit pause, a failed triage, an untrusted folder. A run that finds the lock taken is never an alert: the lock clears by itself.
+
+Alerts live in the project database, like decision requests, and never in a tracked file. They show:
+
+- first in `jerome state`, on an `ALERTS` line under the title;
+- at the start of your next session: `SessionStart` gives them to the lead agent, which tells you about them before anything else, and shows you a line of its own;
+- in `jerome projects`, as the first reason a project needs you;
+- in `jerome heartbeat status`, with the detail;
+- as a macOS notification when one opens (a limit pause keeps its single notification, D85);
+- through the push channel, if the project has one.
+
+An open alert counts its repeats rather than opening another. All of a project's alerts close by themselves when a heartbeat ends well.
+
+**Push channel.** Off by default. `heartbeat.alerts.command` in `.jerome/project.json` is a shell command run in the project's folder, with the alert on standard input and in `JEROME_ALERT_PROJECT` and `JEROME_ALERT_MESSAGE`; its output is never logged. That file is versioned, so the command must hold no secret: have it read one from your machine, as in `curl -fsS -d @- "$(cat ~/.config/jerome/ntfy-url)"`, or from the keychain.
+
+## Marathon
+
+```sh
+jerome heartbeat marathon --until 23:30
+jerome heartbeat marathon --until 24:00    # until midnight
+```
+
+Runs heartbeats back to back until the given time **of the calendar day it started**, compared as a full date and time, never as an hour alone: a marathon started at 21:00 with `--until 24:00` stops at midnight and never runs into the next day, and one started after its time does not run at all. After a run where the lead agent worked it pauses 2 minutes; after a skip, a failure or no work, 30 minutes. While another heartbeat holds the lock, a scheduled one for instance, it waits for it instead of starting one. Every run goes through all the steps above, guarantees included. It holds the terminal: run it in a terminal of its own, or with `nohup … &`.
+
+## Working alongside a heartbeat
+
+You can keep a session open while heartbeats run: they no longer skip because of it (they used to, D73). While a heartbeat holds the project's lock, the `PreToolUse` hook refuses, in your sessions in the same working tree, the git commands that change the repository (`commit`, `switch`, `merge`, `stash`, `add`…), with a reason naming the heartbeat. Reading, and editing files, stay allowed; commit nothing until it ends (`jerome heartbeat status`). To work on the repository meanwhile, create a separate worktree (`git worktree add ../my-project-wt -b my-branch`, which the hook lets through) and open a session there. A state file such as `open.md` that your session edits while the run goes on is noted in the run's end check, not counted against it. In every session, heartbeat or not, the hook also refuses `git commit -a`, `git add -A`, `-u` and `.`: stage the paths you changed by name, so nobody else's changes are swept in.
 
 ## Decision requests
 
@@ -68,8 +158,12 @@ At the end of each heartbeat the lead agent appends one line to `.jerome/digest.
 
 ## Tried on a real project
 
-- With uncommitted changes, the heartbeat stopped in 0.2 seconds and opened a request.
+- With uncommitted changes, the heartbeat stopped in 0.2 seconds and opened a request (since D119 it raises an alert instead).
 - With a clean tree, the triage chose a task; the lead agent found it depended on an open question, wrote its findings on a branch, opened a decision request instead of deciding, merged the branch, added its digest line and ended on `main`: 164,000 tokens in one minute.
 - A second heartbeat started at the same time stopped on the lock; the next one found no work because of the open request; the one after stopped at zero tokens, since nothing had changed.
 - With a test threshold of 15% and the 7-day window at 21%, it skipped. An untrusted copy of the project opened its request.
 - Started by launchd, with the paths of an nvm install, it ran the triage. With the job's `node` path broken, `jerome doctor` reported it with the command to schedule again.
+
+Slots, RESUME mode, the end check, the max duration, alerts, the marathon and the guard for sessions working alongside (D118-D125) are covered by tests on throwaway repositories with a fake `claude` and `launchctl` (`test/autonomy.test.js`), not yet tried on a real project.
+
+Replacing scripts of your own with these guarantees: see [migrating-heartbeat-scripts.md](migrating-heartbeat-scripts.md).

@@ -23,11 +23,12 @@ The hooks that write it are described in [hooks.md](hooks.md). The lead agent re
 
 | Table | One row per |
 |---|---|
-| `runs` | session or run: kind (`interactive`, `heartbeat`, `service`), start and end, status (`running`, `done`, `failed`, `blocked`, `stopped`), reason, the [area](areas.md) a heartbeat worked on, its triage's verdict, and the caps it ran with (`maxTokens`, `maxTurns`, `once` when given to that run only) |
+| `runs` | session or run: kind (`interactive`, `heartbeat`, `service`), start and end, status (`running`, `done`, `failed`, `blocked`, `stopped`), reason, the [area](areas.md) a heartbeat worked on, its triage's verdict, the caps it ran with (`maxTokens`, `maxTurns`, `once` when given to that run only), and for a heartbeat its `mode` (`normal`, `resume`), `slot`, the lead agent's `exit_code` and `outcome`, the end check as JSON (D118-D120) |
 | `usage` | API call, keyed by `request_id`: agent, model, input, output, cache reads, cache writes (5 minutes and 1 hour), time |
 | `usage_daily` | day, agent and model, summing `usage` rows older than 90 days |
 | `transcript_reads` | transcript, with how far it has been read |
 | `events` | hook event: kind and numbers or names only, never message contents |
+| `alerts` | something wrong with the autonomous runs (D121): key, reason, the run, when it opened and last happened, how many times, `open` or `resolved` |
 | `requests` | decision request: question, options, recommendation, status, answer, its area, and its `kind`: `milestone` holds up the whole area, `question` only the work that depends on it (D117) |
 
 Allowed values are checked by the schema itself. Model prices are not in the database: they live in the code (`src/models.js`), so a price change comes with a Jérôme update.
@@ -40,7 +41,7 @@ Usage comes from Claude Code's transcripts (see [usage-data.md](usage-data.md)).
 
 - `usage` rows older than 90 days are summed into `usage_daily`, in the same transaction that deletes them, so totals never change. Transcript lines older than 90 days are never read again.
 - `events` and `transcript_reads` rows older than 30 days are deleted.
-- `runs` and `requests` are kept.
+- `runs`, `requests` and `alerts` are kept.
 
 Pruning runs when a session starts.
 

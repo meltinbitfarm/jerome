@@ -1,5 +1,6 @@
 // The check behind the PreToolUse hook (D49, D61): a Bash command that chains a git command changing the
-// repository with anything else is refused, so the lead agent runs those one per call and checks each result.
+// repository with anything else is refused, so the lead agent runs those one per call and checks each result; so is
+// one that stages everything changed instead of named paths (D125).
 // Chained reads stay allowed. The split is best effort: quotes, heredocs, $(…) and backticks are opaque, and
 // commands inside `bash -c '…'` or scripts are not inspected.
 
@@ -216,6 +217,23 @@ export function changingGit(segment) {
   return null;
 }
 
+// A git command that stages whatever is changed in the tree rather than named paths (D125): `commit -a`, `add -A`,
+// `add -u`, `add .`. It sweeps in changes that are not the task's, such as the user's own. Returns its subcommand.
+export function sweepingGit(segment) {
+  const w = words(segment);
+  let i = 0;
+  while (i < w.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[i])) i += 1;
+  if (w[i] !== 'git') return null;
+  i += 1;
+  while (i < w.length && w[i].startsWith('-')) i += GIT_OPTIONS_WITH_VALUE.has(w[i]) ? 2 : 1;
+  const sub = w[i];
+  const args = w.slice(i + 1);
+  const short = (letter) => args.some((a) => /^-[a-zA-Z]+$/.test(a) && a.includes(letter));
+  if (sub === 'commit') return short('a') || args.includes('--all') ? 'commit -a' : null;
+  if (sub === 'add') return short('A') || short('u') || args.some((a) => ['--all', '--update', '.', ':/', './'].includes(a)) ? 'add' : null;
+  return null;
+}
+
 // The verdict for one Bash command: null when allowed, otherwise the reason shown to Claude and what to log.
 export function checkChain(command) {
   const segments = splitCommand(command);
@@ -226,6 +244,18 @@ export function checkChain(command) {
   return {
     reason: `Run commands that change the repository one per Bash call, and check each result before the next (Jérôme D49). Split this into separate calls:\n${steps}`,
     subcommands: changing,
+    segments: segments.length,
+  };
+}
+
+// The verdict on staging (D125), checked after the chain: null when every git command names what it stages.
+export function checkStaging(command) {
+  const segments = splitCommand(command);
+  const sweeping = segments.map(sweepingGit).filter(Boolean);
+  if (!sweeping.length) return null;
+  return {
+    reason: 'Stage the paths this task changed by name (`git add <path> …`), then commit: `git commit -a`, `git add -A`, `-u` and `.` sweep in changes that are not the task\'s, such as the user\'s own (Jérôme D125).',
+    subcommands: sweeping,
     segments: segments.length,
   };
 }

@@ -18,6 +18,8 @@ The catalog is in `agents/`, next to this file. Each agent declares its model, i
 
 The model follows the kind of work, not a hierarchy: opus for code and writing that stays, sonnet for research and analysis, haiku for mechanical work.
 
+Every agent must also work in a heartbeat, where nobody answers: never give one a tool that waits for the user, such as AskUserQuestion, nor write in its instructions that it asks, runs something in the background or waits for an approval. An agent that needs a decision says so in its reply, and the lead agent opens the request.
+
 ## Proposing the team
 
 1. Read `.jerome/areas.md`, `.jerome/scope.md` and `.jerome/decisions.md`, and list the files in `.claude/agents/`.

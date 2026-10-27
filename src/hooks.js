@@ -6,9 +6,11 @@ import { basename, dirname, join } from 'node:path';
 import { MARKER } from './template.js';
 import { openDb, prune } from './db.js';
 import { ingestTranscript } from './usage.js';
-import { checkChain } from './chain.js';
+import { checkChain, checkStaging, splitCommand, changingGit } from './chain.js';
 import { projectStatus, projectSummary, globalLimits } from './budget.js';
 import { readAssumptions } from './assumptions.js';
+import { lockHolder } from './runstate.js';
+import { openAlerts, alertsContext } from './alerts.js';
 
 export const HOOK_EVENTS = ['session-start', 'subagent-stop', 'stop', 'session-end', 'pre-tool-use'];
 const RUN_KINDS = ['heartbeat', 'service'];
@@ -28,13 +30,14 @@ export async function hook(event, { input = readStdin(), env = process.env } = {
   // The chain check needs no database, and runs before every Bash call: it opens the database only to log a refusal.
   if (event === 'pre-tool-use') {
     if (payload.tool_name !== 'Bash') return 0;
-    const verdict = checkChain(String(payload.tool_input?.command ?? ''));
+    const command = String(payload.tool_input?.command ?? '');
+    const verdict = checkChain(command) ?? checkStaging(command) ?? besideHeartbeat(dir, command, env);
     if (!verdict) return 0;
     process.stdout.write(`${JSON.stringify({
       hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: verdict.reason },
     })}\n`);
     record(dir, (db) => logEvent(db, runOf(db, payload.session_id), 'blocked', payload.agent_type ?? 'main',
-      { subcommands: verdict.subcommands, segments: verdict.segments }));
+      { subcommands: verdict.subcommands, segments: verdict.segments, ...(verdict.heartbeat ? { heartbeat: verdict.heartbeat } : {}) }));
     return 0;
   }
 
@@ -52,6 +55,24 @@ export async function hook(event, { input = readStdin(), env = process.env } = {
     })}\n`);
   }
   return 0;
+}
+
+// While a heartbeat holds the project's lock (D122), a session in the same working tree must not change the
+// repository under it: git commands that would are refused, except creating a separate worktree to work in.
+// Reading, and editing files, stay allowed. The heartbeat's own session is never refused.
+function besideHeartbeat(dir, command, env) {
+  if (RUN_KINDS.includes(env.JEROME_RUN_KIND)) return null;
+  const segments = splitCommand(command);
+  const changing = segments.filter((s) => changingGit(s) && !(changingGit(s) === 'worktree' && /\bworktree\s+add\b/.test(s))).map(changingGit);
+  if (!changing.length) return null;
+  const pid = lockHolder(dir);
+  if (!pid) return null;
+  return {
+    reason: `A heartbeat of this project is running in this working tree (pid ${pid}), so git commands that change the repository are refused here until it ends (Jérôme D122): \`jerome heartbeat status\` shows it. Reading and editing files is fine, but commit nothing meanwhile. To work on the repository now, use a separate worktree: \`git worktree add ../<folder> -b <branch>\`, and a session there.`,
+    subcommands: changing,
+    segments: segments.length,
+    heartbeat: pid,
+  };
 }
 
 function readStdin() {
@@ -123,10 +144,14 @@ function sessionStart(db, payload, env, dir) {
   // A heartbeat is told what to do by its own prompt.
   if (kind !== 'interactive' || payload.source === 'compact') return null;
   const open = db.prepare("SELECT id, question, options, recommendation FROM requests WHERE status = 'open' ORDER BY id").all();
-  // The assumptions waiting for the user (D116) come with them, so both are put in one block.
+  // The assumptions waiting for the user (D116) come with them, so both are put in one block. Alerts about the
+  // autonomous runs (D121) come before everything, for the lead agent and, in a line of their own, for the user.
   const assumptions = readAssumptions(dir);
-  const context = [open.length ? requestsContext(projectDir(payload, env), open) : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
-  return { context: context || null, message: limitsWarning(db, dir) };
+  const alerts = openAlerts(db);
+  const context = [alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
+  const alertLine = alerts.length ? `Jérôme: ${alerts.length} heartbeat ${alerts.length === 1 ? 'alert' : 'alerts'}: ${alerts.map((a) => `A${a.id} ${a.reason}`).join(' · ')}` : null;
+  const message = [alertLine, limitsWarning(db, dir)].filter(Boolean).join('\n');
+  return { context: context || null, message: message || null };
 }
 
 // A warning for the user, not the model, when a limit is at 90% or more (D84): interactive sessions are never

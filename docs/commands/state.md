@@ -14,6 +14,7 @@ open    no decision requests
 
 | Line | What it shows |
 |---|---|
+| `ALERTS` | right under the title, only when the project's [heartbeats](../heartbeat.md#alerts) have open alerts: each with its reason, how many times and when; the lead agent tells you first |
 | `usage` | tokens today (since local midnight), split into input, output, cache reads and cache writes, and over the last 7 days, with their API-equivalent price |
 | `window` | the latest reading of the subscription's 5-hour and 7-day windows, its source and time, and the global limits, from `~/.config/jerome/account.json`; a window that has reset since its reading shows `no reading since its reset at 20:00`, never the old figure, and is not checked against its limit |
 | `limits` | the project's spend today and this week against its limits |
@@ -31,7 +32,7 @@ Tokens count input, output and cache reads and writes. **Dollar amounts are API 
 | `--runs <n>` | how many recent runs to list (default 3) |
 | `--agent <name>` | only that agent's usage |
 | `--replies` | adds a `replies` line: per agent, over 7 days, the average and longest reply in words and how many went over 150 (see [hooks.md](../hooks.md#reply-lengths)) |
-| `--json` | everything `jerome state` knows as one JSON object, schema `jerome.state/v1`: besides the lines above, the latest runs with duration and API equivalent, usage per agent and model for today, 7 and 30 days (`byModel`), reply lengths (`replies`), the team (`team`), the areas (`areas`, each with its lines, `lastHeartbeat`, `request` and `week` usage, `areasImplicit` when there is no `areas.md`) and the `shared` usage, each run's and request's `area`, each request's `kind` (`milestone` or `question`), the `assumptions` (`id`, `text`), each heartbeat's `triage` verdict and `caps`, the latest heartbeat (`lastHeartbeat`: its `status`, `reason`, `area` and times), a `stale` flag on each window, and `projectLimits`: for `daily` and `weekly`, the `limit`, the spend in `usd` and `tokens`, `since`, `resetsAt` and the `level` (`ok`, `warn`, `high`, `over`). It is what [`jerome view`](view.md) shows. |
+| `--json` | everything `jerome state` knows as one JSON object, schema `jerome.state/v1`: besides the lines above, the latest runs with duration and API equivalent, usage per agent and model for today, 7 and 30 days (`byModel`), reply lengths (`replies`), the team (`team`), the areas (`areas`, each with its lines, `lastHeartbeat`, `request` and `week` usage, `areasImplicit` when there is no `areas.md`) and the `shared` usage, each run's and request's `area`, each request's `kind` (`milestone` or `question`), the `assumptions` (`id`, `text`), each heartbeat's `triage` verdict and `caps`, its `mode` (`normal` or `resume`), `slot`, `exitCode` and `outcome` (the end check: `ok`, `failures`, `notes`), the open `alerts` (`id`, `reason`, `count`, `openedAt`, `lastAt`), the latest heartbeat (`lastHeartbeat`: its `status`, `reason`, `area` and times), a `stale` flag on each window, and `projectLimits`: for `daily` and `weekly`, the `limit`, the spend in `usd` and `tokens`, `since`, `resetsAt` and the `level` (`ok`, `warn`, `high`, `over`). It is what [`jerome view`](view.md) shows. |
 
 `jerome state` is allowed by the project's permission rules, so the lead agent runs it without asking. See [database.md](../database.md) for where the data comes from.
 

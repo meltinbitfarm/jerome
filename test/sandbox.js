@@ -1,6 +1,8 @@
 // A sandbox for running the CLI with a fake `claude` on the PATH: no calls to the real Claude Code.
-import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cloneRoot, storeKey } from '../src/store.js';
@@ -43,6 +45,16 @@ case "$1" in
       [ -n "$FAKE_LEAD_BRANCH" ] && git switch -q -c "$FAKE_LEAD_BRANCH"
       [ -n "$FAKE_LEAD_COMMIT" ] && echo x > fake.txt && git add fake.txt && git -c user.email=t@example.com -c user.name=t commit -q -m wip
       [ -n "$FAKE_LEAD_DIRTY" ] && echo y > dirty.txt
+      # What the runner gives it (D120), and a process it leaves running in the background (FAKE_LEAD_GRANDCHILD).
+      echo "ceiling=$CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS kind=$JEROME_RUN_KIND" > "$HOME/lead-env"
+      printf '%s' "$2" > "$HOME/lead-prompt"
+      [ -n "$FAKE_LEAD_GRANDCHILD" ] && { sleep 60 & echo $! > "$HOME/grandchild.pid"; }
+      # FAKE_LEAD_FINISH: it finishes the work it finds (RESUME): commits what is left on its branch, merges it into main.
+      if [ -n "$FAKE_LEAD_FINISH" ]; then
+        b="$(git rev-parse --abbrev-ref HEAD)"
+        git add -A . ':!.jerome/digest.md' 2>/dev/null; git -c user.email=t@example.com -c user.name=t commit -q -m finish 2>/dev/null
+        if [ "$b" != main ]; then git switch -q main && git -c user.email=t@example.com -c user.name=t merge -q --no-ff -m merge "$b" && git branch -q -d "$b"; fi
+      fi
       i=1; while [ "$i" -le "\${FAKE_LEAD_CALLS:-2}" ]; do
         u="{\\"input_tokens\\":10,\\"output_tokens\\":90,\\"cache_read_input_tokens\\":$(( \${FAKE_LEAD_TOKENS:-1000} - 100 )),\\"cache_creation_input_tokens\\":0}"
         echo "{\\"type\\":\\"assistant\\",\\"message\\":{\\"id\\":\\"m$i\\",\\"usage\\":$u}}"
@@ -56,6 +68,11 @@ case "$1" in
         [ -n "$FAKE_LEAD_SLEEP" ] && sleep "$FAKE_LEAD_SLEEP"
         i=$((i + 1))
       done
+      # Its line in the digest (D120), unless FAKE_LEAD_NO_DIGEST.
+      if [ -z "$FAKE_LEAD_NO_DIGEST" ] && [ "\${FAKE_LEAD_RESULT:-success}" = success ]; then
+        echo "- $(date +'%Y-%m-%d %H:%M') · fake work" >> .jerome/digest.md
+        git add .jerome/digest.md && git -c user.email=t@example.com -c user.name=t commit -q -m digest
+      fi
       echo '{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.42,"resetsAt":4102444800},"seven_day":{"utilization":0.1,"resetsAt":4102444800}}}}'
       [ -n "$FAKE_LEAD_REQUEST" ] && "$FAKE_NODE" "$JEROME_BIN" request open --question "$FAKE_LEAD_REQUEST" \${FAKE_LEAD_MILESTONE:+--milestone} > /dev/null
       echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"\${FAKE_LEAD_RESULT:-success}\\",\\"is_error\\":$([ "\${FAKE_LEAD_RESULT:-success}" = success ] && echo false || echo true),\\"result\\":\\"done\\"}"
@@ -127,4 +144,35 @@ export function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
 // Where a sandbox project's database is (D93): the store under the sandbox's home, which the CLI runs with.
 export function sandboxDb(root, dir) {
   return join(root, '.local', 'share', 'jerome', 'projects', storeKey(cloneRoot(dir)), 'jerome.db');
+}
+
+// A project ready for heartbeats: created, committed, and trusted in Claude Code.
+export function readyProject(env = {}) {
+  const box = sandbox({ env });
+  assert.equal(box.run('new', 'demo').status, 0);
+  const dir = realpathSync(join(box.root, 'demo'));
+  const git = (...args) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...args], { cwd: dir, stdio: 'ignore' });
+  git('add', '-A');
+  git('commit', '-q', '-m', 'init');
+  const trust = (value) => writeFileSync(join(box.root, 'claude-config', '.claude.json'), JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: value } } }));
+  trust(true);
+  const db = () => new DatabaseSync(sandboxDb(box.root, dir), { readOnly: true });
+  const lastRun = () => {
+    const d = db();
+    const r = d.prepare('SELECT * FROM runs ORDER BY id DESC LIMIT 1').get();
+    d.close();
+    return r;
+  };
+  const requests = () => {
+    const d = db();
+    const r = d.prepare("SELECT id, run_id, question FROM requests WHERE status = 'open'").all();
+    d.close();
+    return r;
+  };
+  const calls = () => (existsSync(join(box.root, 'claude-calls.log')) ? readFileSync(join(box.root, 'claude-calls.log'), 'utf8') : '');
+  const account = (data) => {
+    mkdirSync(join(box.root, '.config', 'jerome'), { recursive: true });
+    writeFileSync(join(box.root, '.config', 'jerome', 'account.json'), JSON.stringify({ schema: 'jerome.account/v1', ...data }));
+  };
+  return { ...box, dir, git, trust, db, lastRun, requests, calls, account };
 }

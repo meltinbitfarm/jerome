@@ -84,7 +84,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, areas, runs, usage, subscription windows and the messages between agents |
 | [`jerome projects [--json] [--view]`](docs/commands/projects.md) | Shows every project on this machine, from any folder, with what needs you first; `--view` as a page in the browser |
 | [`jerome schedule [dir] hourly\|daily\|weekly`](docs/commands/schedule.md) | Schedules heartbeats, runs of the lead agent without you, with a cap per run (macOS) |
-| [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it |
+| [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it; `install`, `uninstall`, `status`, `run <slot>`, `marathon --until HH:MM` and `override --today` for a project's slots and their runs |
 | [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
 | [`jerome digest [dir]`](docs/commands/digest.md) | What happened recently, at zero tokens |
 | [`jerome limits [dir]`](docs/commands/limits.md) | Shows and sets the usage limits that pause heartbeats: global in % of the subscription windows, per project in API-equivalent dollars |
@@ -121,7 +121,7 @@ The project database is not in the folder: it lives in `~/.local/share/jerome/pr
 
 ## The lead agent
 
-The template's `.claude/rules/jerome.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to the project's agents, and only drafts things it is not allowed to do, such as deploying. It is kept within 760 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
+The template's `.claude/rules/jerome.md` turns the main Claude Code session into the project's lead agent. It speaks your language, keeps the project state, delegates to the project's agents, and only drafts things it is not allowed to do, such as deploying. It is kept within 790 tokens, because it is loaded into every session, and `PROJECT.md` holds only what is needed at every turn, with the rest of the brief in `scope.md`, read when needed. See [docs/lead-agent.md](docs/lead-agent.md).
 
 ## Agents and limits
 
@@ -129,7 +129,7 @@ After the brief, the lead agent proposes a team from Jérôme's catalog (develop
 
 ## Heartbeats
 
-Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work and in which area, by each area's priority and pace, within a token and turn cap. When it needs you it leaves a decision request instead of asking. Heartbeats pause when a global or project limit is reached, and start again when it resets. See [docs/heartbeat.md](docs/heartbeat.md) and [docs/limits.md](docs/limits.md).
+Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work and in which area, by each area's priority and pace, within a token and turn cap. When it needs you it leaves a decision request instead of asking. Heartbeats pause when a global or project limit is reached, and start again when it resets. A project can have several slots a day (`jerome heartbeat install`); no run is ever skipped silently, half-done work is resumed before anything new, every run is checked when it ends, and anything wrong is an alert you hear about first. See [docs/heartbeat.md](docs/heartbeat.md) and [docs/limits.md](docs/limits.md); to replace scripts of your own, [docs/migrating-heartbeat-scripts.md](docs/migrating-heartbeat-scripts.md).
 
 ## The briefing
 
@@ -144,7 +144,7 @@ Every project starts from a brief in the `brief/v3` format, with the areas to st
 5. ✓ A SQLite database per project, outside the working tree, read with `jerome state` and `jerome digest`
 6. ✓ Usage tracking through hooks and the status line (`jerome hook`, `jerome statusline`)
 7. ✓ Read-only local viewer (`jerome view`), and every project at a glance (`jerome projects`)
-8. ✓ Scheduled headless runs, with a lock and a cap per run (`jerome schedule`, `jerome heartbeat`, `jerome request`)
+8. ✓ Scheduled headless runs, with a lock and a cap per run (`jerome schedule`, `jerome heartbeat`, `jerome request`); since 0.2.0 with slots, RESUME runs, an end check, a max duration, alerts and marathons
 9. ✓ Daily and weekly limits with automatic pause (`jerome limits`)
 10. Areas and milestones, with the area briefing (`.jerome/areas.md`): in place and tested, not yet tried on a real project
 

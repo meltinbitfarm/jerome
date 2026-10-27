@@ -12,6 +12,7 @@ import { planHooks, applyHooks } from './hookconfig.js';
 import { latestSession, toolProblems } from './session-shape.js';
 import { projectLimitSettings } from './budget.js';
 import { heartbeatProblems, rescheduleCommand } from './schedule.js';
+import { heartbeatConfig } from './heartbeatconfig.js';
 import { openDb, dbPath, treeDb, schemaVersion, peekVersion, applyMigrations, LATEST } from './db.js';
 import { candidates, relink, stores, describeStore, storeSummary } from './store.js';
 import { createInterface } from 'node:readline/promises';
@@ -27,7 +28,7 @@ export const DOCTOR_SCHEMA = 'jerome.doctor/v1';
 // Token budgets for the files loaded into every session. Going over them only warns, and a project can
 // change them in `.jerome` under "budgets" (D37).
 // Keyed by file name: jerome.md is the lead agent's instructions (D87), CLAUDE.md before it.
-export const BUDGETS = { 'jerome.md': 760, 'PROJECT.md': 800 };
+export const BUDGETS = { 'jerome.md': 790, 'PROJECT.md': 800 };
 
 export async function doctor(dirArg, { json = false, check = false, yes = false, relink: relinkKey = null, newDb = false } = {}) {
   const ask = !json && process.stdin.isTTY ? askChoice : null;
@@ -67,6 +68,8 @@ export async function runDoctor(dir, { setup = true, fix = true, db: dbOptions =
   }
   const beat = heartbeatCheck(dir);
   if (beat) report.checks.push(beat);
+  // Settings of the autonomous runs that cannot be used (D118): their defaults apply.
+  for (const message of heartbeatConfig(dir).problems) report.warnings.push({ id: 'heartbeat-config', message });
   const db = await dbCheck(dir, { fix, ...dbOptions });
   report.db = db.db;
   report.checks.push(db.check);

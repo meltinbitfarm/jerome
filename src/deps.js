@@ -36,6 +36,7 @@ export const DEPS = [
   d('cli', '--session-id', 'the heartbeat gives its run\'s id to the session', { kind: 'flag', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
   d('cli', '--max-turns', 'heartbeat turn cap; ends with subtype error_max_turns', { kind: 'flag', documented: false, decisions: ['D71', 'D73'], phase: 8, code: ['src/heartbeat.js'], note: 'absent from --help' }),
   d('cli', '--permission-mode', '"acceptEdits" for heartbeats', { kind: 'flag', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
+  d('cli', 'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS', 'set to 0 for a heartbeat\'s lead agent, so claude -p waits for background subagents with no ceiling; the runner\'s max duration bounds the run instead', { kind: 'env', documented: false, decisions: ['D120'], phase: 8, code: ['src/heartbeat.js'], note: 'default 600000 (10 min after the last turn, then background tasks are killed); a value > 0 is a ceiling, 0 none; read in 2.1.311' }),
 
   // Result of -p --output-format json.
   d('result', 'result', 'final text of the documentarist', { decisions: ['D43', 'D73'], phase: 4, code: ['src/docs.js', 'src/heartbeat.js'] }),

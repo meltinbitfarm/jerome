@@ -10,6 +10,7 @@ import { statusline } from './statusline.js';
 import { view } from './view.js';
 import { schedule, EVERY } from './schedule.js';
 import { heartbeat } from './heartbeat.js';
+import { install, uninstall, status as heartbeatStatus, override, marathon } from './heartbeatcmd.js';
 import { request } from './request.js';
 import { digest } from './digest.js';
 import { deps } from './deps.js';
@@ -58,6 +59,16 @@ const USAGE = `Usage:
   jerome heartbeat [dir]  one scheduled run, as launchd starts it
     --max-tokens <n>, --max-turns <n>
                           caps for this run only, in place of the project's
+  jerome heartbeat install [dir] | uninstall [dir]
+                          load or remove the project's jobs, one per slot of .jerome/project.json (macOS, launchd)
+  jerome heartbeat status [dir]
+                          jobs, the run going on, open alerts and the latest runs (--runs <n>, default 8)
+  jerome heartbeat run <slot> [dir]
+                          one run of that slot, as its job starts it (--max-tokens, --max-turns)
+  jerome heartbeat marathon --until <HH:MM> [dir]
+                          runs back to back until that time today (24:00 for midnight)
+  jerome heartbeat override --today [dir]
+                          lift the usage limits on this project's heartbeats until midnight
   jerome request open --question <q> [--options <o>] [--recommendation <r>] [--area <name>] [--milestone]
   jerome request answer <id> <answer> | drop <id>
                           open or close a decision request
@@ -104,11 +115,13 @@ const OPTIONS = {
   relink: { type: 'string' },
   'new-db': { type: 'boolean' },
   view: { type: 'boolean' },
+  until: { type: 'string' },
+  today: { type: 'boolean' },
 };
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
 
 export async function main(argv) {
   let parsed;
@@ -177,7 +190,32 @@ export async function main(argv) {
       return schedule(dirs[0] ?? '.', { every, at: v.at, day: v.day, maxTokens: v['max-tokens'], maxTurns: v['max-turns'], model: v.model, off: v.off });
     }
     case 'heartbeat': {
-      if (rest.length > 1) return usageError('jerome heartbeat takes at most one folder.');
+      const [sub, ...args] = rest;
+      const v = parsed.values;
+      // Subcommands (D118); any other word is the project's folder, as launchd's jobs from before give it. A folder
+      // named like a subcommand is given as ./status.
+      const only = (...allowed) => Object.keys(v).filter((o) => !allowed.includes(o));
+      if (['install', 'uninstall', 'status', 'marathon', 'override'].includes(sub)) {
+        if (args.length > 1) return usageError(`jerome heartbeat ${sub} takes at most one folder.`);
+        const allowed = { install: [], uninstall: [], status: ['runs'], marathon: ['until'], override: ['today'] }[sub];
+        if (only(...allowed).length) return usageError(`${only(...allowed).map((o) => `--${o}`).join(', ')} not available for jerome heartbeat ${sub}.`);
+        const dir = args[0] ?? '.';
+        if (sub === 'install') return install(dir);
+        if (sub === 'uninstall') return uninstall(dir);
+        if (sub === 'override') return override(dir, { today: v.today === true });
+        if (sub === 'marathon') {
+          if (!v.until) return usageError('jerome heartbeat marathon needs --until, such as --until 23:30 or --until 24:00.');
+          return marathon(dir, { until: v.until });
+        }
+        const runs = v.runs === undefined ? 8 : Number(v.runs);
+        if (!Number.isInteger(runs) || runs < 1) return usageError('--runs takes a positive whole number.');
+        return heartbeatStatus(dir, { runs });
+      }
+      if (only('max-tokens', 'max-turns').length) return usageError(`${only('max-tokens', 'max-turns').map((o) => `--${o}`).join(', ')} not available for jerome heartbeat${sub === 'run' ? ' run' : ''}.`);
+      const slot = sub === 'run' ? args[0] : null;
+      if (sub === 'run' && !slot) return usageError('jerome heartbeat run takes the name of a slot.');
+      const folders = sub === 'run' ? args.slice(1) : rest;
+      if (folders.length > 1) return usageError('jerome heartbeat takes at most one folder.');
       const cap = (name) => {
         const raw = parsed.values[name];
         if (raw === undefined) return null;
@@ -187,7 +225,7 @@ export async function main(argv) {
       const maxTokens = cap('max-tokens');
       const maxTurns = cap('max-turns');
       if (Number.isNaN(maxTokens) || Number.isNaN(maxTurns)) return usageError('--max-tokens and --max-turns take positive whole numbers.');
-      return heartbeat(rest[0] ?? '.', { maxTokens, maxTurns });
+      return heartbeat(folders[0] ?? '.', { maxTokens, maxTurns, slot });
     }
     case 'request': {
       const [action, ...args] = rest;

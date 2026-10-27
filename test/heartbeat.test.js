@@ -6,39 +6,8 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { sandbox, sandboxDb } from './sandbox.js';
+import { readyProject as project, sandbox, sandboxDb } from './sandbox.js';
 import { globalLimits, leadPrompt } from '../src/heartbeat.js';
-
-// A project ready for heartbeats: created, committed, and trusted in Claude Code.
-function project(env = {}) {
-  const box = sandbox({ env });
-  assert.equal(box.run('new', 'demo').status, 0);
-  const dir = realpathSync(join(box.root, 'demo'));
-  const git = (...args) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...args], { cwd: dir, stdio: 'ignore' });
-  git('add', '-A');
-  git('commit', '-q', '-m', 'init');
-  const trust = (value) => writeFileSync(join(box.root, 'claude-config', '.claude.json'), JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: value } } }));
-  trust(true);
-  const db = () => new DatabaseSync(sandboxDb(box.root, dir), { readOnly: true });
-  const lastRun = () => {
-    const d = db();
-    const r = d.prepare('SELECT * FROM runs ORDER BY id DESC LIMIT 1').get();
-    d.close();
-    return r;
-  };
-  const requests = () => {
-    const d = db();
-    const r = d.prepare("SELECT id, run_id, question FROM requests WHERE status = 'open'").all();
-    d.close();
-    return r;
-  };
-  const calls = () => (existsSync(join(box.root, 'claude-calls.log')) ? readFileSync(join(box.root, 'claude-calls.log'), 'utf8') : '');
-  const account = (data) => {
-    mkdirSync(join(box.root, '.config', 'jerome'), { recursive: true });
-    writeFileSync(join(box.root, '.config', 'jerome', 'account.json'), JSON.stringify({ schema: 'jerome.account/v1', ...data }));
-  };
-  return { ...box, dir, git, trust, db, lastRun, requests, calls, account };
-}
 
 test('an untrusted project is skipped with one decision request, not one per heartbeat', () => {
   const p = project();
@@ -55,7 +24,7 @@ test('an untrusted project is skipped with one decision request, not one per hea
   assert.doesNotMatch(p.calls(), /--max-turns|--model haiku/);
 });
 
-test('uncommitted changes, a provisional PROJECT.md and an open interactive session skip the heartbeat', () => {
+test('uncommitted changes and a provisional PROJECT.md skip the heartbeat; an open interactive session no longer does (D122)', () => {
   const p = project();
   writeFileSync(join(p.dir, '.claude', 'rules', 'jerome.md'), 'changed\n');
   p.run('heartbeat', 'demo');
@@ -80,8 +49,8 @@ test('uncommitted changes, a provisional PROJECT.md and an open interactive sess
 
   p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'live' }), 'hook', 'session-start');
   p.run('heartbeat', 'demo');
-  assert.equal(p.lastRun().status, 'blocked');
-  assert.match(p.lastRun().reason, /interactive session is open/);
+  assert.equal(p.lastRun().status, 'done');
+  assert.equal(p.lastRun().reason, 'no work: nothing to do');
 });
 
 test('a second heartbeat stops on the lock, and a lock left by a dead process is taken over', () => {
@@ -160,7 +129,7 @@ test('the token cap stops the lead agent, and so does the turn cap', () => {
   const q = project({ FAKE_TRIAGE: '{"work": true, "task": "Long task"}', FAKE_LEAD_RESULT: 'error_max_turns' });
   q.run('heartbeat', 'demo');
   assert.equal(q.lastRun().status, 'stopped');
-  assert.equal(q.lastRun().reason, 'turn cap: 40 turns');
+  assert.equal(q.lastRun().reason, 'turn cap: 40 turns; end check: no line added to .jerome/digest.md; next run resumes');
 });
 
 test('a decision request opened by the lead agent is linked to its run, and answered in a session', () => {
@@ -456,9 +425,10 @@ test('caps given to one heartbeat by hand replace those of the project for that 
   const before = marker();
   p.runWith({ FAKE_LEAD_CALLS: '5', FAKE_LEAD_SLEEP: '0.05' }, 'heartbeat', 'demo', '--max-tokens', '2500');
   assert.equal(p.lastRun().status, 'stopped');
-  assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 2,500 \(this run; main \dk\)$/);
+  // Stopped halfway, it left no digest line: the end check fails, and the next run resumes (D120).
+  assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 2,500 \(this run; main \dk\); end check: no line added to \.jerome\/digest\.md; next run resumes$/);
   p.runWith({ FAKE_LEAD_RESULT: 'error_max_turns' }, 'heartbeat', 'demo', '--max-turns', '7');
-  assert.equal(p.lastRun().reason, 'turn cap: 7 turns (this run)');
+  assert.match(p.lastRun().reason, /^resume: .* → turn cap: 7 turns \(this run\); end check/);
   assert.deepEqual(JSON.parse(p.lastRun().caps), { maxTokens: 500000, maxTurns: 7, once: true });
   assert.match(p.calls().split(/^-p /m).filter((c) => c.includes('--max-turns')).pop(), /--max-turns 7 /);
   assert.equal(marker(), before, 'project.json is not touched');
@@ -470,27 +440,41 @@ test('the token cap counts the subagents too, from their transcripts, when the s
   p.runWith({ FAKE_LEAD_CALLS: '20', FAKE_LEAD_SLEEP: '0.2', FAKE_SUB_TOKENS: '50000' }, 'heartbeat', 'demo', '--max-tokens', '120000');
   const run = p.lastRun();
   assert.equal(run.status, 'stopped');
-  assert.match(run.reason, /^token cap: [\d,]+ tokens over 120,000 \(this run; researcher 1\d\dk, main \dk\)$/);
+  assert.match(run.reason, /^token cap: [\d,]+ tokens over 120,000 \(this run; researcher 1\d\dk, main \dk\); end check/);
   // Stopped after a few calls, not after the twenty the stream alone would have allowed.
   const d = p.db();
   assert.ok(d.prepare("SELECT count(*) n FROM usage WHERE run_id = ? AND agent = 'main'").get(run.id).n < 10);
   d.close();
 });
 
-test('a stopped run goes back to the branch it started from, and leaves uncommitted changes to the user (D112)', () => {
+test('a stopped run goes back to the branch it started from, and the next run resumes what it left (D112, D119)', () => {
   const p = project({ FAKE_TRIAGE: '{"work": true, "task": "Half a task"}', FAKE_LEAD_RESULT: 'error_max_turns' });
   const branch = () => execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: p.dir, encoding: 'utf8' }).trim();
   const start = branch();
   p.runWith({ FAKE_LEAD_BRANCH: 'task/empty' }, 'heartbeat', 'demo');
-  assert.equal(p.lastRun().reason, `turn cap: 40 turns; branch task/empty left, no commits: removed, back on ${start}`);
+  assert.equal(p.lastRun().reason, `turn cap: 40 turns; end check: ended on branch task/empty, not main; no line added to .jerome/digest.md; branch task/empty left, no commits: removed, back on ${start}; next run resumes`);
   assert.equal(branch(), start);
   p.runWith({ FAKE_LEAD_BRANCH: 'task/some', FAKE_LEAD_COMMIT: '1' }, 'heartbeat', 'demo');
-  assert.equal(p.lastRun().reason, `turn cap: 40 turns; branch task/some left, 1 commit: kept, back on ${start}`);
+  assert.equal(p.lastRun().mode, 'resume');
+  assert.match(p.lastRun().reason, /→ turn cap: 40 turns; end check: .*; branch task\/some left, 1 commit: kept, back on main; next run resumes$/);
   assert.equal(branch(), start);
   p.runWith({ FAKE_LEAD_BRANCH: 'task/dirty', FAKE_LEAD_DIRTY: '1' }, 'heartbeat', 'demo');
-  assert.equal(p.lastRun().reason, 'turn cap: 40 turns; uncommitted changes left on task/dirty');
+  assert.match(p.lastRun().reason, /ended on branch task\/dirty, not main; .*; changes left on task\/dirty; next run resumes$/);
   assert.equal(branch(), 'task/dirty');
-  assert.match(p.requests().pop().question, /stopped halfway on branch task\/dirty and left uncommitted changes/);
+  // No decision request: an alert, and the next run takes the branch it left back up, in RESUME mode.
+  assert.equal(p.requests().length, 0);
+  const d = p.db();
+  assert.equal(d.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n, 1);
+  d.close();
+  p.runWith({ FAKE_LEAD_FINISH: '1', FAKE_LEAD_RESULT: 'success' }, 'heartbeat', 'demo');
+  assert.equal(p.lastRun().mode, 'resume');
+  assert.match(p.lastRun().reason, /^resume: the branch task\/dirty \(left by the heartbeat of .*\) → done$/);
+  assert.equal(p.lastRun().status, 'done');
+  assert.equal(branch(), 'main');
+  // A run that ends well closes the alerts.
+  const e = p.db();
+  assert.equal(e.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n, 0);
+  e.close();
 });
 
 // A local server for the pages an area follows: GET /docs/<name>.md serves <root>/pages/<name>.md, or 404.
