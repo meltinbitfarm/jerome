@@ -6,10 +6,10 @@ import { basename, join, resolve } from 'node:path';
 import { MARKER } from './template.js';
 import { notProjectMessage } from './paths.js';
 import { openDb } from './db.js';
-import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
+import { heartbeatConfig, describeSlot, runAllowed } from './heartbeatconfig.js';
 import { projectJobs, scheduler, jobPaths, describe, logPath, jobLabel } from './schedule.js';
 import { lockHolder, readResume, overrideToday, setOverride, localDay } from './runstate.js';
-import { openAlerts } from './alerts.js';
+import { openAlerts, lostRuns } from './alerts.js';
 import { heartbeat } from './heartbeat.js';
 
 function project(dirArg) {
@@ -39,6 +39,9 @@ export async function install(dirArg) {
   for (const job of jobs) {
     const slot = config.slots.find((x) => x.name === job.slot);
     console.log(`✓ ${slot ? `slot ${slot.name}: ${describeSlot(slot)}` : describe(config.legacy)} (${job.label})`);
+    // What its runs may do beyond the project's allow rules (D129): anything else they are refused, with an alert.
+    const allowed = runAllowed(config, slot);
+    if (allowed.length) console.log(`  allowed: ${allowed.join(', ')}`);
   }
   for (const label of removed) console.log(`✓ removed ${label}, no longer in the settings`);
   console.log(`  ${config.mainBranch} ← ${config.workBranch} · at most ${config.maxMinutes} min per run · log ${logPath(jobLabel(dir))}`);
@@ -89,8 +92,9 @@ export async function status(dirArg, { runs = 8, now = new Date() } = {}) {
   if (!db) return fail('The project database is missing: run `jerome doctor` to create it.', 1);
   try {
     const alerts = openAlerts(db);
-    lines.push(`alerts   ${alerts.length ? `${alerts.length} open: tell the user` : 'none open'}`);
-    for (const a of alerts) lines.push(`  A${a.id} ${a.reason}${a.count > 1 ? ` (${a.count} times)` : ''} · since ${when(a.openedAt)}`);
+    const lost = alerts.reduce((t, a) => t + a.count, 0);
+    lines.push(`alerts   ${alerts.length ? `${alerts.length} open, ${lost} ${lost === 1 ? 'run' : 'runs'} lost: tell the user` : 'none open'}`);
+    for (const a of alerts) lines.push(`  A${a.id} ${a.reason} · ${lostRuns(a)}`);
     const recent = db.prepare("SELECT id, started_at, ended_at, status, reason, mode, slot, exit_code, outcome FROM runs WHERE kind = 'heartbeat' ORDER BY id DESC LIMIT ?").all(runs);
     lines.push(`runs     ${recent.length ? `last ${recent.length}` : 'none yet'}`);
     for (const r of recent) {

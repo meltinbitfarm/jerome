@@ -10,7 +10,7 @@ import { checkChain, checkStaging, splitCommand, changingGit } from './chain.js'
 import { projectStatus, projectSummary, globalLimits } from './budget.js';
 import { readAssumptions } from './assumptions.js';
 import { lockHolder } from './runstate.js';
-import { openAlerts, alertsContext } from './alerts.js';
+import { openAlerts, alertsContext, lostRuns } from './alerts.js';
 
 export const HOOK_EVENTS = ['session-start', 'subagent-stop', 'stop', 'session-end', 'pre-tool-use'];
 const RUN_KINDS = ['heartbeat', 'service'];
@@ -149,7 +149,7 @@ function sessionStart(db, payload, env, dir) {
   const assumptions = readAssumptions(dir);
   const alerts = openAlerts(db);
   const context = [alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
-  const alertLine = alerts.length ? `Jérôme: ${alerts.length} heartbeat ${alerts.length === 1 ? 'alert' : 'alerts'}: ${alerts.map((a) => `A${a.id} ${a.reason}`).join(' · ')}` : null;
+  const alertLine = alerts.length ? `Jérôme: ${alerts.length} heartbeat ${alerts.length === 1 ? 'alert' : 'alerts'}: ${alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}` : null;
   const message = [alertLine, limitsWarning(db, dir)].filter(Boolean).join('\n');
   return { context: context || null, message: message || null };
 }

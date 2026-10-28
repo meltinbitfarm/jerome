@@ -3,7 +3,7 @@
 // database with the reason (D13): lock, trust, provisional PROJECT.md, the repository's start state (D119), doctor,
 // limits, a zero-token check for changes, a triage on Haiku, and only then the lead agent, in a new session, within
 // its caps and its max duration. Every run of the lead agent ends with a check of the state it left (D120), and
-// what goes wrong becomes an alert (D121).
+// what goes wrong becomes an alert (D121), notified until it closes (D128); a tool the run was refused is one (D129).
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, fstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -32,13 +32,15 @@ import { areaPlan } from './areas.js';
 import { transcriptMeter } from './meter.js';
 import { checkPages, saveHashes, watchedPages } from './watch.js';
 import { n } from './state.js';
-import { heartbeatConfig } from './heartbeatconfig.js';
-import { acquireLock, releaseLock, cacheDir, startState, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
-import { raiseAlert, resolveAlerts, sameAsBefore, pushAlert } from './alerts.js';
+import { heartbeatConfig, runAllowed } from './heartbeatconfig.js';
+import { acquireLock, releaseLock, cacheDir, startState, carryState, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
+import { raiseAlert, resolveAlerts, sameAsBefore, pushAlert, lostRuns } from './alerts.js';
 
 // An interactive session counts as working alongside a heartbeat when its run is open and started within this many
 // hours: older ones are sessions that ended without their SessionEnd hook.
 const INTERACTIVE_HOURS = 12;
+// An alert still open is notified again, and pushed again, at most this often (D128).
+const REMIND_HOURS = 3;
 
 export async function heartbeat(dirArg, { env = process.env, now = new Date(), maxTokens = null, maxTurns = null, slot: slotName = null } = {}) {
   const dir = resolve(dirArg);
@@ -80,11 +82,16 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
       const raise = alert || (['blocked', 'stopped', 'failed'].includes(status) && !/^locked/.test(reason) && sameAsBefore(db, run.id, reason));
       if (raise) {
         const a = raiseAlert(db, { reason, key: alertKey, runId: run.id, count: alert ? 1 : 2 });
-        if (a.isNew) {
-          log(`alert A${a.id}: ${reason}`);
-          // A limit pause has had its one notification already (D85); the alert still goes to the push channel.
-          if (!notified) notify(env, basename(dir), `Alert A${a.id}: ${reason}`);
-          const failed = pushAlert(config.alerts.command, { project: basename(dir), dir, message: `Jérôme · ${basename(dir)} · A${a.id}: ${reason}`, env });
+        // A new alert is notified at once; one still open, again every few hours with the runs it has cost (D128).
+        // A limit pause has had its one notification (D85) and ends by itself: it only goes to the push channel, once.
+        const remind = !a.isNew && !notified && remindDue(dir, a.id);
+        if (a.isNew || remind) {
+          const text = a.isNew ? `A${a.id}: ${reason}` : `A${a.id} still open, ${lostRuns(a)}: ${reason}`;
+          log(`alert ${text}`);
+          if (a.isNew) remindDue(dir, a.id);
+          const unseen = notified ? null : notify(env, basename(dir), `Alert ${text}`);
+          if (unseen) log(`alert notification failed: ${unseen}`);
+          const failed = pushAlert(config.alerts.command, { project: basename(dir), dir, message: `Jérôme · ${basename(dir)} · ${text}`, env });
           if (failed) log(`alert push failed: ${failed}`);
         }
       } else if (status === 'done') resolveAlerts(db);
@@ -107,15 +114,17 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
   process.once('SIGTERM', onSignal);
   try {
     const checked = await checks(dir, config);
+    if (checked.carried) log(`state files carried over from the interactive session: ${checked.carried.join(', ')}`);
     if (checked.reason) return finish('blocked', checked.reason, checked);
     const start = checked.start;
     record.mode = start.mode;
+    const carried = checked.carried ? ` (state files carried over: ${checked.carried.join(', ')})` : '';
 
     // Limits (D84, D124): a window at or over its limit pauses heartbeats, at zero tokens, until it resets; the project
     // may set its own thresholds on the windows, and an override lifts all of it for the day. The user is notified
     // once per pause, not at every heartbeat (D85).
-    let note = '';
-    if (overrideToday(dir, now)) note = ' (quota override for today)';
+    let note = carried;
+    if (overrideToday(dir, now)) note += ' (quota override for today)';
     else {
       const account = readAccount();
       const quota = { ...(config.quota.fiveHour ? { five_hour: config.quota.fiveHour } : {}), ...(config.quota.sevenDay ? { seven_day: config.quota.sevenDay } : {}) };
@@ -141,7 +150,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
     // RESUME (D119): half-done work is finished or dropped before anything new, with no triage.
     if (start.mode === 'resume') {
-      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, [], { config, slot, resume: start.why }) }, caps, given, settings, env, config, stopper, record);
+      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, [], { config, slot, resume: start.why }) }, caps, given, settings, env, config, stopper, record, slot);
       return finish(lead.status, `resume: ${start.why} → ${lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey });
     }
 
@@ -179,7 +188,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     setRunArea(dir, run, area.name);
 
     const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot });
-    const lead = await leadRun(dir, run, { label: `lead agent: ${triage.task}`, prompt }, caps, given, settings, env, config, stopper, record);
+    const lead = await leadRun(dir, run, { label: `lead agent: ${triage.task}`, prompt }, caps, given, settings, env, config, stopper, record, slot);
     writeLast(dir, { fingerprint: projectFingerprint(dir), verdict: 'work', at: new Date().toISOString() });
     // The pages' new hashes count only once the area's heartbeat has done its work (D111).
     if (lead.status === 'done' && area.watch) saveHashes(jobLabel(dir), area.name, area.watch.pending);
@@ -193,11 +202,11 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
 // The lead agent's run and what follows it, the same in both modes: the session closed, the requests it opened
 // notified, the end check (D120), the RESUME flag set or cleared, and a tree left on a branch tidied (D112).
-async function leadRun(dir, run, { label, prompt }, caps, given, settings, env, config, stopper, record) {
+async function leadRun(dir, run, { label, prompt }, caps, given, settings, env, config, stopper, record, slot) {
   const before = openRequests(dir);
   const digestBefore = digestLines(dir);
   const maxMs = config.maxMinutes * 60_000;
-  const lead = await runLead(dir, run, { label, prompt }, caps, settings.model ?? 'opus', env, maxMs, stopper);
+  const lead = await runLead(dir, run, { label, prompt }, caps, settings.model ?? 'opus', env, maxMs, stopper, runAllowed(config, slot));
   closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
   const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
   for (const r of opened) notify(env, basename(dir), `Decision request R${r.id}: ${r.question}`);
@@ -215,13 +224,17 @@ async function leadRun(dir, run, { label, prompt }, caps, given, settings, env, 
   }
   const notes = check.notes.length ? ` (${check.notes.join('; ')})` : '';
   // One open alert for a run that ended badly, whatever stopped it, counted again while the next runs do too.
-  const result = (status, reason, alert = !check.ok) => ({ status, reason, alert, alertKey: lead.timedOut ? 'max duration' : 'end check' });
+  const result = (status, reason, alert = !check.ok, alertKey = lead.timedOut ? 'max duration' : 'end check') => ({ status, reason, alert, alertKey });
   const after = check.ok ? '' : `; end check: ${failed}${tidy}; next run resumes`;
   if (lead.capped) return result('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${capDetail(given.tokens, lead.byAgent)}${after}`);
   if (lead.subtype === 'error_max_turns') return result('stopped', `turn cap: ${caps.maxTurns} turns${given.turns ? ' (this run)' : ''}${after}`);
   if (lead.timedOut) return result('stopped', `max duration: ${config.maxMinutes} min, process tree stopped${after}`, true);
   if (lead.interrupted) return result('stopped', `interrupted${after}`);
   if (lead.error) return result('failed', `${lead.error}${after}`);
+  // A run refused a tool did not do what it was asked, whatever its end check says (D129).
+  if (lead.denied.length) {
+    return result('blocked', `permission denied for ${lead.denied.slice(0, 3).join(', ')}${lead.denied.length > 3 ? `, and ${lead.denied.length - 3} more` : ''}: add the rules to heartbeat.allow in .jerome/project.json${after}`, true, 'permission denied');
+  }
   if (!check.ok) return result('failed', `end check: ${failed}${tidy}; next run resumes`);
   return result('done', `done${notes}`);
 }
@@ -347,7 +360,7 @@ function openRequests(dir) {
 
 // The reasons of a blocked heartbeat that only the user can clear, as `checks` and `startState` write them:
 // `jerome projects` puts these projects first (D114). A lock and a limit pause clear by themselves.
-const NEEDS_YOU = [/^the folder is not trusted/, /^PROJECT\.md is provisional/, /^not a git repository/, /^uncommitted changes/, /^jerome doctor failed/,
+const NEEDS_YOU = [/^the folder is not trusted/, /^permission denied for /, /^state files .* could not be committed/, /^PROJECT\.md is provisional/, /^not a git repository/, /^uncommitted changes/, /^jerome doctor failed/,
   /^on branch .*, neither/, /^detached HEAD/, /^a [a-z-]+ in progress/, /^no slot /];
 export const needsYou = (reason) => NEEDS_YOU.some((r) => r.test(String(reason ?? '')));
 // A stop by a cap given for that run only (D108): a manual trial, not something to call the user for. Runs keep
@@ -371,17 +384,22 @@ async function checks(dir, config) {
       request: { question: 'PROJECT.md is still provisional: open a session so the lead agent converts brief.md with your confirmation.', recommendation: 'Open a session with `claude`.' },
     };
   }
+  // The interactive lead agent's bookkeeping left on main is committed, not mistaken for someone's work (D127).
+  const carry = carryState(dir, config);
+  if (carry?.error) return { reason: `state files (${carry.files.join(', ')}) could not be committed: ${carry.error}`, alert: true };
+  const carried = carry?.files ?? null;
   const start = startState(dir, config);
-  if (start.mode === 'skip') return { reason: start.reason, alert: start.alert === true };
+  if (start.mode === 'skip') return { reason: start.reason, alert: start.alert === true, carried };
   const report = await runDoctor(dir, { setup: true, fix: true });
   if (!report.ok) {
     const failed = report.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`);
     return {
+      carried,
       reason: `jerome doctor failed: ${failed.join('; ')}`,
       request: { question: `Run \`jerome doctor\` in ${dir} and fix what it reports: ${failed.join('; ')}.`, recommendation: 'Fix it; the next heartbeat starts by itself.' },
     };
   }
-  return { reason: null, start };
+  return { reason: null, start, carried };
 }
 
 // What the triage looks at: when none of it changed since a "no work" verdict, there is nothing new to do. A slot's
@@ -539,6 +557,7 @@ ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Never ask the user, and never push, deploy, publish or send mail. For an important decision (see jerome.md), run \`jerome request open --question "…" --options "…" --recommendation "…"\`, then go on with the parts of the task that do not depend on it. Make minor, reversible choices yourself, as assumptions in open.md.${asked}
 - Verify with ${tests}, and with whatever PROJECT.md asks for, such as screenshots of visual changes. When it passes with no conflicts, merge the branch into ${main} and report it; if it fails or there is a conflict, open a decision request instead.
 - Run each command that changes the repository on its own, and stage explicit paths: never \`git add -A\`, \`git add .\` or \`git commit -a\`.
+- A command you are not allowed to run is refused, and the runner reports it to the user: do not work around it with another command; say which one in your last lines.
 - Before ending, append one line to .jerome/digest.md: \`- YYYY-MM-DD HH:MM · ${area ? `${area.name} · ` : ''}what you did · branches merged · requests opened\`, and update open.md. Commit them with your work, and END ON ${main.toUpperCase()} WITH A CLEAN WORKING TREE: the runner checks it, and anything else is an alert for the user.${config?.prompt ? `\n- ${config.prompt}` : ''}
 - End with at most 3 lines.`;
 }
@@ -547,18 +566,24 @@ ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 // passed to Claude Code and the token cap enforced here (D109): from the usage in the stream and, every few seconds,
 // from the session's transcripts, subagents included; the larger count decides. Claude Code is started in its own
 // process group with no ceiling on waiting for background work (D120), and the max duration stops the whole group.
+// It may use, beyond the project's allow rules, the tools the run allows (D129); a tool it is refused anyway, by
+// the permission mode with nobody to ask, is reported. A hook's refusal is not: the agent is told why and goes on.
 const METER_MS = Number(process.env.JEROME_METER_MS) || 3000;
 const KILL_GRACE_MS = 10_000;
 
-function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper) {
+function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, allowed = []) {
   return new Promise((done) => {
     const child = spawn('claude', ['-p', prompt, '--model', model, '--max-turns', String(caps.maxTurns),
-      '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose', '--session-id', run.sessionId], {
+      '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose', '--session-id', run.sessionId,
+      ...(allowed.length ? ['--allowedTools', ...allowed] : [])], {
       cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], detached: true,
       env: { ...env, JEROME_RUN_KIND: 'heartbeat', JEROME_SESSION_ID: run.sessionId, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '0' },
     });
     const usage = new Map();
-    const state = { tokens: 0, byAgent: {}, capped: false, timedOut: false, interrupted: false, subtype: null, error: null, exitCode: null };
+    const state = { tokens: 0, byAgent: {}, capped: false, timedOut: false, interrupted: false, subtype: null, error: null, exitCode: null, denied: [] };
+    // The tool calls seen in the stream, by id, to name what a denial refused; the denials, by id.
+    const calls = new Map();
+    const denials = new Map();
     // The whole tree: Claude Code, its tools' processes and anything they left running.
     const killTree = (signal) => {
       try {
@@ -600,7 +625,13 @@ function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper) 
         return;
       }
       progress.update(actionOf(e) ? `lead agent: ${actionOf(e)} · ${state.tokens.toLocaleString('en')} tokens` : null);
-      if (e.type === 'assistant' && e.message?.usage) {
+      if (e.type === 'assistant') {
+        for (const c of e.message?.content ?? []) if (c?.type === 'tool_use') calls.set(c.id, { name: c.name, input: c.input });
+      }
+      if (e.type === 'system' && e.subtype === 'permission_denied' && e.decision_reason_type !== 'rule') {
+        // A deny rule of the project's is a refusal on purpose; anything else is a tool the run was not given.
+        denials.set(e.tool_use_id, e.tool_name);
+      } else if (e.type === 'assistant' && e.message?.usage) {
         const u = e.message.usage;
         const tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
         const key = e.message.id ?? `${usage.size}`;
@@ -610,6 +641,7 @@ function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper) 
       } else if (e.type === 'rate_limit_event') {
         recordRateLimit(e.rate_limit_info, 'heartbeat');
       } else if (e.type === 'result') {
+        for (const d of e.permission_denials ?? []) if (denials.has(d.tool_use_id)) calls.set(d.tool_use_id, { name: d.tool_name, input: d.tool_input });
         state.subtype = e.subtype ?? null;
         if (e.is_error && e.subtype !== 'error_max_turns') state.error = `${e.subtype ?? 'error'}: ${String(e.result ?? '').slice(0, 200)}`;
       }
@@ -620,6 +652,7 @@ function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper) 
       killTree('SIGTERM');
     });
     const end = () => {
+      state.denied = [...new Set([...denials].map(([id, name]) => deniedRule(calls.get(id) ?? { name })))];
       clearInterval(timer);
       clearTimeout(deadline);
       stopper.stop = null;
@@ -636,6 +669,20 @@ function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper) 
       end();
     });
   });
+}
+
+// A refused tool call as the rule that would allow it: "Bash(npm run e2e)", "WebFetch(domain:x.org)", "Skill".
+export function deniedRule({ name, input = {} }) {
+  const short = (x) => (x.length > 80 ? `${x.slice(0, 79)}…` : x);
+  if (name === 'Bash' && input.command) return `Bash(${short(String(input.command).trim())})`;
+  if (name === 'WebFetch' && input.url) {
+    try {
+      return `WebFetch(domain:${new URL(input.url).hostname})`;
+    } catch {
+      return 'WebFetch';
+    }
+  }
+  return name ?? 'a tool';
 }
 
 // The subscription windows from a headless run (D20, D52), as fractions in the rate_limit_event.
@@ -667,14 +714,33 @@ function notifyOnce(dir, env, key, message) {
   notify(env, basename(dir), message);
 }
 
-// A local macOS notification when the user is needed (D74). No external channel. JEROME_NOTIFY_LOG writes the
-// notifications to a file instead, for tests.
+// Whether an open alert is due a reminder (D128): true when it has had none for REMIND_HOURS, and then it counts as
+// reminded now. The first notification of an alert counts as one.
+function remindDue(dir, id, now = Date.now()) {
+  const path = cacheDir('notified', `${jobLabel(dir)}.alerts.json`);
+  let sent = {};
+  try {
+    sent = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    // None sent yet.
+  }
+  if (sent[id] && now - Date.parse(sent[id]) < REMIND_HOURS * 3_600_000) return false;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify({ ...sent, [id]: new Date(now).toISOString() })}\n`);
+  return true;
+}
+
+// A local macOS notification when the user is needed (D74), the channel every project has (D128). Returns why it
+// could not be shown, or null. JEROME_NOTIFY_LOG writes the notifications to a file instead, for tests.
 function notify(env, project, message) {
   if (env.JEROME_NOTIFY_LOG) {
     writeFileSync(env.JEROME_NOTIFY_LOG, `${project}: ${message}\n`, { flag: 'a' });
-    return;
+    return null;
   }
-  if (env.JEROME_NOTIFY === 'off' || process.platform !== 'darwin') return;
+  if (env.JEROME_NOTIFY === 'off') return null;
+  if (process.platform !== 'darwin') return 'notifications are shown on macOS only: set heartbeat.alerts.command';
   const quote = (s) => `"${String(s).replace(/["\\]/g, '\\$&')}"`;
-  spawnSync('osascript', ['-e', `display notification ${quote(message)} with title ${quote(`Jérôme · ${project}`)}`], { stdio: 'ignore', timeout: 5000 });
+  const r = spawnSync('osascript', ['-e', `display notification ${quote(message)} with title ${quote(`Jérôme · ${project}`)}`], { encoding: 'utf8', timeout: 5000 });
+  if (r.error) return r.error.message;
+  return r.status === 0 ? null : (r.stderr.trim() || `osascript exited with ${r.status}`);
 }

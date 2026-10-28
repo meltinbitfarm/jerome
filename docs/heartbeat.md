@@ -31,12 +31,14 @@ A project that runs several times a day, or wants different work at different ti
 "heartbeat": {
   "slots": [
     { "name": "morning", "at": ["09:00"] },
-    { "name": "evening", "at": ["18:00", "21:30"], "days": ["mon", "tue", "wed", "thu", "fri"], "text": "Polish copy and fix small bugs only." }
+    { "name": "evening", "at": ["18:00", "21:30"], "days": ["mon", "tue", "wed", "thu", "fri"], "text": "Polish copy and fix small bugs only." },
+    { "name": "results", "at": ["07:30"], "text": "Import yesterday's results with tools/import.sh.", "allow": ["Bash(./tools/import.sh:*)"] }
   ],
   "mainBranch": "main",
   "workBranch": "agent/*",
   "maxMinutes": 90,
   "test": "npm test",
+  "allow": ["Bash(./tools/fetch-results.sh:*)", "WebFetch(domain:example.org)"],
   "quota": { "fiveHour": 70, "sevenDay": 80 },
   "alerts": { "command": "curl -fsS -d @- \"$(cat ~/.config/jerome/ntfy-url)\"" },
   "maxTokens": 500000,
@@ -46,11 +48,12 @@ A project that runs several times a day, or wants different work at different ti
 
 | Setting | Default | What it does |
 |---|---|---|
-| `slots` | none | `name` (lower case, digits, dashes), `at` (`"09:00"`, or `"*:15"` for every hour at :15), `days` (`mon` … `sun`; every day without it), `text` |
+| `slots` | none | `name` (lower case, digits, dashes), `at` (`"09:00"`, or `"*:15"` for every hour at :15), `days` (`mon` … `sun`; every day without it), `text`, `allow` (that slot's own [permission rules](#permissions)) |
 | `mainBranch` | `main` | where every run must end |
 | `workBranch` | `agent/*` | the pattern of the lead agent's branches; a `*` is required |
 | `maxMinutes` | 90 | hard limit on a run's length, after which its whole process tree is stopped |
-| `test` | none | the command the lead agent verifies with before merging; without it, "the project's tests" |
+| `test` | none | the command the lead agent verifies with before merging, allowed in every run; without it, "the project's tests" |
+| `allow` | none | permission rules for every run, beyond the project's own: see [permissions](#permissions) |
 | `quota` | the global limits | this project's own thresholds on the 5-hour and 7-day windows, in % |
 | `alerts.command` | none | the push channel for [alerts](#alerts); see there |
 | `prompt` | none | one more line added to every run's lead agent prompt |
@@ -63,7 +66,7 @@ jerome heartbeat status       # jobs, the run going on, alerts, the latest runs
 jerome heartbeat uninstall    # removes them, keeps the settings
 ```
 
-`install` refuses settings it cannot use, with what to fix, and removes the jobs of slots you took out; `jerome doctor` reports both too. `jerome schedule` stays the shorthand for a single run and refuses a project with slots. Ask the lead agent to change the slots: it edits `project.json` and runs `install`.
+`install` refuses settings it cannot use, with what to fix, lists what each slot's runs are allowed beyond the project's rules, and removes the jobs of slots you took out; `jerome doctor` reports both too. `jerome schedule` stays the shorthand for a single run and refuses a project with slots. Ask the lead agent to change the slots: it edits `project.json` and runs `install`.
 
 ## How it is started
 
@@ -81,6 +84,7 @@ Each project has one log, `~/.cache/jerome/logs/<project>.log`: one line per run
 2. **Checks**, each opening a decision request when you have to act, once until you answer it: the folder is trusted in Claude Code, which otherwise ignores the project's allow rules, and `PROJECT.md` is not provisional.
 3. **Start state.** Where the repository is decides the run's mode:
    - on `main` with a clean tracked tree: a **normal** run;
+   - on `main` with uncommitted changes to the lead agent's state files only (the Markdown files of `.jerome/`, such as `open.md`, `decisions.md`, `archive.md`, `digest.md`, and `.jerome/notes/`), left by an interactive session: the run **commits them first**, by name, as `State: carried over from the interactive session`, and goes on as a normal run (D127). Any other changed file, even one alongside them, still skips the run with an alert, and nothing is committed;
    - on a work branch (`agent/*`), or with what a heartbeat left behind (a dirty tree, a merge or rebase in progress, a branch it ended on, after an end check that failed), or with a work branch that has commits `main` lacks: a **RESUME** run;
    - anything else (uncommitted changes on `main` that no heartbeat left, another branch, a detached HEAD, a merge nobody's run started): **skipped with an alert at once**, and nothing is touched. Your own uncommitted work is never resumed.
 4. **Doctor.** `jerome doctor` passes: setup, lean profile, hooks and permission rules. Its `/context` check uses no tokens.
@@ -90,7 +94,19 @@ Each project has one log, `~/.cache/jerome/logs/<project>.log`: one line per run
 8. **Nothing changed.** If neither the commits, `open.md`, `decisions.md`, `scope.md`, `areas.md`, the areas due, the slot nor the answered decision requests changed since a heartbeat found no work, it stops here at zero tokens.
 9. **Triage.** A call on Haiku, with no tools and outside the project, reads the areas due, highest priority first, with their goal, milestone and criteria, the slot's text, then `open.md`, the latest commits, the decision requests and the latest digest lines. It answers whether there is one task the lead agent can do now without you, and in which area. A task that depends on an open request or question is not one, nor an item marked for an interactive session or under a parked or ideas section; an area with an open request still has the others; the assumptions of `open.md` hold nothing up; an answered request that changes an area's milestone comes first; when an area's criteria look all met, the task is to check them. An area that was not due is never taken. Its whole verdict is kept with the run. About 5,000 tokens.
 10. **Lead agent.** Only then: a new session, never a resumed one, on Opus by default, with the task, its area, the slot's text, the requests still open, the turn cap and the project's permission rules. Its prompt, shipped with Jérôme and the same for every project, says: one task, on a new `agent/<name>` branch; delegate to the project's agents in the foreground and wait for every result; never ask, push, deploy, publish or send mail; verify with the project's `test` command and what `PROJECT.md` asks for (such as screenshots of visual changes); merge into `main` when that passes with no conflicts, one repository-changing command per call, staging named paths; otherwise a decision request; append its line to `.jerome/digest.md`, update `open.md`, and end on `main` with a clean tree.
-11. **End check**, after every run of the lead agent: back on `main`, tracked tree clean, no merge or rebase in progress, a line added to `.jerome/digest.md`, and Claude Code exited with 0 within the max duration. Anything else fails the run, raises an [alert](#alerts) at once, and the next run starts in RESUME mode.
+11. **End check**, after every run of the lead agent: back on `main`, tracked tree clean, no merge or rebase in progress, a line added to `.jerome/digest.md`, and Claude Code exited with 0 within the max duration. Anything else fails the run, raises an [alert](#alerts) at once, and the next run starts in RESUME mode. A run refused a tool ends `blocked` whatever its end check says: see [permissions](#permissions).
+
+### Permissions
+
+A heartbeat runs with `--permission-mode acceptEdits`: file edits are allowed, and any other tool call that the project's allow rules (`.claude/settings.json`) do not cover would need someone to approve it. Nobody is there, so it is refused. Each run is therefore also given, with `--allowedTools` (D129):
+
+- the `test` command, as `Bash(npm test)` and `Bash(npm test:*)`, since its prompt tells it to run it;
+- the rules in `heartbeat.allow`, for every run;
+- the rules in the slot's `allow`, for that slot's runs only, such as the script its text names.
+
+The rules are Claude Code's: `Bash(./tools/import.sh:*)` for a command and any arguments, `Bash(npm run e2e)` for that exact command, `WebFetch(domain:example.org)`. `jerome heartbeat install` prints them for each slot.
+
+A tool call refused anyway, by the lead agent or one of its subagents, ends the run as `blocked: permission denied for Bash(npm run e2e): add the rules to heartbeat.allow in .jerome/project.json`, with an alert at once, even when its end check passed: a run that could not run what it needed did not do its task. A call refused by a `deny` rule of the project's, or by Jérôme's own hooks (such as `git add -A`), is a refusal on purpose and does not count.
 
 ### Bounds on the lead agent
 
@@ -111,7 +127,7 @@ Its usage is recorded by the [hooks](hooks.md), and the subscription windows it 
 
 An alert is something wrong with the autonomous runs themselves, as opposed to a decision. It is raised:
 
-- **at once** for a failed end check, a run stopped at its max duration, a start state that no heartbeat left (your changes on `main`, another branch, a detached HEAD, a merge in progress), or a slot job whose slot is gone;
+- **at once** for a failed end check, a run stopped at its max duration, a tool refused (see [permissions](#permissions)), a start state that no heartbeat left (your changes on `main`, another branch, a detached HEAD, a merge in progress), or a slot job whose slot is gone;
 - **on the second time in a row** for any other skip or failure with the same reason: a limit pause, a failed triage, an untrusted folder. A run that finds the lock taken is never an alert: the lock clears by itself.
 
 Alerts live in the project database, like decision requests, and never in a tracked file. They show:
@@ -120,10 +136,10 @@ Alerts live in the project database, like decision requests, and never in a trac
 - at the start of your next session: `SessionStart` gives them to the lead agent, which tells you about them before anything else, and shows you a line of its own;
 - in `jerome projects`, as the first reason a project needs you;
 - in `jerome heartbeat status`, with the detail;
-- as a macOS notification when one opens (a limit pause keeps its single notification, D85);
-- through the push channel, if the project has one.
+- as a macOS notification when one opens, and again every 3 hours while it stays open and runs keep hitting it (D128); a limit pause keeps its single notification (D85). If the notification cannot be shown, the log says why;
+- through the push channel, if the project has one, at the same times.
 
-An open alert counts its repeats rather than opening another. All of a project's alerts close by themselves when a heartbeat ends well.
+An open alert counts its repeats rather than opening another, and everywhere it is shown says what it has cost: `A3 uncommitted changes (src/app.js) on main, … (5 runs lost since 2026-10-27 18:00)`. A macOS notification reaches you only at that Mac: on a machine you do not sit at, set a push channel. All of a project's alerts close by themselves when a heartbeat ends well.
 
 **Push channel.** Off by default. `heartbeat.alerts.command` in `.jerome/project.json` is a shell command run in the project's folder, with the alert on standard input and in `JEROME_ALERT_PROJECT` and `JEROME_ALERT_MESSAGE`; its output is never logged. That file is versioned, so the command must hold no secret: have it read one from your machine, as in `curl -fsS -d @- "$(cat ~/.config/jerome/ntfy-url)"`, or from the keychain.
 

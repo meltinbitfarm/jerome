@@ -10,17 +10,17 @@ export function alertKey(reason) {
   return String(reason ?? '').split(/[:(]/)[0].replace(/\d+/g, '#').trim().slice(0, 80) || 'unknown';
 }
 
-// Opens an alert, or counts one more on the open alert with the same key. Returns { id, isNew }. An alert opened
-// on a repeat starts at the number of times it has happened.
+// Opens an alert, or counts one more on the open alert with the same key. Returns { id, isNew, count, openedAt }.
+// An alert opened on a repeat starts at the number of times it has happened.
 export function raiseAlert(db, { reason, key = alertKey(reason), runId = null, count = 1, now = new Date() }) {
   const at = now.toISOString();
-  const open = db.prepare("SELECT id FROM alerts WHERE status = 'open' AND key = ?").get(key);
+  const open = db.prepare("SELECT id, count, opened_at FROM alerts WHERE status = 'open' AND key = ?").get(key);
   if (open) {
     db.prepare('UPDATE alerts SET count = count + 1, last_at = ?, reason = ?, run_id = coalesce(?, run_id) WHERE id = ?').run(at, reason, runId, open.id);
-    return { id: open.id, isNew: false };
+    return { id: open.id, isNew: false, count: open.count + 1, openedAt: open.opened_at };
   }
   const id = Number(db.prepare('INSERT INTO alerts (run_id, key, reason, opened_at, last_at, count) VALUES (?, ?, ?, ?, ?, ?)').run(runId, key, reason, at, at, count).lastInsertRowid);
-  return { id, isNew: true };
+  return { id, isNew: true, count, openedAt: at };
 }
 
 export function resolveAlerts(db, now = new Date()) {
@@ -50,8 +50,16 @@ export function pushAlert(command, { project, dir, message, env = process.env })
   return r.status === 0 ? null : `the alert command exited with ${r.status}`;
 }
 
+// What an alert has cost (D128): each run counted on it is one that did not do its work. "5 runs lost since
+// 2026-10-27 18:00", in local time.
+export function lostRuns(a) {
+  const d = new Date(a.openedAt);
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${a.count} ${a.count === 1 ? 'run' : 'runs'} lost since ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // For SessionStart: the open alerts, to tell the user before anything else.
 export function alertsContext(alerts) {
   return ['Heartbeat alerts: the autonomous runs of this project went wrong or keep being skipped. Tell the user about them first, in your first reply, before anything else, with what each one needs from them; `jerome heartbeat status` gives the detail. They close by themselves when a heartbeat ends well.', '',
-    ...alerts.map((a) => `A${a.id}: ${a.reason}${a.count > 1 ? ` (${a.count} times, last ${a.lastAt.slice(0, 16).replace('T', ' ')} UTC)` : ''}`)].join('\n');
+    ...alerts.map((a) => `A${a.id}: ${a.reason} (${lostRuns(a)})`)].join('\n');
 }

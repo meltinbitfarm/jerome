@@ -12,7 +12,7 @@ import { readAccount, WINDOWS } from './account.js';
 import { notProjectHint } from './paths.js';
 import { readAreas, agentAreas } from './areas.js';
 import { readAssumptions } from './assumptions.js';
-import { openAlerts } from './alerts.js';
+import { openAlerts, lostRuns } from './alerts.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
 
@@ -222,7 +222,7 @@ export function formatState(s, { replies = false } = {}) {
   const now = new Date(s.at);
   const lines = [`${s.project}${s.agent ? ` · agent ${s.agent}` : ''} · state at ${when(s.at, now, true)}`];
   if (s.alerts?.length) {
-    lines.push(`ALERTS  ${s.alerts.map((a) => `A${a.id} ${a.reason}${a.count > 1 ? ` (${a.count} times)` : ''} (${when(a.lastAt, now)})`).join(' · ')}`);
+    lines.push(`ALERTS  ${s.alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}`);
     lines.push('        tell the user first; `jerome heartbeat status` gives the detail');
   }
   const { today, week } = s.usage;

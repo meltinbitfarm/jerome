@@ -130,6 +130,25 @@ export function uncommitted(dir) {
   return r.stdout.split('\n').filter(Boolean).map((l) => l.slice(3)).filter((f) => f !== STATE.digest && f !== MARKER);
 }
 
+// The lead agent's state files (D127): the Markdown files of .jerome/ and its notes. The project's settings and
+// database are not among them.
+export function isStateFile(file) {
+  return file.startsWith('.jerome/') && (file.endsWith('.md') || file.startsWith('.jerome/notes/'));
+}
+
+export const CARRY_MESSAGE = 'State: carried over from the interactive session';
+
+// Uncommitted changes on main limited to the state files (D127) are the interactive lead agent's bookkeeping, not
+// work in progress: the run commits them, by their paths, and starts. Null when there is nothing of the kind to
+// carry (changes to anything else still stop the run, in startState); { files } once committed; { files, error }.
+export function carryState(dir, config, resume = readResume(dir)) {
+  if (resume || operationInProgress(dir) || currentBranch(dir) !== config.mainBranch) return null;
+  const files = uncommitted(dir) ?? [];
+  if (!files.length || !files.every((f) => isStateFile(f) && !f.includes(' -> '))) return null;
+  const r = git(dir, 'commit', '-q', '-m', CARRY_MESSAGE, '--', ...files);
+  return r.status === 0 ? { files } : { files, error: (r.stderr || r.stdout).trim().split('\n').pop() || `git commit exited with ${r.status}` };
+}
+
 // A merge, rebase, cherry-pick or revert left in progress, from the files git keeps while one is.
 export function operationInProgress(dir) {
   const r = git(dir, 'rev-parse', '--absolute-git-dir');
@@ -213,7 +232,7 @@ export function endCheck(dir, config, { digestBefore, exitCode, timedOut, stoppe
   const branch = currentBranch(dir);
   if (branch !== config.mainBranch) failures.push(`ended on ${branch === 'HEAD' ? 'a detached HEAD' : `branch ${branch}`}, not ${config.mainBranch}`);
   const dirty = uncommitted(dir) ?? [];
-  const stateOnly = dirty.length && dirty.every((f) => f.startsWith('.jerome/') && f.endsWith('.md'));
+  const stateOnly = dirty.length && dirty.every(isStateFile);
   if (dirty.length && interactive && stateOnly) notes.push(`state files changed by the interactive session: ${dirty.join(', ')}`);
   else if (dirty.length) failures.push(`uncommitted changes (${dirty.slice(0, 3).join(', ')}${dirty.length > 3 ? ', …' : ''})`);
   if (digestLines(dir) <= digestBefore) failures.push('no line added to .jerome/digest.md');

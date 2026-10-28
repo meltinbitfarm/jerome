@@ -25,9 +25,10 @@ Jérôme's runner (D118-D125) guarantees what such scripts usually miss:
 3. **Map them to settings**, under `heartbeat` in `.jerome/project.json` (see [heartbeat.md](heartbeat.md#slots)):
    - each scheduled time with its own instructions → one slot, `{ "name": "evening", "at": ["18:00"], "days": [...], "text": "..." }`; times sharing the same instructions → one slot with several `at`;
    - the branch it worked on → `mainBranch`, and the prefix of its work branches → `workBranch` (default `agent/*`);
-   - a timeout → `maxMinutes`; a quota threshold → `quota.fiveHour` / `quota.sevenDay`; the test command → `test`;
+   - a timeout → `maxMinutes`; a quota threshold → `quota.fiveHour` / `quota.sevenDay`; the test command → `test` (allowed in every run);
+   - every command the old runs executed that the project's allow rules (`.claude/settings.json`) do not cover → `allow`, or the slot's `allow` when only that slot uses it, as permission rules such as `"Bash(./tools/import.sh:*)"` (see [heartbeat.md](heartbeat.md#permissions)). A heartbeat has nobody to approve a command: one that is not allowed is refused, and the run ends blocked with an alert. Old scripts often ran with `--dangerously-skip-permissions`, so list these carefully;
    - instructions common to every run, beyond Jérôme's own prompt → `prompt` (one line). Drop those Jérôme's prompt already gives: one task, branch, foreground delegation, no push or deploy, merge when tests pass, digest line, end on main clean;
-   - a notification hook → `alerts.command`. **No secret in it:** `project.json` is versioned. Move a webhook URL or token to a file outside the repository (such as `~/.config/jerome/<name>`) or the keychain, and have the command read it.
+   - a notification hook → `alerts.command`; on a machine the user does not sit at, set one, since the macOS notifications are shown only there. **No secret in it:** `project.json` is versioned. Move a webhook URL or token to a file outside the repository (such as `~/.config/jerome/<name>`) or the keychain, and have the command read it.
 
    An "until hour X" loop needs no setting: it becomes `jerome heartbeat marathon --until HH:MM`, started by hand.
 
@@ -35,7 +36,7 @@ Jérôme's runner (D118-D125) guarantees what such scripts usually miss:
 
 5. **Stop the old setup before starting the new one** (needs the user to confirm each removal): unload and delete each old job (`launchctl bootout gui/$(id -u)/<label>`, then delete its plist), remove the cron lines, and stop any loop still running (`ps aux | grep claude`). Two schedulers on one project would race, and the old one bypasses every guarantee. Move the old scripts to an `archive/` folder or delete them, with a commit of their own.
 
-6. **Bring the repository to its start state.** `git status` and `git branch`: the tree must be on `main` and clean. A half-done branch left by the old runs can stay if it matches `workBranch`, and the first run will resume it; rename it to match (`git branch -m old agent/old`) if it does not. Your own uncommitted changes must be committed or discarded by the user, otherwise the first run is skipped with an alert.
+6. **Bring the repository to its start state.** `git status` and `git branch`: the tree must be on `main` and clean. A half-done branch left by the old runs can stay if it matches `workBranch`, and the first run will resume it; rename it to match (`git branch -m old agent/old`) if it does not. Your own uncommitted changes must be committed or discarded by the user, otherwise the first run is skipped with an alert; changes to the state files of `.jerome/` alone are committed by the run itself.
 
 7. **Install and check.**
    ```sh
@@ -50,7 +51,7 @@ Jérôme's runner (D118-D125) guarantees what such scripts usually miss:
    jerome heartbeat run <slot> --max-tokens 100000
    jerome heartbeat status
    ```
-   The run's line shows its mode, length, exit code and `end check ok` or what failed; a failure is an alert, and the next run resumes.
+   The run's line shows its mode, length, exit code and `end check ok` or what failed; a failure is an alert, and the next run resumes. `blocked: permission denied for …` names a command to add to `allow`.
 
 9. **Update the project's own instructions.** Remove from `PROJECT.md`, `CLAUDE.md` or notes any rule about the old scripts (how to start them, the branch check, the hour loop). Jérôme's rules (`.claude/rules/jerome.md`, updated by `jerome update`) now say to run unattended work only with `jerome heartbeat`.
 

@@ -120,7 +120,7 @@ test('4. two skips in a row for the same reason open an alert, shown in jerome s
   const state = p.run('state', 'demo').stdout.split('\n');
   assert.match(state[1], /^ALERTS {2}A1 global limit: 7d 60% ≥ 50% \(/);
   const start = JSON.parse(p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'talk', source: 'startup' }), 'hook', 'session-start').stdout);
-  assert.match(start.hookSpecificOutput.additionalContext, /^Heartbeat alerts: .*Tell the user about them first[\s\S]*A1: global limit: 7d 60% ≥ 50% \(2 times/);
+  assert.match(start.hookSpecificOutput.additionalContext, /^Heartbeat alerts: .*Tell the user about them first[\s\S]*A1: global limit: 7d 60% ≥ 50% \(2 runs lost since /);
   assert.match(start.systemMessage, /^Jérôme: 1 heartbeat alert: A1 global limit/);
   const overview = JSON.parse(p.run('projects', '--json').stdout).projects[0];
   assert.match(overview.attention[0], /^1 heartbeat alert: A1 global limit/);
@@ -233,7 +233,7 @@ test('8. install and uninstall are idempotent, slots run with their text, and st
   const files = () => readdirSync(agents).sort().map((f) => [f, readFileSync(join(agents, f), 'utf8')]);
   const first = p.run('heartbeat', 'install', 'demo');
   assert.equal(first.status, 0, first.stderr);
-  assert.match(first.stdout, /✓ slot morning: 09:00 \(.*\.morning\)\n✓ slot evening: 18:00, 21:30 on mon, fri/);
+  assert.match(first.stdout, /✓ slot morning: 09:00 \(.*\.morning\)\n  allowed: Bash\(npm test\), Bash\(npm test:\*\)\n✓ slot evening: 18:00, 21:30 on mon, fri/);
   const once = files();
   assert.equal(once.length, 2);
   const evening = once.find(([f]) => f.endsWith('.evening.plist'))[1];
@@ -285,4 +285,79 @@ test('staging everything instead of named paths is refused in every session, hea
     assert.match(bash(command, { JEROME_RUN_KIND: 'heartbeat' }), /"deny"/, command);
   }
   for (const command of ['git add src/a.js notes.txt', 'git commit -m "add -A later"', 'git commit --amend --no-edit', 'git add -p src']) assert.equal(bash(command), '', command);
+});
+
+test('changes on main limited to the state files are committed by the run, which then starts; code changes still stop it (D127)', () => {
+  const p = project({ FAKE_TRIAGE: WORK });
+  // The run commits as the repository's user, as any commit there.
+  p.git('config', 'user.email', 't@example.com');
+  p.git('config', 'user.name', 't');
+  writeFileSync(join(p.dir, '.jerome', 'open.md'), '# Open\n');
+  p.git('add', '.jerome/open.md');
+  p.git('commit', '-q', '-m', 'open');
+  writeFileSync(join(p.dir, '.jerome', 'open.md'), '# Open\n\n- an assumption noted in a session\n');
+  p.run('heartbeat', 'demo');
+  const run = p.lastRun();
+  assert.equal(run.status, 'done', run.reason);
+  assert.match(run.reason, /\(state files carried over: \.jerome\/open\.md\)/);
+  assert.match(execFileSync('git', ['log', '--format=%s', '-3'], { cwd: p.dir, encoding: 'utf8' }), /State: carried over from the interactive session/);
+  assert.equal(p.tracked(), '');
+  assert.deepEqual(p.alerts(), []);
+
+  // With a code file among them, nothing is committed: the run stops with an alert, as before.
+  writeFileSync(join(p.dir, '.jerome', 'open.md'), '# Open\n\n- another\n');
+  writeFileSync(join(p.dir, 'README.md'), 'mine\n');
+  p.git('add', 'README.md');
+  p.git('commit', '-q', '-m', 'readme');
+  writeFileSync(join(p.dir, 'README.md'), 'mine, changed\n');
+  p.run('heartbeat', 'demo');
+  assert.match(p.lastRun().reason, /^uncommitted changes \(\.jerome\/open\.md, README\.md\) on main, not left by a heartbeat/);
+  assert.match(p.tracked(), /\.jerome\/open\.md/);
+  assert.equal(p.alerts().length, 1);
+});
+
+test('an alert still open is notified and pushed again every few hours, with the runs it has cost (D128)', () => {
+  const p = project();
+  const log = join(p.root, 'notified.log');
+  p.settings({ alerts: { command: 'cat >> "$HOME/pushed.log"' } });
+  writeFileSync(join(p.dir, 'README.md'), 'mine\n');
+  p.git('add', 'README.md');
+  p.git('commit', '-q', '-m', 'readme');
+  writeFileSync(join(p.dir, 'README.md'), 'mine, changed\n');
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1, 'no reminder within the hours');
+  // Three hours later, the next run reminds.
+  const sent = join(p.root, '.cache', 'jerome', 'notified', `${jobLabel(p.dir)}.alerts.json`);
+  writeFileSync(sent, JSON.stringify({ 1: new Date(Date.now() - 3.5 * 3_600_000).toISOString() }));
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  const notified = readFileSync(log, 'utf8').trim().split('\n');
+  assert.equal(notified.length, 2);
+  assert.match(notified[1], /^demo: Alert A1 still open, 3 runs lost since \d{4}-\d\d-\d\d \d\d:\d\d: uncommitted changes \(README\.md\)/);
+  assert.match(readFileSync(p.home('pushed.log'), 'utf8'), /A1: uncommitted[\s\S]*A1 still open, 3 runs lost/);
+
+  const status = p.run('heartbeat', 'status', 'demo').stdout;
+  assert.match(status, /^alerts {3}1 open, 3 runs lost: tell the user$/m);
+  assert.match(status, /^ {2}A1 uncommitted changes .* · 3 runs lost since /m);
+  assert.match(JSON.parse(p.run('projects', '--json').stdout).projects[0].attention[0], /^1 heartbeat alert: A1 uncommitted changes .*\(3 runs lost since /);
+});
+
+test('a run is given the test command and the allowed tools, and one refused a tool ends blocked with an alert (D129)', () => {
+  const p = project({ FAKE_TRIAGE: WORK });
+  p.settings({ allow: ['not a rule!'] });
+  assert.match(p.run('doctor', 'demo').stdout, /heartbeat\.allow: "not a rule!" is not a permission rule/);
+  p.settings({ test: 'npm test', allow: ['Bash(./tools/fetch.sh:*)'], slots: [{ name: 'evening', at: ['18:00'], allow: ['WebFetch(domain:example.org)'] }] });
+  assert.equal(p.run('heartbeat', 'install', 'demo').status, 0);
+  p.runWith({ FAKE_LEAD_DENIED: 'npm run e2e' }, 'heartbeat', 'run', 'evening', 'demo');
+  assert.match(p.calls(), /--allowedTools Bash\(npm test\) Bash\(npm test:\*\) Bash\(\.\/tools\/fetch\.sh:\*\) WebFetch\(domain:example\.org\)$/m);
+  const run = p.lastRun();
+  assert.equal(run.status, 'blocked');
+  assert.match(run.reason, /^permission denied for Bash\(npm run e2e\): add the rules to heartbeat\.allow in \.jerome\/project\.json$/);
+  assert.equal(JSON.parse(run.outcome).ok, true, 'the end check alone would have called it done');
+  assert.deepEqual(p.alerts().map((a) => a.key), ['permission denied']);
+  // A deny rule of the project's is a refusal on purpose: the run is done, and the alert closes.
+  p.runWith({ FAKE_LEAD_DENIED: 'git push', FAKE_LEAD_DENIED_TYPE: 'rule' }, 'heartbeat', 'demo');
+  assert.equal(p.lastRun().status, 'done', p.lastRun().reason);
+  assert.doesNotMatch(p.calls().trim().split('\n').pop(), /WebFetch/, 'a slot\'s rules are for its runs only');
+  assert.deepEqual(p.alerts(), []);
 });

@@ -33,11 +33,11 @@ It prints one line, written to the project's log as well:
 
 Run by hand on a terminal, it shows a progress line on standard error for the doctor check, the triage and the lead agent. Ctrl+C stops the lead agent and its whole process tree, and records the run as `stopped: interrupted`.
 
-The run's status is `done`, `blocked` (a check said no), `stopped` (a cap, the max duration, an interrupt) or `failed` (the triage, Claude Code, or the end check), with the reason. It exits with 0 once the run is recorded, and with 1 only when the folder is not a Jérôme project with a database.
+The run's status is `done`, `blocked` (a check said no, or the lead agent was refused a tool it needed), `stopped` (a cap, the max duration, an interrupt) or `failed` (the triage, Claude Code, or the end check), with the reason. It exits with 0 once the run is recorded, and with 1 only when the folder is not a Jérôme project with a database.
 
 ## install, uninstall
 
-`install` writes and loads one launchd job per slot of `heartbeat.slots` in `.jerome/project.json`, or the job of `jerome schedule` when there are no slots, and removes the project's jobs that its settings no longer list. Running it again changes nothing. It exits with 2, changing nothing, when the settings have a problem (each is listed) or when there is nothing to schedule. `uninstall` removes every job of the project and leaves its settings.
+`install` writes and loads one launchd job per slot of `heartbeat.slots` in `.jerome/project.json`, or the job of `jerome schedule` when there are no slots, and removes the project's jobs that its settings no longer list. Under each slot it prints what that slot's runs are allowed beyond the project's permission rules (the `test` command, `heartbeat.allow` and the slot's `allow`; see [permissions](../heartbeat.md#permissions)). Running it again changes nothing. It exits with 2, changing nothing, when the settings have a problem (each is listed) or when there is nothing to schedule. `uninstall` removes every job of the project and leaves its settings.
 
 ## status
 
@@ -46,8 +46,8 @@ $ jerome heartbeat status
 claude-watch · heartbeats
 jobs     morning 09:00 (loaded) · evening 18:00, 21:30 on mon, tue, wed, thu, fri (loaded)
 now      no heartbeat running
-alerts   1 open: tell the user
-  A4 end check: ended on branch agent/report, not main; next run resumes · since 2026-10-27 21:14
+alerts   1 open, 1 run lost: tell the user
+  A4 end check: ended on branch agent/report, not main; next run resumes · 1 run lost since 2026-10-27 21:14
 runs     last 3
   2026-10-27 21:00 failed [normal, evening, 14 min, exit 0, end check failed] end check: ended on branch agent/report, not main; …
   2026-10-27 18:00 done [normal, evening, 22 min, exit 0, end check ok] development: …

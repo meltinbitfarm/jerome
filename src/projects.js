@@ -13,6 +13,7 @@ import { readMarker } from './template.js';
 import { describe, launchd } from './schedule.js';
 import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { needsYou, oneRunCap } from './heartbeat.js';
+import { lostRuns } from './alerts.js';
 
 export const PROJECTS_SCHEMA = 'jerome.projects/v1';
 const INTERVAL_MS = { hourly: 3_600_000, daily: 86_400_000, weekly: 7 * 86_400_000 };
@@ -79,7 +80,7 @@ function projectRow(s, now, account) {
   }
   row.areas = st.areas.map((a) => ({ name: a.name, milestone: a.milestone ?? null, pace: a.pace ?? null }));
   row.areasImplicit = st.areasImplicit;
-  row.alerts = st.alerts.map((a) => ({ id: a.id, reason: a.reason, count: a.count, lastAt: a.lastAt }));
+  row.alerts = st.alerts.map((a) => ({ id: a.id, reason: a.reason, count: a.count, openedAt: a.openedAt, lastAt: a.lastAt }));
   row.requests = st.requests.map((r) => ({ id: r.id, question: r.question, area: r.area, openedAt: r.openedAt }));
   // Assumptions hold nothing up (D116): counted, never a reason for attention.
   row.assumptions = st.assumptions.length;
@@ -94,7 +95,7 @@ function projectRow(s, now, account) {
 // Why a project needs the user, in the order they are listed.
 function attention(row, dir, now) {
   const reasons = [];
-  if (row.alerts.length) reasons.push(`${row.alerts.length} heartbeat ${row.alerts.length === 1 ? 'alert' : 'alerts'}: ${row.alerts.map((a) => `A${a.id} ${a.reason}`).join(' · ')}`);
+  if (row.alerts.length) reasons.push(`${row.alerts.length} heartbeat ${row.alerts.length === 1 ? 'alert' : 'alerts'}: ${row.alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}`);
   if (row.requests.length) reasons.push(`${row.requests.length} open decision ${row.requests.length === 1 ? 'request' : 'requests'}: ${row.requests.map((r) => `R${r.id}`).join(', ')}`);
   const h = row.lastHeartbeat;
   // A limit is not a reason: it shows with the limits, and reaching it pauses heartbeats by itself.

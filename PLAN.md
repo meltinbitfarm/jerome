@@ -270,6 +270,8 @@ A project's lead agent wrote its own heartbeat scripts to get several runs a day
 
 Then (0.2.1, D126): the lead agent is Jérôme, with a warm, lightly ironic personality in conversation only; `jerome.md` at 842 tokens, budget 850.
 
+Then (0.2.2, D127-D129), from running heartbeats unattended on a real project: state files left on main by an interactive session are committed by the run instead of blocking it; open alerts are notified and pushed again every 3 hours and say how many runs they cost; each run is allowed its test command and the project's and slot's `allow` rules, and a run refused a tool ends blocked with an alert instead of done.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

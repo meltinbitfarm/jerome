@@ -8,6 +8,8 @@ const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const SLOT_NAME = /^[a-z0-9][a-z0-9-]{0,30}$/;
 // "09:00", or "*:15" for every hour at :15.
 const TIME = /^(\*|\d{1,2}):(\d{2})$/;
+// A Claude Code permission rule, such as "Bash(npm run e2e)", "Bash(./tools/fetch.sh:*)" or "WebFetch(domain:x.org)".
+const RULE = /^[A-Za-z][\w-]*(\(.+\))?$/s;
 
 export function heartbeatConfig(dir) {
   let h;
@@ -18,7 +20,7 @@ export function heartbeatConfig(dir) {
   }
   const problems = [];
   const where = (key) => `.jerome/project.json: heartbeat.${key}`;
-  const config = { ...DEFAULT_RUNS, quota: {}, test: null, prompt: null, alerts: { command: null }, slots: [], legacy: h.every ? h : null };
+  const config = { ...DEFAULT_RUNS, quota: {}, test: null, prompt: null, alerts: { command: null }, allow: [], slots: [], legacy: h.every ? h : null };
 
   for (const key of ['mainBranch', 'workBranch']) {
     if (h[key] === undefined) continue;
@@ -57,6 +59,8 @@ export function heartbeatConfig(dir) {
     else if (typeof command === 'string' && command.trim()) config.alerts.command = command.trim();
     else problems.push(`${where('alerts.command')} must be a shell command, or null for none.`);
   }
+  // Tools the lead agent may use in a run beyond the project's own allow rules (D129), passed as --allowedTools.
+  if (h.allow !== undefined) config.allow = readRules(h.allow, problems, where('allow'));
   if (h.slots !== undefined) {
     if (!Array.isArray(h.slots)) problems.push(`${where('slots')} must be a list of { "name", "at": ["09:00"], "days"?, "text"? }.`);
     else {
@@ -102,7 +106,26 @@ function readSlot(s, problems, where) {
     problems.push(`${where}.text must be a string; the slot is left out.`);
     return null;
   }
-  return { name: s.name, times, days, text: s.text?.trim() || null };
+  return { name: s.name, times, days, text: s.text?.trim() || null, allow: s.allow === undefined ? [] : readRules(s.allow, problems, `${where}.allow`) };
+}
+
+function readRules(list, problems, where) {
+  if (!Array.isArray(list)) {
+    problems.push(`${where} must be a list of permission rules such as "Bash(npm run e2e)".`);
+    return [];
+  }
+  return list.filter((r) => {
+    const ok = typeof r === 'string' && RULE.test(r.trim());
+    if (!ok) problems.push(`${where}: "${r}" is not a permission rule such as "Bash(npm run e2e)"; it is left out.`);
+    return ok;
+  }).map((r) => r.trim());
+}
+
+// What a run of the lead agent may do beyond the project's allow rules (D129): the test command, which the runner
+// tells it to run, and the project's and the slot's own rules.
+export function runAllowed(config, slot = null) {
+  const test = config.test ? [`Bash(${config.test})`, `Bash(${config.test}:*)`] : [];
+  return [...new Set([...test, ...config.allow, ...(slot?.allow ?? [])])];
 }
 
 // "09:00, 18:00 mon-fri"-like text for a slot.
