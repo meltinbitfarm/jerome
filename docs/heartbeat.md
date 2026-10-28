@@ -112,7 +112,7 @@ A heartbeat runs with `--permission-mode acceptEdits`: file edits are allowed, a
 - the rules in `heartbeat.allow`, for every run;
 - the rules in the slot's `allow`, for that slot's runs only, such as the script its text names.
 
-Since any command is allowed, `heartbeat.allow` and a slot's `allow` matter for the other tools, such as `WebFetch`. The rules are Claude Code's: `Bash(./tools/import.sh:*)` for a command and any arguments, `Bash(npm run e2e)` for that exact command, `WebFetch(domain:example.org)`. `jerome heartbeat install` prints them for each slot.
+Since any command, reading any file but credentials, `Monitor`, `WebSearch` and `WebFetch` are allowed (D159, D170, D171), `heartbeat.allow` and a slot's `allow` matter for the other tools, above all MCP servers, which may write or send and so run only where the project allows them: `mcp__memento` for every tool of the server `memento`, `mcp__memento__search` for one. The rules are Claude Code's: `Bash(./tools/import.sh:*)` for a command and any arguments, `Bash(npm run e2e)` for that exact command. `jerome heartbeat install` prints them for each slot.
 
 A tool call refused anyway, by the lead agent or one of its subagents, ends the run as `blocked: permission denied for Bash(npm run e2e): add the rules to heartbeat.allow in .jerome/project.json`, with an alert at once, even when its end check passed: a run that could not run what it needed did not do its task. A call refused by a `deny` rule of the project's, or by Jérôme's own hooks (such as `git add -A`), is a refusal on purpose and does not count.
 

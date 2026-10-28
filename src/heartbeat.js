@@ -679,9 +679,11 @@ ${notesBlock(notes)}` : ''}`;
 // (D159): the deny rules of settings.json, which hold whatever is allowed, and the PreToolUse hook; a tool it is
 // refused anyway, by the permission mode with nobody to ask, is reported. A hook's refusal is not: the agent is told why and goes on.
 const METER_MS = Number(process.env.JEROME_METER_MS) || 3000;
-// What the lead agent may use anywhere on the machine (D159): any command, reading any file, watching what it started.
-// Reading credentials stays refused, by --disallowedTools, which Claude Code applies to Grep and Glob too.
-const LEAD_TOOLS = ['Bash', 'Read', 'Glob', 'Grep', 'Monitor'];
+// What the lead agent may use anywhere on the machine (D159, D170, D171): any command, reading any file, watching
+// what it started, searching and reading the web. Reading credentials stays refused, by --disallowedTools, which
+// Claude Code applies to Grep and Glob too. MCP servers are the project's to allow in heartbeat.allow: one can write
+// or send (mail, a vault), which a heartbeat does only where the user said so.
+const LEAD_TOOLS = ['Bash', 'Read', 'Glob', 'Grep', 'Monitor', 'WebSearch', 'WebFetch'];
 export const UNREADABLE = ['~/.ssh/**', '~/.aws/**', '~/.gnupg/**', '~/.netrc', '~/.npmrc', '~/.pypirc', '~/.docker/config.json',
   '~/.kube/**', '~/.config/gh/**', '~/.config/gcloud/**', '~/.config/jerome/**', '~/.claude/.credentials.json', '~/Library/Keychains/**']
   .map((p) => `Read(${p})`);

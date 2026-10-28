@@ -308,6 +308,8 @@ Then (0.9.0, D166-D168): unblocking from Telegram (docs/specs/unblock.md, src/un
 
 Then (0.9.2, D130): a tap on a Telegram button is acted on even when the bridge, which runs once a minute, sees it after Telegram's 15 seconds, when answerCallbackQuery is refused; before, that refusal dropped the tap (Fabio's tap on R4 of climbdaily, 2026-10-28 22:19). The buttons of an answered request go from its message.
 
+Then (0.9.3, D171): heartbeats use WebSearch and WebFetch without a rule; MCP servers are allowed per project in heartbeat.allow.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
