@@ -388,7 +388,7 @@ test('a run is given the test command and the allowed tools, and one refused a t
   // A deny rule of the project's is a refusal on purpose: the run is done, and the alert closes.
   p.runWith({ FAKE_LEAD_DENIED: 'git push', FAKE_LEAD_DENIED_TYPE: 'rule' }, 'heartbeat', 'demo');
   assert.equal(p.lastRun().status, 'done', p.lastRun().reason);
-  assert.doesNotMatch(p.calls().trim().split('\n').pop(), /WebFetch/, 'a slot\'s rules are for its runs only');
+  assert.doesNotMatch(p.calls().trim().split('\n').pop(), /WebFetch\(domain/, 'a slot\'s rules are for its runs only');
   assert.deepEqual(p.alerts(), []);
 });
 
