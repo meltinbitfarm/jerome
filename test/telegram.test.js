@@ -44,14 +44,14 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   p.git('add', 'README.md');
   p.git('commit', '-q', '-m', 'readme');
   writeFileSync(join(p.dir, 'README.md'), 'changed\n');
-  // Told only when it lasts: three runs in a row (D160).
-  for (let i = 0; i < 3; i += 1) p.run('heartbeat', 'demo');
+  // Only the user can clear it: told at once (D173).
+  p.run('heartbeat', 'demo');
   execFileSync('git', ['checkout', 'README.md'], { cwd: p.dir });
   assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Merge the report?', '--options', 'merge / fix first', '--recommendation', 'fix first').status, 0);
   assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Which name?').status, 0);
   p.tick();
   const [alert, buttons, plain] = p.sent();
-  assert.match(alert.params.text, /^Jérôme · demo\nThere are changes of yours not committed \(README\.md\)\. Commit or discard them, and it starts by itself\. Stuck for less than an hour, 3 runs lost\.$/);
+  assert.match(alert.params.text, /^Jérôme · demo\nThere are changes of yours not committed \(README\.md\)\. Commit or discard them, and it starts by itself\. Stuck for less than an hour, 1 run lost\.$/);
   assert.equal(alert.params.chat_id, 42);
   assert.match(buttons.params.text, /^Jérôme · demo\n❓ R1 Merge the report\?\nOptions: merge \/ fix first\nRecommended: fix first/);
   assert.deepEqual(buttons.params.reply_markup.inline_keyboard, [[{ text: 'merge', callback_data: 'a:1:0' }], [{ text: 'fix first', callback_data: 'a:1:1' }]]);
@@ -118,6 +118,36 @@ test('a lasting block comes with its buttons, and a tap does that one action in 
   assert.ok(p.sent().some((c) => /^demo: Set aside \(README\.md\): `git stash list`/.test(c.params.text)));
   assert.equal(p.tracked(), '');
   assert.match(execFileSync('git', ['stash', 'list'], { cwd: p.dir, encoding: 'utf8' }), /Jérôme: set aside from afar \(A2\)/);
+});
+
+test('a tool a run was refused is allowed for the project with a button, and an untrusted folder trusted (D172, D173)', () => {
+  const p = bridged({ FAKE_TRIAGE: '{"work": true, "task": "Search the vault"}' });
+  p.runWith({ FAKE_LEAD_DENIED: 'x', FAKE_LEAD_DENIED_TOOL: 'mcp__vault__search' }, 'heartbeat', 'demo');
+  p.tick();
+  const block = p.sent().find((c) => /mcp__vault__search/.test(c.params.text));
+  assert.match(block.params.text, /^Jérôme · demo\nIt needed something its runs may not use \(mcp__vault__search\)\. Allow it for this project, or let it skip that\./);
+  assert.deepEqual(block.params.reply_markup.inline_keyboard.map((r) => r[0].callback_data), ['x:1:allow', 'x:1:skip']);
+  p.receive({ callback_query: { id: 'q1', data: 'x:1:allow', message: { message_id: p.idOf(/mcp__vault__search/), chat: CHAT } } });
+  p.tick();
+  assert.ok(p.sent().some((c) => c.params.text === 'demo: Allowed for this project: mcp__vault. A run starts now.'));
+  // The whole server, in the project's settings, which the next run commits as Jérôme's own.
+  assert.deepEqual(JSON.parse(readFileSync(join(p.dir, '.jerome', 'project.json'), 'utf8')).heartbeat.allow, ['mcp__vault']);
+  // The run it starts, apart, is given the rule.
+  for (let i = 0; i < 100 && !/--allowedTools mcp__vault /.test(p.calls()); i += 1) execFileSync('sleep', ['0.1']);
+  assert.match(p.calls(), /--allowedTools mcp__vault /);
+
+  // A folder Claude Code does not trust yet: the tap records what its trust dialog would, for this folder only.
+  for (let i = 0; i < 100 && !/^now {6}no heartbeat running$/m.test(p.run('heartbeat', 'status', 'demo').stdout); i += 1) execFileSync('sleep', ['0.1']);
+  const claudeJson = join(p.root, 'claude-config', '.claude.json');
+  writeFileSync(claudeJson, JSON.stringify({ projects: { [p.dir]: { hasTrustDialogAccepted: false, other: 1 }, '/elsewhere': { x: 2 } }, theme: 'dark' }));
+  p.run('heartbeat', 'demo');
+  p.tick();
+  const untrusted = p.sent().find((c) => /does not trust/.test(c.params.text));
+  assert.match(untrusted.params.reply_markup.inline_keyboard.map((r) => r[0].callback_data).join(' '), /^x:\d+:trust$/);
+  p.receive({ callback_query: { id: 'q2', data: untrusted.params.reply_markup.inline_keyboard[0][0].callback_data, message: { message_id: p.idOf(/does not trust/), chat: CHAT } } });
+  p.tick();
+  assert.ok(p.sent().some((c) => c.params.text === 'demo: The folder is trusted in Claude Code. A run starts now.'));
+  assert.deepEqual(JSON.parse(readFileSync(claudeJson, 'utf8')), { projects: { [p.dir]: { hasTrustDialogAccepted: true, other: 1 }, '/elsewhere': { x: 2 } }, theme: 'dark' });
 });
 
 test('only the user\'s chat is heard; a free message is a note the triage, the lead agent and the next session read; /status answers', () => {

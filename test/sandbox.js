@@ -74,8 +74,8 @@ case "$1" in
         git add .jerome/digest.md && git -c user.email=t@example.com -c user.name=t commit -q -m digest
       fi
       echo '{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.42,"resetsAt":4102444800},"seven_day":{"utilization":0.1,"resetsAt":4102444800}}}}'
-      # FAKE_LEAD_DENIED: a Bash command it was refused, as Claude Code streams it, by FAKE_LEAD_DENIED_TYPE (mode).
-      [ -n "$FAKE_LEAD_DENIED" ] && "$FAKE_NODE" -e 'const c = process.env.FAKE_LEAD_DENIED; console.log(JSON.stringify({ type: "assistant", message: { id: "md", content: [{ type: "tool_use", id: "tu1", name: "Bash", input: { command: c } }] } })); console.log(JSON.stringify({ type: "system", subtype: "permission_denied", tool_name: "Bash", tool_use_id: "tu1", decision_reason_type: process.env.FAKE_LEAD_DENIED_TYPE || "mode", message: "denied" }))'
+      # FAKE_LEAD_DENIED: a Bash command it was refused (or the tool FAKE_LEAD_DENIED_TOOL), as Claude Code streams it, by FAKE_LEAD_DENIED_TYPE (mode).
+      [ -n "$FAKE_LEAD_DENIED" ] && "$FAKE_NODE" -e 'const c = process.env.FAKE_LEAD_DENIED; const n = process.env.FAKE_LEAD_DENIED_TOOL || "Bash"; console.log(JSON.stringify({ type: "assistant", message: { id: "md", content: [{ type: "tool_use", id: "tu1", name: n, input: n === "Bash" ? { command: c } : {} }] } })); console.log(JSON.stringify({ type: "system", subtype: "permission_denied", tool_name: n, tool_use_id: "tu1", decision_reason_type: process.env.FAKE_LEAD_DENIED_TYPE || "mode", message: "denied" }))'
       [ -n "$FAKE_LEAD_REQUEST" ] && "$FAKE_NODE" "$JEROME_BIN" request open --question "$FAKE_LEAD_REQUEST" \${FAKE_LEAD_MILESTONE:+--milestone} > /dev/null
       echo "{\\"type\\":\\"result\\",\\"subtype\\":\\"\${FAKE_LEAD_RESULT:-success}\\",\\"is_error\\":$([ "\${FAKE_LEAD_RESULT:-success}" = success ] && echo false || echo true),\\"result\\":\\"done\\"}"
       exit 0;;

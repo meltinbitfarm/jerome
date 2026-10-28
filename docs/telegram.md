@@ -42,17 +42,18 @@ The macOS notifications stay, and `heartbeat.alerts.command` stays for other cha
 
 ## Unblocking with a button
 
-A block that has lasted comes with two or three buttons, chosen by its kind (D166, [the spec](specs/unblock.md)):
+A block comes with one to three buttons, chosen by its kind (D166, [the spec](specs/unblock.md)):
 
 | Block | Buttons |
 |---|---|
 | your uncommitted changes | **Commit them** (by their paths, "Kept by the user from afar") · **Set them aside** (`git stash`, found again with `git stash list`) |
 | stopped at its budget on the same work | **Twice the budget, one run** (starts now) · **Skip it, go on** (a note tells the next run to take another task) |
-| stopped on something only you do, such as a push | **Done, I did it** · **Skip it, go on** |
+| needed a tool its runs may not use (the message names it) | **Allow it for this project** (added to `heartbeat.allow`, an MCP tool as its whole server, then a run starts) · **Skip it, go on** |
+| the folder not trusted in Claude Code | **Trust this folder** (what Claude Code's dialog records, for that folder only, then a run starts) |
 | wrong branch, detached HEAD, a git operation half done | **Back to the main branch** (the operation aborted, the work kept on its branch) |
 | anything else Jérôme can try again | **Try again now** |
 
-A folder not trusted in Claude Code and a provisional PROJECT.md have no buttons: the first is Claude's own security prompt, the second a choice for a session.
+Only a provisional PROJECT.md and a folder with no git have no buttons: both happen once, when a project is made at the Mac. A block no run clears by itself reaches you at once (D173); one that may clear, such as a run stopped at its budget, when it lasts. A push, a deploy or a release the work needs comes as a decision request with the command to run (D174).
 
 Each button carries only the alert's number and the action's name, from a list written in Jérôme (D167). The project checks that the alert is still open and offers that action; nothing is discarded, pushed, merged or deployed; no action runs while a heartbeat does ("try again when it ends"). The alert closes with who closed it and how (`telegram:commit`), and the buttons go from the message.
 

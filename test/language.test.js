@@ -28,6 +28,17 @@ test('a block is told in the user\'s language, with no path and no runner\'s wor
   assert.equal(leadLanguageLine('en'), null);
 });
 
+test('a block that clears by itself waits to last; one only the user can clear does not (D160, D173)', async () => {
+  const { lasting } = await import('../src/blocks.js');
+  const now = new Date();
+  const fresh = { count: 1, openedAt: now.toISOString() };
+  assert.equal(lasting({ ...fresh, reason: 'token cap: 600,000 tokens over 500,000' }, now), false);
+  assert.equal(lasting({ ...fresh, count: 3, reason: 'token cap: 600,000 tokens over 500,000' }, now), true);
+  assert.equal(lasting({ ...fresh, openedAt: new Date(now - 7 * H).toISOString(), reason: 'heartbeat of x lost: the runner died' }, now), true);
+  assert.equal(lasting({ ...fresh, reason: 'permission denied for WebSearch: add the rules to heartbeat.allow in .jerome/project.json' }, now), true);
+  assert.equal(lasting({ ...fresh, reason: 'the folder is not trusted in Claude Code' }, now), true);
+});
+
 test('jerome language sets the language over the system\'s, and auto goes back to it', () => {
   const p = readyProject();
   const env = { JEROME_LANGUAGE: '' };

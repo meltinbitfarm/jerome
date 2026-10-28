@@ -125,7 +125,7 @@ export function overview(db, now = new Date()) {
     const costs = mine.map((r) => r.quota?.after?.seven_day - r.quota?.before?.seven_day).filter((d) => Number.isFinite(d) && d >= 0);
     // Each block as the user reads it (D160, D161): a sentence, how long, and whether it has lasted enough to need them.
     const blocks = (data.alerts ?? []).map((a) => {
-      const alert = { count: a.count ?? 1, openedAt: a.openedAt ?? now.toISOString() };
+      const alert = { reason: a.reason, count: a.count ?? 1, openedAt: a.openedAt ?? now.toISOString() };
       return { id: a.id, text: blockMessage(a.reason, spoken), since: howLong(alert, now, spoken), lasting: lasting(alert, now) };
     });
     const state = data.running ? 'running' : blocks.some((b) => b.lasting) ? 'stuck' : blocks.length ? 'retrying'

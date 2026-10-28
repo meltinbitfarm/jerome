@@ -310,6 +310,8 @@ Then (0.9.2, D130): a tap on a Telegram button is acted on even when the bridge,
 
 Then (0.9.3, D171): heartbeats use WebSearch and WebFetch without a rule; MCP servers are allowed per project in heartbeat.allow.
 
+Then (0.10.0, D172-D174): every block reaches Fabio on Telegram and can be cleared from there. A block no run clears by itself is told at once; a refused tool is named and allowed for the project with a button (alerts.rules, schema v11; an MCP tool as its server, never a Bash command); an untrusted folder is trusted with a button; only a provisional PROJECT.md and a folder with no git, both made at the Mac, have none. The lead agent asks for a push, deploy or release with the exact command instead of stopping.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

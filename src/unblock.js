@@ -3,34 +3,50 @@
 // below with the alert's id, never a command or free text; each is reversible and stays inside the project: changes
 // are set aside, never discarded, and nothing is pushed, merged or deployed (D167).
 import { spawn, spawnSync } from 'node:child_process';
-import { closeSync, mkdirSync, openSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { openDb } from './db.js';
 import { blockKind } from './blocks.js';
 import { addNote } from './notes.js';
 import { clearResume, currentBranch, lockHolder, operationInProgress, uncommitted } from './runstate.js';
 import { heartbeatConfig } from './heartbeatconfig.js';
-import { readMarker } from './template.js';
+import { readMarker, updateMarker } from './template.js';
 import { DEFAULT_CAPS, jobLabel, logPath } from './schedule.js';
 import { t, lang } from './i18n.js';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 const git = (dir, ...args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
 
-// The actions each kind of block offers. A folder not trusted in Claude Code, a provisional PROJECT.md and a folder
-// with no git have none: the first is Claude's own security prompt, the others a choice for a session.
+// The actions each kind of block offers. A folder not trusted is trusted on the user's tap, as Claude Code's dialog
+// would (D173); a provisional PROJECT.md and a folder with no git have none: they happen once, when a project is made
+// at the Mac, and need a session.
 const OFFERED = {
   yours: ['commit', 'stash'],
   cap: ['budget', 'skip'],
-  denied: ['did', 'skip'],
+  denied: ['allow', 'skip'],
   branch: ['main'],
   detached: ['main'],
   operation: ['main'],
-  untrusted: [],
+  untrusted: ['trust'],
   provisional: [],
   nogit: [],
 };
-export const ACTIONS = ['commit', 'stash', 'budget', 'skip', 'did', 'main', 'retry'];
+export const ACTIONS = ['commit', 'stash', 'budget', 'skip', 'did', 'main', 'retry', 'allow', 'trust'];
+
+// What "allow it" adds to heartbeat.allow (D172), from the rules a run was refused: an MCP tool as its whole server
+// (mcp__vault__search → mcp__vault), any other tool as refused. A Bash command never: any command but the blacklist
+// is allowed already, so a refused one was refused on purpose.
+export function allowable(rules) {
+  const out = [];
+  for (const rule of rules ?? []) {
+    if (typeof rule !== 'string' || /^Bash\b/.test(rule)) continue;
+    const mcp = rule.match(/^mcp__(.+?)__/);
+    const r = mcp ? `mcp__${mcp[1]}` : rule;
+    if (/^[A-Za-z][\w-]*(\([^()\n]{1,200}\))?$/.test(r) && !out.includes(r)) out.push(r);
+  }
+  return out;
+}
 
 // The actions a block offers, from its reason; anything not listed above is tried again.
 export function actionsFor(reason) {
@@ -54,7 +70,7 @@ export function runAction(dir, alertId, action, { origin, env = process.env, now
   const db = openDb(dir);
   if (!db) return { ok: false, text: say('acted.gone') };
   try {
-    const alert = db.prepare('SELECT id, reason, status FROM alerts WHERE id = ?').get(Number(alertId));
+    const alert = db.prepare('SELECT id, reason, status, rules FROM alerts WHERE id = ?').get(Number(alertId));
     if (!alert || alert.status !== 'open' || !actionsFor(alert.reason).includes(action)) return { ok: false, text: say('acted.gone') };
     if (lockHolder(dir) !== null) return { ok: false, text: say('acted.busy') };
     const resolve = () => db.prepare("UPDATE alerts SET status = 'resolved', resolved_at = ?, resolved_by = ? WHERE id = ?")
@@ -96,6 +112,41 @@ export function runAction(dir, alertId, action, { origin, env = process.env, now
       clearResume(dir);
       resolve();
       return { ok: true, text: say('acted.skip') };
+    }
+    if (action === 'trust') {
+      // What Claude Code's trust dialog records, for this folder only: the user's tap is their accepting it (D173).
+      const config = join(env.CLAUDE_CONFIG_DIR || homedir(), '.claude.json');
+      try {
+        const data = existsSync(config) ? JSON.parse(readFileSync(config, 'utf8')) : {};
+        data.projects ??= {};
+        const key = realpathSync(dir);
+        data.projects[key] = { ...data.projects[key], hasTrustDialogAccepted: true };
+        writeFileSync(`${config}.jerome`, `${JSON.stringify(data, null, 2)}\n`, { mode: existsSync(config) ? statSync(config).mode : 0o600 });
+        renameSync(`${config}.jerome`, config);
+      } catch (err) {
+        return { ok: false, text: say('acted.failed', { error: err.message }) };
+      }
+      resolve();
+      start(dir, env);
+      return { ok: true, text: say('acted.trust') };
+    }
+    if (action === 'allow') {
+      let refused = [];
+      try {
+        refused = JSON.parse(alert.rules ?? '[]');
+      } catch {
+        // No rules recorded: nothing to allow.
+      }
+      const rules = allowable(refused);
+      if (!rules.length) return { ok: false, text: say('acted.noallow') };
+      // In .jerome/project.json, which the next run commits as Jérôme's own (D158).
+      updateMarker(dir, (data) => {
+        data.heartbeat ??= {};
+        data.heartbeat.allow = [...new Set([...(data.heartbeat.allow ?? []), ...rules])];
+      });
+      resolve();
+      start(dir, env);
+      return { ok: true, text: say('acted.allow', { rules: rules.join(', ') }) };
     }
     if (action === 'did') {
       note(`From the user, by a button: they did themselves what this block needed, so go on from there. The block: ${alert.reason}`);

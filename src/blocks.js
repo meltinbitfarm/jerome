@@ -6,8 +6,12 @@ import { capStop } from './alerts.js';
 export const LASTING_RUNS = 3;
 export const LASTING_HOURS = 6;
 
-// Whether an open alert has lasted enough to call the user.
+// The blocks no run clears by itself, which wait for the user however often the project runs (D173): told at once.
+const THE_USERS = ['untrusted', 'provisional', 'nogit', 'yours', 'branch', 'detached', 'operation', 'denied', 'commit', 'slot'];
+
+// Whether an open alert is for the user now: one only they can clear, or any that has lasted (D160).
 export function lasting(alert, now = new Date()) {
+  if (alert.reason && THE_USERS.includes(blockKind(alert.reason).kind)) return true;
   return alert.count >= LASTING_RUNS || now.getTime() - Date.parse(alert.openedAt) >= LASTING_HOURS * 3_600_000;
 }
 
@@ -26,7 +30,7 @@ export function blockKind(reason) {
   if (/^jerome doctor failed/.test(r)) return { kind: 'doctor' };
   if (/^no slot /.test(r)) return { kind: 'slot' };
   if (/could not be committed/.test(r)) return { kind: 'commit' };
-  if (/permission denied for /.test(r)) return { kind: 'denied' };
+  if ((x = r.match(/permission denied for (.+?): add the rules/))) return { kind: 'denied', values: { tools: x[1] } };
   if (/(^|→ )triage:/.test(r)) return { kind: 'triage' };
   if (capStop(r)) return { kind: 'cap' };
   if (/max duration/.test(r)) return { kind: 'duration' };

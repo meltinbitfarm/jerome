@@ -12,14 +12,16 @@ export function alertKey(reason) {
 
 // Opens an alert, or counts one more on the open alert with the same key. Returns { id, isNew, count, openedAt }.
 // An alert opened on a repeat starts at the number of times it has happened.
-export function raiseAlert(db, { reason, key = alertKey(reason), runId = null, count = 1, now = new Date() }) {
+export function raiseAlert(db, { reason, key = alertKey(reason), runId = null, count = 1, rules = null, now = new Date() }) {
   const at = now.toISOString();
   const open = db.prepare("SELECT id, count, opened_at FROM alerts WHERE status = 'open' AND key = ?").get(key);
   if (open) {
-    db.prepare('UPDATE alerts SET count = count + 1, last_at = ?, reason = ?, run_id = coalesce(?, run_id) WHERE id = ?').run(at, reason, runId, open.id);
+    db.prepare('UPDATE alerts SET count = count + 1, last_at = ?, reason = ?, run_id = coalesce(?, run_id), rules = coalesce(?, rules) WHERE id = ?')
+      .run(at, reason, runId, rules ? JSON.stringify(rules) : null, open.id);
     return { id: open.id, isNew: false, count: open.count + 1, openedAt: open.opened_at };
   }
-  const id = Number(db.prepare('INSERT INTO alerts (run_id, key, reason, opened_at, last_at, count) VALUES (?, ?, ?, ?, ?, ?)').run(runId, key, reason, at, at, count).lastInsertRowid);
+  const id = Number(db.prepare('INSERT INTO alerts (run_id, key, reason, opened_at, last_at, count, rules) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(runId, key, reason, at, at, count, rules ? JSON.stringify(rules) : null).lastInsertRowid);
   return { id, isNew: true, count, openedAt: at };
 }
 

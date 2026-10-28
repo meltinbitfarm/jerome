@@ -71,7 +71,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
   // Saved with the run (D115): the live view shows the run's tokens against them, `jerome projects` knows a trial.
   const run = startRun(dir, now, caps, slotName, fill);
   const record = { mode: null, exitCode: null, outcome: null };
-  const finish = (status, reason, { request = null, alert = false, alertKey = undefined, pause = false } = {}) => {
+  const finish = (status, reason, { request = null, alert = false, alertKey = undefined, rules = null, pause = false } = {}) => {
     const ended = endRun(dir, run, status, reason, request, record);
     const flags = [record.mode, slotName ? `slot ${slotName}` : null, fill ? 'fill' : null, `${Math.round((Date.now() - now.getTime()) / 60_000)} min`,
       record.exitCode !== null ? `exit ${record.exitCode}` : null, record.outcome ? `end check ${record.outcome.ok ? 'ok' : 'failed'}` : null].filter(Boolean);
@@ -85,7 +85,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
       // (D142) is nothing to call the user for.
       const raise = !pause && (alert || (['blocked', 'stopped', 'failed'].includes(status) && !/^(locked|governor:)/.test(reason) && (capStop(reason) ? capsBefore(db, run.id) : sameAsBefore(db, run.id, reason))));
       if (raise) {
-        const a = raiseAlert(db, { reason, key: alertKey, runId: run.id, count: alert ? 1 : 2 });
+        const a = raiseAlert(db, { reason, key: alertKey, runId: run.id, count: alert ? 1 : 2, rules });
         log(`alert A${a.id}${a.isNew ? '' : `, ${lostRuns(a)}`}: ${reason}`);
       } else if (status === 'done') resolveAlerts(db);
     } finally {
@@ -162,7 +162,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     // RESUME (D119): half-done work is finished or dropped before anything new, with no triage.
     if (start.mode === 'resume') {
       const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, [], { config, slot, resume: start.why, notes: projectNotes(dir) }) }, caps, given, model, env, config, stopper, record, slot, governed);
-      return finish(lead.status, `resume: ${start.why} → ${lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey });
+      return finish(lead.status, `resume: ${start.why} → ${lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules });
     }
 
     // Areas (D100): those paused, held up by an open request, or whose pace has not come round are left out here,
@@ -203,7 +203,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     writeLast(dir, { fingerprint: projectFingerprint(dir, [], null, fill), verdict: 'work', at: new Date().toISOString() });
     // The pages' new hashes count only once the area's heartbeat has done its work (D111).
     if (lead.status === 'done' && area.watch) saveHashes(jobLabel(dir), area.name, area.watch.pending);
-    return finish(lead.status, `${lead.status === 'done' ? `${plan.implicit ? '' : `${area.name}: `}${triage.task}` : lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey });
+    return finish(lead.status, `${lead.status === 'done' ? `${plan.implicit ? '' : `${area.name}: `}${triage.task}` : lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules });
   } finally {
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
@@ -249,7 +249,7 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   if (lead.error) return result('failed', `${lead.error}${after}`);
   // A run refused a tool did not do what it was asked, whatever its end check says (D129).
   if (lead.denied.length) {
-    return result('blocked', `permission denied for ${lead.denied.slice(0, 3).join(', ')}${lead.denied.length > 3 ? `, and ${lead.denied.length - 3} more` : ''}: add the rules to heartbeat.allow in .jerome/project.json${after}`, true, 'permission denied');
+    return { ...result('blocked', `permission denied for ${lead.denied.slice(0, 3).join(', ')}${lead.denied.length > 3 ? `, and ${lead.denied.length - 3} more` : ''}: add the rules to heartbeat.allow in .jerome/project.json${after}`, true, 'permission denied'), rules: lead.denied };
   }
   if (!check.ok) return result('failed', `end check: ${failed}${tidy}; next run resumes`);
   return result('done', `done${notes}`);
@@ -659,7 +659,7 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
 ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Delegate reading and work to the agents in .claude/agents/, in the foreground: wait for every result before going on, never start one in the background, and never end while one is still working. Keep your own turns few.
-- Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "…" --recommendation "…"\`, then go on with the parts of the task that do not depend on it. A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${spoken}${asked}
+- Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "…" --recommendation "…"\`, then go on with the parts of the task that do not depend on it. When the work is ready and needs a push, a deploy or a release, which only the user does, open a request too, saying in plain words what and the exact command to run, and go on. A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${spoken}${asked}
 - Verify with ${tests}, and with whatever PROJECT.md asks for, such as screenshots of visual changes. When it passes with no conflicts, merge the branch into ${main} and report it; if it fails or there is a conflict, open a decision request instead.
 - Run each command that changes the repository on its own, and stage explicit paths: never \`git add -A\`, \`git add .\` or \`git commit -a\`.
 - You may run any command the machine has (python3, node, the project's scripts) but a few: pushing, publishing, deploying, mail, sudo, deleting outside the project, credentials. A refused command tells you why: do not retry it in another form, do the task another way.
