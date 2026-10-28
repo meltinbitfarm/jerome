@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Jérôme Director</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1><span class="muted">jerome director ·</span> <span id="count">…</span></h1>
+      <div class="muted" id="updated">loading…</div>
+    </div>
+    <div>
+      <label class="muted" for="theme">theme</label>
+      <select id="theme"><option value="auto">auto</option><option value="light">light</option><option value="dark">dark</option></select>
+    </div>
+  </header>
+  <div id="error" class="error" hidden></div>
+  <section id="quota"></section>
+  <section id="machines"></section>
+  <section id="attention" hidden></section>
+  <section id="projects"></section>
+  <section id="runs"></section>
+  <section id="weeks"></section>
+  <footer id="footer"></footer>
+</main>
+<script>
+'use strict';
+// The token is in the address's fragment, which the browser never sends: the page passes it in a header.
+const token = decodeURIComponent(location.hash.slice(1));
+const REFRESH_MS = 30_000;
+let data = null;
+const filters = { mac: '', project: '' };
+
+// Elements are built with textContent only: a reason or a question can hold anything, and none of it is read as HTML.
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') node.className = v;
+    else node.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of children.flat(Infinity)) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return node;
+}
+const SVG = 'http://www.w3.org/2000/svg';
+function svg(tag, attrs = {}, text = null) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+  if (text !== null) node.textContent = text;
+  return node;
+}
+const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat(Infinity));
+const prompt = (command, ...meta) => el('h2', {}, el('span', { class: 'ps' }, '$'), el('span', { class: 'cmd' }, command), ...meta);
+const meta = (...children) => el('span', { class: 'meta' }, ...children);
+
+// Times in this device's own time zone.
+const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
+const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+function ago(iso) {
+  const ms = Math.max(0, Date.now() - Date.parse(iso));
+  const plural = (v, unit) => `${v} ${unit}${v === 1 ? '' : 's'} ago`;
+  if (ms < 60_000) return 'just now';
+  if (ms < 3_600_000) return plural(Math.floor(ms / 60_000), 'minute');
+  if (ms < 48 * 3_600_000) return plural(Math.floor(ms / 3_600_000), 'hour');
+  return plural(Math.floor(ms / 86_400_000), 'day');
+}
+function n(v) {
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  if (v >= 1e3) return `${Math.round(v / 1e3)}k`;
+  return String(v ?? 0);
+}
+const money = (v) => (v > 0 && v < 0.005 ? '<$0.01' : v === 0 ? '$0.00' : `≈$${v.toFixed(2)}`);
+const VERDICT = { go: 'ok', hold: 'warn', reduced: 'muted' };
+
+// Theme: the system's, or the one picked here, remembered in this browser only.
+const themeSelect = document.getElementById('theme');
+function applyTheme(value) {
+  if (value === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', value);
+}
+try { themeSelect.value = localStorage.getItem('jerome-theme') || 'auto'; } catch { themeSelect.value = 'auto'; }
+applyTheme(themeSelect.value);
+themeSelect.addEventListener('change', () => {
+  applyTheme(themeSelect.value);
+  try { localStorage.setItem('jerome-theme', themeSelect.value); } catch { /* not remembered */ }
+});
+
+function renderQuota() {
+  const q = data.quota;
+  if (!q) return fill('quota', prompt('jerome quota'), el('div', { class: 'muted' }, 'No reading yet: it comes with the first beat of a connected Mac.'));
+  const w = q.windows;
+  const window = (name, label) => {
+    const x = w[name];
+    if (!x) return `${label} no reading`;
+    if (x.resetsAt && x.resetsAt * 1000 <= Date.now()) return `${label} no reading since its reset`;
+    return `${label} ${x.used}%${x.resetsAt ? ` (resets ${when(new Date(x.resetsAt * 1000).toISOString())})` : ''}`;
+  };
+  const p = q.pace;
+  const lines = [
+    el('div', {}, `${window('five_hour', '5h')} · ${window('seven_day', '7d')}`),
+    q.scoped.length || q.breakdown.some((b) => b.percent) ? el('div', { class: 'muted' }, [
+      ...q.scoped.map((s) => `${s.model} ${s.used}% of its weekly limit`),
+      q.breakdown.some((b) => b.percent) ? `this week ${q.breakdown.filter((b) => b.percent).map((b) => `${b.name} ${b.percent}%`).join(', ')}` : null,
+    ].filter(Boolean).join(' · ')) : null,
+    el('div', {}, p.target === null ? el('span', { class: VERDICT[p.verdict] }, `${p.verdict}: ${p.why}`)
+      : [`pace: target now ${p.target}% · ceiling ${p.ceiling}% · `, el('span', { class: VERDICT[p.verdict] }, `${p.verdict}`), `: ${p.why}`]),
+  ];
+  fill('quota', prompt('jerome quota', meta(`read ${ago(q.readAt)} by ${q.by ?? 'a Mac'}`)), lines, chart(q), readingsTable(q));
+}
+
+// The week as a line: the 7-day window at each reading against the pace it should keep (target, dashed) and the
+// ceiling the reserve leaves (dotted), from the week's start to its reset.
+function chart(q) {
+  if (!q.weekStart || !q.series.length) return null;
+  const box = el('div', { class: 'chart' });
+  const width = Math.max(280, document.getElementById('quota').clientWidth || 600);
+  const height = 200;
+  const m = { top: 12, right: 64, bottom: 22, left: 34 };
+  const t0 = Date.parse(q.weekStart);
+  const t1 = Date.parse(q.resetsAt);
+  const x = (t) => m.left + ((t - t0) / (t1 - t0)) * (width - m.left - m.right);
+  const y = (v) => m.top + (1 - v / 100) * (height - m.top - m.bottom);
+  const target = q.settings.target;
+  const reserve = q.settings.reserve;
+  const paceAt = (t) => target * Math.min(1, Math.max(0, (t - t0) / (t1 - t0)));
+  const ceilingAt = (t) => 100 - reserve * Math.min(1, (t1 - t) / 86_400_000);
+  const root = svg('svg', { viewBox: `0 0 ${width} ${height}`, height, role: 'img', 'aria-label': `7-day window this week: ${q.series.at(-1).seven}% now, pace ${q.pace.target ?? '—'}%` });
+  for (const v of [0, 25, 50, 75, 100]) {
+    root.append(svg('line', { class: 'gridline', x1: m.left, x2: width - m.right, y1: y(v), y2: y(v) }));
+    root.append(svg('text', { class: 'axis', x: m.left - 6, y: y(v) + 4, 'text-anchor': 'end' }, `${v}%`));
+  }
+  // A tick at each local midnight, named by its day.
+  for (let d = new Date(t0); d.getTime() <= t1; d.setDate(d.getDate() + 1)) {
+    const mid = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    if (mid >= t1) break;
+    root.append(svg('text', { class: 'axis', x: x(mid), y: height - 6, 'text-anchor': 'middle' }, new Date(mid).toLocaleDateString(undefined, { weekday: 'short' })));
+  }
+  const now = Math.min(Date.now(), t1);
+  root.append(svg('line', { class: 'now', x1: x(now), x2: x(now), y1: m.top, y2: height - m.bottom }));
+  root.append(svg('line', { class: 'ref', x1: x(t0), y1: y(0), x2: x(t1), y2: y(target) }));
+  root.append(svg('text', { class: 'label', x: x(t1) + 6, y: y(target) + 4 }, `pace ${target}%`));
+  const release = t1 - 86_400_000;
+  root.append(svg('polyline', { class: 'ref reserve', points: `${x(t0)},${y(100 - reserve)} ${x(release)},${y(100 - reserve)} ${x(t1)},${y(100)}` }));
+  root.append(svg('text', { class: 'label', x: x(t1) + 6, y: y(100) + 4 }, 'reserve'));
+  const points = q.series.map((s) => [x(Date.parse(s.at)), y(s.seven)]);
+  root.append(svg('polyline', { class: 'series', points: points.map((p) => p.join(',')).join(' ') }));
+  const last = q.series.at(-1);
+  root.append(svg('circle', { class: 'dot', cx: points.at(-1)[0], cy: points.at(-1)[1], r: 4 }));
+  root.append(svg('text', { class: 'label value', x: points.at(-1)[0] + 8, y: points.at(-1)[1] - 6 }, `7d ${last.seven}%`));
+
+  // The crosshair: the reading nearest the pointer, with its time, its value and the pace then.
+  const cross = svg('line', { class: 'cross', y1: m.top, y2: height - m.bottom, visibility: 'hidden' });
+  const dot = svg('circle', { class: 'dot', r: 5, visibility: 'hidden' });
+  const tip = el('div', { class: 'tip', hidden: true });
+  const hit = svg('rect', { class: 'hit', x: m.left, y: m.top, width: width - m.left - m.right, height: height - m.top - m.bottom });
+  root.append(cross, dot, hit);
+  const show = (ev) => {
+    const r = root.getBoundingClientRect();
+    const px = ((ev.clientX - r.left) / r.width) * width;
+    let best = 0;
+    for (let i = 1; i < points.length; i += 1) if (Math.abs(points[i][0] - px) < Math.abs(points[best][0] - px)) best = i;
+    const s = q.series[best];
+    const [cx, cy] = points[best];
+    cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.setAttribute('visibility', 'visible');
+    dot.setAttribute('cx', cx); dot.setAttribute('cy', cy); dot.setAttribute('visibility', 'visible');
+    const t = Date.parse(s.at);
+    tip.textContent = `${when(s.at)} · 7d ${s.seven}%${s.five !== null ? ` · 5h ${s.five}%` : ''} · pace ${Math.round(paceAt(t) * 10) / 10}% · ceiling ${Math.round(ceilingAt(t))}%`;
+    tip.hidden = false;
+    const left = (cx / width) * r.width;
+    tip.style.left = `${Math.max(0, Math.min(left + 10, r.width - tip.offsetWidth))}px`;
+  };
+  const hide = () => {
+    cross.setAttribute('visibility', 'hidden');
+    dot.setAttribute('visibility', 'hidden');
+    tip.hidden = true;
+  };
+  hit.addEventListener('pointermove', show);
+  hit.addEventListener('pointerdown', show);
+  hit.addEventListener('pointerleave', hide);
+  box.append(root, tip);
+  return box;
+}
+
+// The chart's readings as a table, for whoever reads it without the line.
+function readingsTable(q) {
+  if (!q.series.length) return null;
+  const rows = [...q.series].reverse().map((s) => el('tr', {}, el('td', {}, when(s.at)), el('td', { class: 'num' }, `${s.seven}%`), el('td', { class: 'num' }, s.five === null ? '—' : `${s.five}%`)));
+  return el('details', {}, el('summary', {}, `readings this week (${q.series.length})`),
+    el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, 'read'), el('th', { class: 'num' }, '7d'), el('th', { class: 'num' }, '5h'))), el('tbody', {}, rows))));
+}
+
+function renderMachines() {
+  const rows = data.machines.map((m) => el('tr', {},
+    el('td', {}, m.name),
+    el('td', { class: m.status === 'pending' ? 'warn' : m.reachable ? 'ok' : 'high' }, m.status === 'pending' ? 'waiting for approval' : m.reachable ? 'connected' : `unreachable since ${when(m.lastBeat)}`),
+    el('td', {}, m.lastBeat ? ago(m.lastBeat) : 'never'),
+    el('td', { class: 'num' }, String(m.projects)),
+    el('td', { class: m.running ? 'running num' : 'muted num' }, String(m.running)),
+    el('td', { class: 'muted' }, m.version ?? ''),
+    el('td', { class: 'muted' }, m.code)));
+  const head = el('tr', {}, ['MAC', 'STATE', 'LAST BEAT', 'PROJECTS', 'RUNNING', 'VERSION', 'CODE'].map((h, i) => el('th', { class: i === 3 || i === 4 ? 'num' : null }, h)));
+  fill('machines', prompt('jerome director machines'), data.machines.length
+    ? el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), el('tbody', {}, rows)))
+    : el('div', { class: 'muted' }, 'No Mac yet: `jerome connect <address>` on each Mac.'));
+}
+
+function renderAttention() {
+  const waiting = data.projects.filter((p) => p.alerts.length || p.requests.length);
+  const section = document.getElementById('attention');
+  section.hidden = !waiting.length;
+  if (!waiting.length) return;
+  fill('attention', prompt('what waits for you', meta(`${waiting.length} ${waiting.length === 1 ? 'project' : 'projects'}`)), waiting.map((p) => el('div', {},
+    el('div', {}, el('span', { class: 'high' }, '! '), p.name, el('span', { class: 'muted' }, ` · ${p.machine}`)),
+    p.alerts.map((a) => el('div', { class: 'request' }, el('span', { class: 'high' }, `A${a.id} `), a.reason)),
+    p.requests.map((r) => el('div', { class: 'request' }, el('span', { class: 'warn' }, `R${r.id} `), r.question)))));
+}
+
+function renderProjects() {
+  const head = el('tr', {}, ['PROJECT', 'STATE', 'LAST HEARTBEAT', 'ALERTS', 'REQ', 'TODAY', '7 DAYS', 'RUN COST', 'FILL 7D', 'SLOTS'].map((h, i) => el('th', { class: [3, 4, 5, 6, 7, 8].includes(i) ? 'num' : null }, h)));
+  const body = [];
+  for (const m of data.machines) {
+    const mine = data.projects.filter((p) => p.machine === m.name);
+    if (!mine.length) continue;
+    body.push(el('tr', {}, el('td', { class: 'mac', colspan: 10 }, `${m.name}`)));
+    for (const p of mine) {
+      const h = p.lastHeartbeat;
+      body.push(el('tr', {},
+        el('td', {}, `  ${p.name}`),
+        el('td', { class: p.running ? 'running' : p.overLimit ? 'warn' : 'muted' }, p.running ? 'running' : p.overLimit ? 'at its limit' : p.fill ? 'idle · fill' : 'idle'),
+        el('td', {}, h ? [`${ago(h.at)} `, el('span', { class: h.status }, h.status)] : el('span', { class: 'muted' }, 'none yet')),
+        el('td', { class: p.alerts.length ? 'high num' : 'muted num' }, String(p.alerts.length)),
+        el('td', { class: p.requests.length ? 'warn num' : 'muted num' }, String(p.requests.length)),
+        el('td', { class: 'num' }, money(p.usage.today.usd)),
+        el('td', { class: 'num' }, `${n(p.usage.week.tokens)} ${money(p.usage.week.usd)}`),
+        el('td', { class: 'num' }, p.cost ? `${p.cost.points} pt` : '—'),
+        el('td', { class: 'num' }, String(p.fill7d)),
+        el('td', { class: 'muted' }, p.slots.map((s) => `${s.name} ${s.at}`).join(' · ') || '—')));
+      if (h?.reason) body.push(el('tr', { class: 'sub' }, el('td', {}), el('td', { class: 'wrap muted', colspan: 9 }, h.reason)));
+    }
+  }
+  fill('projects', prompt('jerome projects', meta('API-equivalent dollars · run cost in points of the 7-day window')), data.projects.length
+    ? el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), el('tbody', {}, body)))
+    : el('div', { class: 'muted' }, 'No project yet.'));
+}
+
+function renderRuns() {
+  const macs = [...new Set(data.runs.map((r) => r.machine).filter(Boolean))].sort();
+  const projects = [...new Set(data.runs.map((r) => data.projects.find((p) => p.key === r.project)?.name ?? r.project))].sort();
+  const select = (key, label, values) => {
+    const s = el('select', { 'aria-label': label }, el('option', { value: '' }, `every ${label}`), values.map((v) => el('option', { value: v }, v)));
+    s.value = values.includes(filters[key]) ? filters[key] : '';
+    s.addEventListener('change', () => { filters[key] = s.value; renderRuns(); });
+    return s;
+  };
+  const shown = data.runs.filter((r) => (!filters.mac || r.machine === filters.mac) && (!filters.project || (data.projects.find((p) => p.key === r.project)?.name ?? r.project) === filters.project));
+  const rows = shown.slice(0, 100).flatMap((r) => {
+    const name = data.projects.find((p) => p.key === r.project)?.name ?? r.project;
+    const d = r.quota ? r.quota.after?.seven_day - r.quota.before?.seven_day : null;
+    return [el('tr', {},
+      el('td', {}, when(r.startedAt)),
+      el('td', {}, r.machine ?? ''),
+      el('td', {}, name),
+      el('td', {}, r.kind),
+      el('td', { class: 'muted' }, r.model ?? ''),
+      el('td', { class: r.status }, r.status),
+      el('td', { class: 'num' }, Number.isFinite(d) ? `${d >= 0 ? '+' : ''}${d} pt` : '—')),
+    el('tr', { class: 'sub' }, el('td', {}), el('td', { class: 'wrap muted', colspan: 6 }, r.reason))];
+  });
+  const head = el('tr', {}, ['STARTED', 'MAC', 'PROJECT', 'KIND', 'MODEL', 'STATUS', '7D'].map((h, i) => el('th', { class: i === 6 ? 'num' : null }, h)));
+  fill('runs', prompt('jerome digest', meta(`${shown.length} of the last ${data.runs.length} runs`)),
+    el('div', { class: 'filters' }, select('mac', 'Mac', macs), select('project', 'project', projects)),
+    shown.length ? el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), el('tbody', {}, rows))) : el('div', { class: 'muted' }, 'No run yet.'));
+}
+
+function renderWeeks() {
+  fill('weeks', prompt('past weeks', meta(`target ${data.quota?.settings.target ?? 90}% at each reset`)), data.weeks.length
+    ? data.weeks.map((w) => el('div', {}, `${when(w.resetAt)}  `, el('span', { class: w.used >= (data.quota?.settings.target ?? 90) ? 'ok' : 'warn' }, `${w.used}%`)))
+    : el('div', { class: 'muted' }, 'None yet: the first shows after this week\'s reset.'));
+}
+
+function render() {
+  const reachable = data.machines.filter((m) => m.reachable).length;
+  document.getElementById('count').textContent = `${data.machines.length} ${data.machines.length === 1 ? 'Mac' : 'Macs'}${data.machines.length ? `, ${reachable} connected` : ''}`;
+  document.getElementById('updated').textContent = `updated ${clock(data.at)} · refreshes every 30 s`;
+  renderQuota();
+  renderMachines();
+  renderAttention();
+  renderProjects();
+  renderRuns();
+  renderWeeks();
+  fill('footer', `Jérôme Director ${data.version} · read-only`);
+}
+
+async function load() {
+  const error = document.getElementById('error');
+  if (!token) {
+    error.hidden = false;
+    error.textContent = 'This address has no token: open the one `jerome director dashboard` prints on the server.';
+    return;
+  }
+  try {
+    const r = await fetch('/api/overview', { headers: { authorization: `Bearer ${token}` }, cache: 'no-store' });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+    data = body;
+    error.hidden = true;
+    render();
+  } catch (err) {
+    error.hidden = false;
+    error.textContent = `Cannot read the Director: ${err.message}`;
+  }
+}
+
+load();
+setInterval(load, REFRESH_MS);
+let resized = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resized);
+  resized = setTimeout(() => { if (data) renderQuota(); }, 150);
+});
+</script>
+</body>
+</html>

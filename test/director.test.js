@@ -176,3 +176,50 @@ test('forged, replayed, late or unsigned requests are refused, and a Mac trusts 
   assert.equal((await fetch(`${d.url}/v1/anything`)).status, 404);
   assert.match(d.log(), /refused \/v1\/beat from [0-9A-F-]+: request replayed/);
 });
+
+test('the dashboard is a page under a strict policy, its data only with the token, and nothing it answers writes', async () => {
+  const d = await startDirector();
+  const m = mac('mini');
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  m.beat();
+
+  const shown = d.cli('dashboard').stdout;
+  const token = shown.match(/#([A-Za-z0-9_-]+)/)[1];
+  assert.ok(shown.startsWith(`${d.url}/#${token}`));
+
+  const page = await fetch(`${d.url}/`);
+  assert.equal(page.status, 200);
+  const csp = page.headers.get('content-security-policy');
+  const nonce = csp.match(/script-src 'nonce-([^']+)'/)[1];
+  assert.match(csp, /default-src 'none'.*connect-src 'self'.*frame-ancestors 'none'/);
+  const html = await page.text();
+  assert.ok(html.includes(`<script nonce="${nonce}">`) && html.includes(`<style nonce="${nonce}">`));
+  assert.ok(!html.includes(token), 'the page holds no secret');
+  assert.ok(!/innerHTML/.test(html), 'every text is set with textContent');
+
+  for (const auth of [undefined, 'Bearer wrong', `Bearer ${token}x`]) {
+    const r = await fetch(`${d.url}/api/overview`, { headers: auth ? { authorization: auth } : {} });
+    assert.equal(r.status, 403, String(auth));
+  }
+  const r = await fetch(`${d.url}/api/overview`, { headers: { authorization: `Bearer ${token}` } });
+  assert.equal(r.status, 200);
+  const o = await r.json();
+  assert.equal(o.schema, 'jerome.director.overview/v1');
+  assert.equal(o.quota.windows.seven_day.used, 6);
+  assert.equal(o.quota.series.length, 1);
+  assert.equal(o.quota.pace.verdict, 'go');
+  assert.deepEqual(o.machines.map((x) => [x.name, x.status, x.reachable, x.projects]), [['mini', 'approved', true, 1]]);
+  assert.equal(o.projects[0].name, 'demo');
+  assert.ok(!JSON.stringify(o).includes(m.root), 'no path reaches the dashboard');
+
+  // Only GET is the dashboard's: anything else is the Macs' signed API, and refused unsigned.
+  for (const method of ['POST', 'PUT', 'DELETE']) {
+    const w = await fetch(`${d.url}/api/overview`, { method, headers: { authorization: `Bearer ${token}` } });
+    assert.notEqual(w.status, 200, method);
+  }
+
+  // A new token: the old one no longer opens it.
+  assert.equal(d.cli('dashboard', '--new-token').status, 0);
+  assert.equal((await fetch(`${d.url}/api/overview`, { headers: { authorization: `Bearer ${token}` } })).status, 403);
+});

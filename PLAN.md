@@ -280,6 +280,8 @@ Then (0.4.1, D144): fill runs go in parallel, one per project at most, started s
 
 Then (0.5.0, D145-D155): Jérôme Director, phase 2 of the quota governor, step 1 of 5 (docs/specs/director.md): the Director sees. `jerome director` on the server, with Docker Compose (a hand-written Dockerfile and compose.yaml, the port published on the VPN address only); `jerome connect` on each Mac, approved by Fabio by its key's code; every minute a beat signed with the Mac's Ed25519 key (quota, projects, finished runs, never a credential, code or path), answered with the Director's signature, which the Mac pinned. Tried end to end in Docker on Fabio's M4. Next: the read-only dashboard, then permits, the real setup on the VPS, Telegram on the Director.
 
+Then (0.5.1, D151, D156): step 2 of the Director, the read-only dashboard on the Director's own address (`jerome director dashboard`): the quota on the week's curve with the pace and the reserve, the Macs, what waits for Fabio, the projects by Mac, the runs with filters, the past weeks; data only with the token from the URL's fragment, a strict CSP, texts set with textContent, times in the device's time zone. Next: permits (step 3).
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

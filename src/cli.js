@@ -21,7 +21,7 @@ import { note } from './notes.js';
 import { setup as telegramSetup, off as telegramOff, telegramStatus, telegramTest } from './telegram.js';
 import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
 import { governor, governorStatus, quota } from './governor.js';
-import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke } from './director.js';
+import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke, dashboard as directorDashboard } from './director.js';
 import { connect, connectStatus, disconnect } from './directorlink.js';
 
 const USAGE = `Usage:
@@ -94,7 +94,7 @@ const USAGE = `Usage:
   jerome quota [--json]   the subscription's windows as Claude Code's usage endpoint gives them, and the pace
   jerome connect <address> [--name <name>] | connect status | disconnect
                           connect this Mac to Jérôme Director, the coordinator of your Macs, over your VPN
-  jerome director init --listen <address> | serve | status | machines | approve <code> | revoke <mac>
+  jerome director init --listen <address> | serve | status | machines | approve <code> | revoke <mac> | dashboard [--new-token]
                           Jérôme Director, on the server: it listens only on a VPN or private address
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
@@ -144,13 +144,14 @@ const OPTIONS = {
   target: { type: 'string' },
   reserve: { type: 'string' },
   'five-hour-cap': { type: 'string' },
+  'new-token': { type: 'boolean' },
   listen: { type: 'string' },
   name: { type: 'string' },
 };
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], director: ['listen'], connect: ['name'], disconnect: [] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], director: ['listen', 'new-token'], connect: ['name'], disconnect: [] };
 
 export async function main(argv) {
   let parsed;
@@ -299,8 +300,10 @@ export async function main(argv) {
     }
     case 'director': {
       const [action, ...args] = rest;
-      const usage = 'jerome director takes init, serve, status, machines, approve <code> or revoke <mac>.';
+      const usage = 'jerome director takes init, serve, status, machines, approve <code>, revoke <mac> or dashboard.';
       if (parsed.values.listen !== undefined && !['init', 'serve'].includes(action)) return usageError('--listen goes with jerome director init or serve.');
+      if (parsed.values['new-token'] !== undefined && action !== 'dashboard') return usageError('--new-token goes with jerome director dashboard.');
+      if (action === 'dashboard' && !args.length) return directorDashboard({ newToken: parsed.values['new-token'] === true });
       if (action === 'init' && !args.length) return directorInit({ listen: parsed.values.listen ?? null });
       if (action === 'serve' && !args.length) return directorServe({ listen: parsed.values.listen ?? null });
       if (action === 'status' && !args.length) return directorStatus();

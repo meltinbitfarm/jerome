@@ -12,6 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { newKeys, fingerprint, sameCode, verifyRequest, signResponse, NONCE_MS } from './sign.js';
 import { VERSION } from './template.js';
+import { serveDashboard } from './dashboard.js';
 
 export const DEFAULT_PORT = 7788;
 const MAX_BODY = 64 * 1024;
@@ -79,11 +80,13 @@ function writeDirectorConfig(config, env) {
   chmodSync(configFile(env), 0o600);
 }
 
-// The setup, made once: the Director's keys, the dashboard's token and the address. Later calls only change the address.
+// The setup, made once: the Director's keys, the dashboard's token and the address. Later calls only change the address,
+// and give a token to a Director set up before the dashboard.
 function setup(listen, env) {
   const existing = readDirectorConfig(env);
   if (existing) {
-    if (listen && listen !== existing.listen) writeDirectorConfig({ ...existing, listen }, env);
+    const changed = { ...existing, listen: listen ?? existing.listen, dashboardToken: existing.dashboardToken ?? randomBytes(18).toString('base64url') };
+    if (changed.listen !== existing.listen || changed.dashboardToken !== existing.dashboardToken) writeDirectorConfig(changed, env);
     return { config: readDirectorConfig(env), created: false };
   }
   const config = { listen, key: newKeys(), dashboardToken: randomBytes(18).toString('base64url'), createdAt: new Date().toISOString() };
@@ -304,6 +307,16 @@ export async function serve({ listen = null, env = process.env } = {}) {
   if (created) log(`set up in ${directorHome(env)}; Director fingerprint ${fingerprint(config.key.public)}`);
   const app = directorApp({ env, log });
   const server = createServer((req, res) => {
+    // The dashboard (D151), read-only: its token is read at each request, so `dashboard --new-token` takes effect at once.
+    if (req.method === 'GET') {
+      try {
+        serveDashboard(req, res, { db: app.db, token: readDirectorConfig(env)?.dashboardToken });
+      } catch (err) {
+        log(`dashboard error: ${err.message}`);
+        res.writeHead(500).end();
+      }
+      return;
+    }
     const nonce = req.headers['x-jerome-nonce'] ?? '';
     const send = ({ status, body }) => {
       const text = JSON.stringify(body);
@@ -356,10 +369,31 @@ export async function init({ listen = null, env = process.env } = {}) {
   const refused = checkListen(where, env);
   if (refused) return fail(refused);
   const { config, created } = setup(wanted, env);
-  const shown = env.DIRECTOR_ADDRESS && ['0.0.0.0', '::'].includes(where.host) ? `${env.DIRECTOR_ADDRESS}:${where.port}` : `${where.host}:${where.port}`;
+  const shown = shownAddress(config, env);
   console.log(`${created ? '✓ Director set up' : 'Director already set up'} in ${directorHome(env)}`);
   console.log(`  address      http://${shown}: on each Mac, \`jerome connect http://${shown}\``);
   console.log(`  fingerprint  ${fingerprint(config.key.public)}: each Mac shows it when it connects; it must be the same`);
+  console.log(`  dashboard    http://${shown}/#${config.dashboardToken}: open it from any device on the VPN; keep it private`);
+  return 0;
+}
+
+// The address the Macs and the browser use: the published one in a container.
+function shownAddress(config, env) {
+  const where = parseListen(config.listen);
+  return env.DIRECTOR_ADDRESS && ['0.0.0.0', '::'].includes(where.host) ? `${env.DIRECTOR_ADDRESS}:${where.port}` : `${where.host}:${where.port}`;
+}
+
+// `jerome director dashboard [--new-token]`: the dashboard's address with its token; a new token makes every
+// address given before stop working.
+export async function dashboard({ newToken = false, env = process.env } = {}) {
+  let config = readDirectorConfig(env);
+  if (!config) return fail('The Director is not set up here: `jerome director init --listen <VPN address>`.');
+  if (newToken || !config.dashboardToken) {
+    config = { ...config, dashboardToken: randomBytes(18).toString('base64url') };
+    writeDirectorConfig(config, env);
+  }
+  console.log(`${newToken ? '✓ New token: the address given before no longer opens the dashboard.\n' : ''}http://${shownAddress(config, env)}/#${config.dashboardToken}`);
+  console.log('Open it from any device on the VPN, such as the iPhone. Keep it private: it shows everything the Director knows.');
   return 0;
 }
 
@@ -387,9 +421,7 @@ export async function status({ env = process.env } = {}) {
   try {
     const pid = running(env);
     const count = (s) => db.prepare('SELECT count(*) n FROM machines WHERE status = ?').get(s).n;
-    const where = parseListen(config.listen);
-    const shown = env.DIRECTOR_ADDRESS && ['0.0.0.0', '::'].includes(where.host) ? `${env.DIRECTOR_ADDRESS}:${where.port}` : config.listen;
-    console.log(`director ${pid ? `running (pid ${pid})` : 'not running: `jerome director serve`'} on ${shown} · fingerprint ${fingerprint(config.key.public)}`);
+    console.log(`director ${pid ? `running (pid ${pid})` : 'not running: `jerome director serve`'} on ${shownAddress(config, env)} · fingerprint ${fingerprint(config.key.public)}`);
     console.log(`macs     ${count('approved')} approved, ${count('pending')} waiting for approval${count('revoked') ? `, ${count('revoked')} revoked` : ''}`);
     const r = db.prepare('SELECT r.machine, r.read_at, r.data, m.name FROM readings r JOIN machines m ON m.id = r.machine ORDER BY r.read_at DESC LIMIT 1').get();
     if (r) {

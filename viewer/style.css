@@ -109,3 +109,22 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
   .log .action { grid-column: 2; }
   .log .detail { grid-column: 3; }
 }
+
+/* The Director's dashboard (D151): the week's quota as one line against its pace. One data series in cyan, the
+   reference lines grey and dashed with their own labels, a recessive grid, and a crosshair with its tooltip. */
+.chart { position: relative; margin: 6px 0 2px; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .gridline { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font: inherit; font-size: 11px; }
+.chart .series { fill: none; stroke: var(--cyan); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .ref { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart .ref.reserve { stroke-dasharray: 1.5 3.5; }
+.chart .label { fill: var(--muted); font: inherit; font-size: 11px; }
+.chart .label.value { fill: var(--text); }
+.chart .now { stroke: var(--track); stroke-width: 1; }
+.chart .dot { fill: var(--cyan); stroke: var(--bg); stroke-width: 2; }
+.chart .cross { stroke: var(--muted); stroke-width: 1; }
+.chart .hit { fill: transparent; cursor: crosshair; touch-action: pan-y; }
+.chart .tip { position: absolute; top: 0; background: var(--hl); border: 1px solid var(--line); padding: 1px 1ch; pointer-events: none; white-space: nowrap; }
+.mac { color: var(--muted); padding-top: 6px; }
+.filters { display: flex; flex-wrap: wrap; gap: 4px 2ch; margin-bottom: 6px; }

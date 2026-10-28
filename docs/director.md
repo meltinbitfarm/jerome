@@ -7,7 +7,7 @@ It is built in five steps:
 | Step | What it does | |
 |---|---|---|
 | 1 | **Sees:** Macs connect and are approved; every minute each one sends what it knows | in place, 0.5.0 |
-| 2 | A read-only dashboard, also on the iPhone | to do |
+| 2 | **Shows:** a read-only dashboard, also on the iPhone | in place, 0.5.1 |
 | 3 | **Decides:** permits for fill runs, slots that queue, a fallback when it cannot be reached | to do |
 | 4 | Setup on your server, step by step | to do |
 | 5 | Telegram on the Director, one bot for every Mac | to do |
@@ -59,6 +59,11 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
      docker compose exec director jerome director approve <code>
      ```
    - The [watchdog](commands/watchdog.md) sends the first beat within a minute. `jerome connect status` shows it.
+
+3. **The dashboard.** Run `jerome director dashboard` on the server: it prints the dashboard's address, with its token after the `#`. Open it from any device on your VPN, such as the iPhone, and keep it as a bookmark.
+   - It shows the quota on the week's curve (the pace to keep and the reserve's ceiling), the Macs and whether each one is reachable, what waits for you, the projects by Mac, the runs and the past weeks. Times are in the device's own time zone. It refreshes every 30 seconds.
+   - It is read-only: nothing on it changes anything. Its data come only with the token, which the browser never sends in the address: the page passes it in a header.
+   - Whoever has the address sees everything the Director knows. If it leaks, `jerome director dashboard --new-token` makes the old one stop working.
 
 The image is built from the repository. After an update: in Coolify, a deploy; by hand, `git pull` and the same `up -d` with `--build`. The Director's data, its keys included, live in the `director-data` volume.
 
