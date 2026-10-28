@@ -7,6 +7,7 @@ Where each setting of a Jérôme project lives, and how to change it. Each secti
 | Global limits on the subscription windows | `~/.config/jerome/account.json` | `jerome limits --five-hour 70 --seven-day 75` |
 | The project's spending limits | `.jerome/project.json`, `limits` | `jerome limits --daily 5 --weekly 20` |
 | How often heartbeats run, and their caps | `.jerome/project.json`, `heartbeat`, and the launchd job | `jerome schedule daily --at 09:00 --max-tokens 300000` |
+| The quota governor: on or off, target, reserve, 5-hour cap, the projects it fills | `~/.config/jerome/account.json`, `governor`, on this machine only | [`jerome governor on --target 90`](commands/governor.md), `jerome governor add` |
 | Telegram bridge: bot token and your chat | `~/.config/jerome/telegram.json`, readable by you only, never in a project | [`jerome telegram setup`](commands/telegram.md) |
 | Slots, branches, max duration, test command, allowed tools, quota and alert channel of the runs | `.jerome/project.json`, `heartbeat` (`slots`, `mainBranch`, `workBranch`, `maxMinutes`, `test`, `allow`, `quota`, `alerts`) | edit it, or ask the lead agent, then `jerome heartbeat install` |
 | Lift the limits on one project's runs for today | `~/.cache/jerome/heartbeat/` | `jerome heartbeat override --today` |

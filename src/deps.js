@@ -128,6 +128,23 @@ export const DEPS = [
   d('hook-output', 'systemMessage', 'a warning shown to the user, not the model, when limits are near or reached', { event: 'SessionStart', decisions: ['D84'], phase: 9, code: ['src/hooks.js'] }),
   d('hook-output', 'hookSpecificOutput.additionalContext', 'open decision requests and the assumptions of open.md shown to the model at session start', { event: 'SessionStart', decisions: ['D74', 'D116'], phase: 8, code: ['src/hooks.js', 'src/assumptions.js'] }),
 
+  // The subscription's quota, read by the governor (D140) from Claude Code's own usage endpoint with Claude Code's
+  // login: neither is documented, and quota.js is the only module that knows them (spec V4).
+  d('quota-login', 'Keychain item "Claude Code-credentials"', 'Claude Code\'s subscription login on macOS, read with security find-generic-password, never stored or logged', { kind: 'file', documented: false, decisions: ['D139', 'D140'], phase: 10, code: ['src/quota.js'], note: 'a JSON with claudeAiOauth; read in 2.1.312' }),
+  d('quota-login', '.credentials.json', 'the same login on Linux, in Claude Code\'s folder', { kind: 'file', documented: false, decisions: ['D140'], phase: 10, code: ['src/quota.js'] }),
+  d('quota-login', 'claudeAiOauth.accessToken', 'the bearer token, sent only to the usage endpoint', { documented: false, decisions: ['D139', 'D140'], phase: 10, code: ['src/quota.js'] }),
+  d('quota-login', 'claudeAiOauth.expiresAt', 'an expired login is not renewed here: Claude Code renews it', { documented: false, presence: 'sometimes', decisions: ['D140'], phase: 10, code: ['src/quota.js'], note: 'milliseconds' }),
+  d('quota-endpoint', 'GET https://api.anthropic.com/api/oauth/usage', 'the account\'s windows, the user\'s own use included', { kind: 'behaviour', documented: false, decisions: ['D140'], phase: 10, code: ['src/quota.js'], note: 'with the header anthropic-beta: oauth-2025-04-20; answered 200 on 2026-10-28' }),
+  ...['five_hour', 'seven_day'].flatMap((w) => [
+    d('quota-endpoint', `${w}.utilization`, 'used, in percent (14.0, not a fraction)', { documented: false, decisions: ['D140'], phase: 10, code: ['src/quota.js'] }),
+    d('quota-endpoint', `${w}.resets_at`, 'the window\'s reset, ISO 8601', { documented: false, decisions: ['D140'], phase: 10, code: ['src/quota.js'] }),
+  ]),
+  d('quota-endpoint', 'limits[].kind', '"weekly_scoped" for a weekly limit of one model', { documented: false, presence: 'sometimes', decisions: ['D140', 'D141'], phase: 10, code: ['src/quota.js'] }),
+  d('quota-endpoint', 'limits[].percent', 'that limit\'s use, in percent', { documented: false, presence: 'sometimes', decisions: ['D141'], phase: 10, code: ['src/quota.js'] }),
+  d('quota-endpoint', 'limits[].resets_at', 'that limit\'s reset', { documented: false, presence: 'sometimes', decisions: ['D141'], phase: 10, code: ['src/quota.js'] }),
+  d('quota-endpoint', 'limits[].scope.model.display_name', 'the model it limits, "Fable" on 2026-10-28; a run on it gives way to sonnet when it is ahead', { documented: false, presence: 'sometimes', decisions: ['D141'], phase: 10, code: ['src/quota.js', 'src/pacing.js'] }),
+  d('quota-endpoint', 'seven_day_breakdown.rows[].key, display_name, percent', 'the week\'s share by surface (Claude Code, chat), shown by jerome quota', { documented: false, presence: 'sometimes', decisions: ['D140'], phase: 10, code: ['src/quota.js'] }),
+
   // Status line.
   d('statusline-config', 'statusLine.type, command', 'Jérôme\'s status line, and the user\'s own one', { kind: 'setting', decisions: ['D60'], phase: 6, code: ['src/hookconfig.js', 'src/statusline.js'] }),
   d('statusline-input', 'rate_limits.five_hour.used_percentage', 'subscription window', { presence: 'sometimes', decisions: ['D23', 'D60'], phase: 6, code: ['src/statusline.js'], note: 'absent before the session\'s first response' }),

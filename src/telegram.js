@@ -280,8 +280,9 @@ function statusText() {
     return 'jerome projects did not answer.';
   }
   const waiting = p.projects.filter((x) => x.attention.length);
-  if (!waiting.length) return `Nothing waits for you in ${p.projects.length} ${p.projects.length === 1 ? 'project' : 'projects'}.`;
-  return waiting.map((x) => `${x.name}\n${x.attention.map((a) => `• ${a}`).join('\n')}`).join('\n\n');
+  const governor = p.governor ? `\n\nGovernor ${p.governor.verdict}: ${p.governor.why}` : '';
+  if (!waiting.length) return `Nothing waits for you in ${p.projects.length} ${p.projects.length === 1 ? 'project' : 'projects'}.${governor}`;
+  return `${waiting.map((x) => `${x.name}\n${x.attention.map((a) => `• ${a}`).join('\n')}`).join('\n\n')}${governor}`;
 }
 
 // `jerome telegram setup`: the token, checked; the user's chat, from the first message they send the bot; the

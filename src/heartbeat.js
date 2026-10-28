@@ -38,11 +38,14 @@ import { raiseAlert, resolveAlerts, sameAsBefore, pushAlert, lostRuns } from './
 import { notify } from './notify.js';
 import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 import { sweepLostRuns, processStart, INTERACTIVE_HOURS } from './lostruns.js';
+import { governorSettings, currentPace } from './governor.js';
+import { refreshQuota } from './quota.js';
+import { modelFor } from './pacing.js';
 
 // An alert still open is notified again, and pushed again, at most this often (D128).
 const REMIND_HOURS = 3;
 
-export async function heartbeat(dirArg, { env = process.env, now = new Date(), maxTokens = null, maxTurns = null, slot: slotName = null } = {}) {
+export async function heartbeat(dirArg, { env = process.env, now = new Date(), maxTokens = null, maxTurns = null, slot: slotName = null, fill = false } = {}) {
   const dir = resolve(dirArg);
   const log = projectLog(dir);
   if (isLegacy(dir) && !existsSync(join(dir, MARKER))) {
@@ -67,11 +70,11 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
   const caps = { maxTokens: maxTokens ?? settings.maxTokens ?? DEFAULT_CAPS.maxTokens, maxTurns: maxTurns ?? settings.maxTurns ?? DEFAULT_CAPS.maxTurns, once: maxTokens !== null || maxTurns !== null };
   const given = { tokens: maxTokens !== null, turns: maxTurns !== null };
   // Saved with the run (D115): the live view shows the run's tokens against them, `jerome projects` knows a trial.
-  const run = startRun(dir, now, caps, slotName);
+  const run = startRun(dir, now, caps, slotName, fill);
   const record = { mode: null, exitCode: null, outcome: null };
   const finish = (status, reason, { request = null, alert = false, alertKey = undefined, notified = false } = {}) => {
     const ended = endRun(dir, run, status, reason, request, record);
-    const flags = [record.mode, slotName ? `slot ${slotName}` : null, `${Math.round((Date.now() - now.getTime()) / 60_000)} min`,
+    const flags = [record.mode, slotName ? `slot ${slotName}` : null, fill ? 'fill' : null, `${Math.round((Date.now() - now.getTime()) / 60_000)} min`,
       record.exitCode !== null ? `exit ${record.exitCode}` : null, record.outcome ? `end check ${record.outcome.ok ? 'ok' : 'failed'}` : null].filter(Boolean);
     log(`${status} [${flags.join(', ')}]: ${reason}${ended.request ? ` (decision request R${ended.request})` : ''}`);
     if (ended.request) notify(env, dir, `Decision request R${ended.request}: ${request.question}`, { outbox: false });
@@ -79,7 +82,8 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     // No silent skips (D121): a broken state is an alert at once, any other block or failure on its second time.
     const db = openDb(dir);
     try {
-      const raise = alert || (['blocked', 'stopped', 'failed'].includes(status) && !/^locked/.test(reason) && sameAsBefore(db, run.id, reason));
+      // A lock, or a governor that changed its mind before a fill run started (D142), is nothing to call the user for.
+      const raise = alert || (['blocked', 'stopped', 'failed'].includes(status) && !/^(locked|governor:)/.test(reason) && sameAsBefore(db, run.id, reason));
       if (raise) {
         const a = raiseAlert(db, { reason, key: alertKey, runId: run.id, count: alert ? 1 : 2 });
         // A new alert is notified at once; one still open, again every few hours with the runs it has cost (D128).
@@ -126,6 +130,24 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     // may set its own thresholds on the windows, and an override lifts all of it for the day. The user is notified
     // once per pause, not at every heartbeat (D85).
     let note = carried;
+    // The quota governor (D141, D142), when on: a fill run starts only on a go, in case the verdict changed since the
+    // watchdog asked; any heartbeat holds at the 5-hour cap and at the reserve kept for the user, but a slot's run
+    // is not held for being ahead of the pace: it was scheduled on purpose. The fixed limits below stay a ceiling.
+    let model = settings.model ?? 'opus';
+    const governed = governorSettings().on;
+    if (governed) {
+      const p = currentPace(readAccount(), now);
+      if (fill && p.verdict !== 'go') return finish('blocked', `governor: ${p.why}`);
+      if (!fill && ['cap', 'reserve'].includes(p.kind) && !overrideToday(dir, now)) {
+        notifyOnce(dir, env, `governor:${p.kind}:${p.resetsAt}`, `Heartbeats paused: governor: ${p.why}`);
+        return finish('blocked', `governor: ${p.why}`, { notified: true });
+      }
+      const other = modelFor(model, p.avoid);
+      if (other) {
+        model = other.model;
+        note += ` (${other.why})`;
+      }
+    } else if (fill) return finish('blocked', 'governor: off');
     if (overrideToday(dir, now)) note += ' (quota override for today)';
     else {
       const account = readAccount();
@@ -147,12 +169,12 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
         notifyOnce(dir, env, project.key, `Heartbeats paused: ${project.reason}`);
         return finish('blocked', project.reason, { notified: true });
       }
-      if (limits.note) note = ` (${limits.note})`;
+      if (limits.note) note += ` (${limits.note})`;
     }
 
     // RESUME (D119): half-done work is finished or dropped before anything new, with no triage.
     if (start.mode === 'resume') {
-      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, [], { config, slot, resume: start.why, notes: projectNotes(dir) }) }, caps, given, settings, env, config, stopper, record, slot);
+      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, [], { config, slot, resume: start.why, notes: projectNotes(dir) }) }, caps, given, model, env, config, stopper, record, slot, governed);
       return finish(lead.status, `resume: ${start.why} → ${lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey });
     }
 
@@ -161,7 +183,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     const db3 = openDb(dir);
     let plan;
     try {
-      plan = areaPlan(dir, db3, now);
+      plan = areaPlan(dir, db3, now, { fill });
     } finally {
       db3.close();
     }
@@ -175,11 +197,11 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     plan.due = plan.due.filter((a) => !plan.skipped.some((s) => s.name === a.name));
     if (!plan.due.length) return finish('done', `no area due: ${plan.skipped.map((a) => `${a.name} ${a.why}`).join(' · ')}${note}`);
 
-    const fingerprint = projectFingerprint(dir, plan.due.map((a) => a.name), slot?.name);
+    const fingerprint = projectFingerprint(dir, plan.due.map((a) => a.name), slot?.name, fill);
     const last = readLast(dir);
     if (last?.fingerprint === fingerprint && last.verdict === 'no work') return finish('done', `no changes since the last heartbeat${note}`);
 
-    const triage = await runTriage(dir, run, env, plan, slot);
+    const triage = await runTriage(dir, run, env, plan, slot, fill);
     if (triage.verdict) saveVerdict(dir, run, triage.verdict);
     if (triage.error) return finish('failed', `triage: ${triage.error}${note}`);
     if (!triage.work) {
@@ -189,9 +211,9 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     const area = plan.due.find((a) => a.name === triage.area);
     setRunArea(dir, run, area.name);
 
-    const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot, notes: projectNotes(dir) });
-    const lead = await leadRun(dir, run, { label: `lead agent: ${triage.task}`, prompt }, caps, given, settings, env, config, stopper, record, slot);
-    writeLast(dir, { fingerprint: projectFingerprint(dir), verdict: 'work', at: new Date().toISOString() });
+    const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot, notes: projectNotes(dir), fill });
+    const lead = await leadRun(dir, run, { label: `lead agent: ${triage.task}`, prompt }, caps, given, model, env, config, stopper, record, slot, governed);
+    writeLast(dir, { fingerprint: projectFingerprint(dir, [], null, fill), verdict: 'work', at: new Date().toISOString() });
     // The pages' new hashes count only once the area's heartbeat has done its work (D111).
     if (lead.status === 'done' && area.watch) saveHashes(jobLabel(dir), area.name, area.watch.pending);
     return finish(lead.status, `${lead.status === 'done' ? `${plan.implicit ? '' : `${area.name}: `}${triage.task}` : lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey });
@@ -204,11 +226,14 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
 // The lead agent's run and what follows it, the same in both modes: the session closed, the requests it opened
 // notified, the end check (D120), the RESUME flag set or cleared, and a tree left on a branch tidied (D112).
-async function leadRun(dir, run, { label, prompt }, caps, given, settings, env, config, stopper, record, slot) {
+async function leadRun(dir, run, { label, prompt }, caps, given, model, env, config, stopper, record, slot, governed = false) {
   const before = openRequests(dir);
   const digestBefore = digestLines(dir);
   const maxMs = config.maxMinutes * 60_000;
-  const lead = await runLead(dir, run, { label, prompt }, caps, settings.model ?? 'opus', env, maxMs, stopper, runAllowed(config, slot));
+  // With the governor on, the windows before and after the lead agent (D143): what a run costs, learnt run by run.
+  const windowsBefore = governed ? quotaPoints(await refreshQuota({ env })) : null;
+  const lead = await runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, runAllowed(config, slot));
+  if (windowsBefore) saveQuota(dir, run, { model, before: windowsBefore, after: quotaPoints(await refreshQuota({ env, force: true })) });
   closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
   const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
   for (const r of opened) notify(env, dir, `Decision request R${r.id}: ${r.question}`, { outbox: false });
@@ -280,13 +305,13 @@ function projectLog(dir) {
 
 // One row per heartbeat (D13). Its session id is given to Claude Code, so the hooks of the lead agent's session
 // update this same row instead of adding one.
-function startRun(dir, now, caps, slot) {
+function startRun(dir, now, caps, slot, fill = false) {
   const db = openDb(dir);
   try {
     const sessionId = randomUUID();
     // The runner's process, so a run it leaves behind when it dies can be told from one going on (D136).
-    const id = Number(db.prepare("INSERT INTO runs (session_id, kind, started_at, status, caps, slot, pid, pid_started) VALUES (?, 'heartbeat', ?, 'running', ?, ?, ?, ?)")
-      .run(sessionId, now.toISOString(), JSON.stringify(caps), slot, process.pid, processStart(process.pid)).lastInsertRowid);
+    const id = Number(db.prepare("INSERT INTO runs (session_id, kind, started_at, status, caps, slot, pid, pid_started, fill) VALUES (?, 'heartbeat', ?, 'running', ?, ?, ?, ?, ?)")
+      .run(sessionId, now.toISOString(), JSON.stringify(caps), slot, process.pid, processStart(process.pid), fill ? 1 : 0).lastInsertRowid);
     return { id, sessionId };
   } finally {
     db.close();
@@ -337,6 +362,20 @@ export function announceLost(dir, env, config, log, lost) {
   if (unseen) log(`alert notification failed: ${unseen}`);
   const failed = pushAlert(config.alerts.command, { project: basename(dir), dir, message: `Jérôme · ${basename(dir)} · ${text}`, env });
   if (failed) log(`alert push failed: ${failed}`);
+}
+
+// The 5-hour and 7-day points of a reading, as saved with a run.
+function quotaPoints(account) {
+  return Object.fromEntries(WINDOWS.filter((w) => account.windows?.[w]).map((w) => [w, account.windows[w].used]));
+}
+
+function saveQuota(dir, run, quota) {
+  const db = openDb(dir);
+  try {
+    db.prepare('UPDATE runs SET quota = ? WHERE id = ?').run(JSON.stringify(quota), run.id);
+  } finally {
+    db.close();
+  }
 }
 
 function saveVerdict(dir, run, verdict) {
@@ -437,10 +476,12 @@ async function checks(dir, config) {
 
 // What the triage looks at: when none of it changed since a "no work" verdict, there is nothing new to do. A slot's
 // text counts too, since another slot may ask for other work.
-function projectFingerprint(dir, due = [], slot = null) {
+function projectFingerprint(dir, due = [], slot = null, fill = false) {
   const hash = createHash('sha256');
   hash.update(JSON.stringify(due));
   if (slot) hash.update(`slot:${slot}`);
+  // A fill run may take the backlog, which a slot's run leaves alone: their verdicts are kept apart.
+  if (fill) hash.update('fill');
   try {
     hash.update(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }));
   } catch {
@@ -480,7 +521,7 @@ function writeLast(dir, data) {
 // The triage (D73, D100): a service call on Haiku with no tools, given the little it needs in the prompt. It answers
 // whether there is one task the lead agent can do now without the user, and in which of the areas due. Its stream
 // carries the subscription windows too, recorded like the lead agent's (rate_limit_event).
-async function runTriage(dir, run, env, plan, slot = null) {
+async function runTriage(dir, run, env, plan, slot = null, fill = false) {
   const read = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8') : '');
   let gitLog = '';
   try {
@@ -502,7 +543,7 @@ async function runTriage(dir, run, env, plan, slot = null) {
   let out;
   const progress = startProgress('triage on Haiku: is there work to do?');
   try {
-    out = await runClaudeAsync(['-p', triagePrompt({ plan, open: read(STATE.open), gitLog, requests, digestLines: recent, slot, notes }), '--model', 'haiku', '--tools', '',
+    out = await runClaudeAsync(['-p', triagePrompt({ plan, open: read(STATE.open), gitLog, requests, digestLines: recent, slot, notes, fill }), '--model', 'haiku', '--tools', '',
       '--no-session-persistence', '--output-format', 'stream-json', '--verbose', ...(existsSync(settings) ? ['--settings', settings] : [])],
     { cwd: serviceFolder(dir), timeout: 180_000, env: { JEROME_HOOKS: 'off' } });
   } catch (err) {
@@ -546,14 +587,17 @@ async function runTriage(dir, run, env, plan, slot = null) {
   return { verdict: given, work, area, task: v.milestone === true ? `${task} (check the milestone's criteria)` : task, reason: String(v.reason ?? '').slice(0, 300) };
 }
 
-export function triagePrompt({ plan, open = '', gitLog = '', requests = [], digestLines = [], slot = null, notes = [] }) {
+export function triagePrompt({ plan, open = '', gitLog = '', requests = [], digestLines = [], slot = null, notes = [], fill = false }) {
   const areas = plan.due.map((a) => `### ${a.name}${plan.implicit ? '' : ` · priority ${a.priority} · ${a.pace} pace · last heartbeat ${a.lastAt ? a.lastAt.slice(0, 16).replace('T', ' ') : 'never'}`}
 Goal: ${a.goal ?? 'none'}${a.milestone ? `\nMilestone: ${a.milestone}` : ''}
 ${a.milestone ? 'Criteria' : 'Success criteria'}: ${a.criteria ?? 'none'}`).join('\n\n');
   return `You decide whether a scheduled heartbeat of a project should start its lead agent, and on which area of work.
 Answer with one JSON object and nothing else: {"work": true|false, "area": "<area name>", "task": "<one task, one sentence>", "milestone": true|false, "reason": "<one sentence>"}.
-Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. An open request holds up only what depends on it: choose another task of the same area. The assumptions of open.md hold nothing up. Never choose an item marked for an interactive session, nor one under a parked or ideas section. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. When the history shows an area's criteria all met, set "milestone": true and make checking them the task.
-${slot?.text ? `\n## This run's slot: ${slot.name}\n${slot.text}\n` : ''}
+Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. An open request holds up only what depends on it: choose another task of the same area. The assumptions of open.md hold nothing up. Never choose an item marked for an interactive session, nor one under a parked or ideas section${fill ? '' : ', nor one under Backlog'}. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. When the history shows an area's criteria all met, set "milestone": true and make checking them the task.
+${slot?.text ? `\n## This run's slot: ${slot.name}\n${slot.text}\n` : ''}${fill ? `
+## This is a fill run
+The subscription's weekly quota is behind its pace, and what is left at its reset is lost. When no area has a task as above, take one item of the Backlog section of open.md (tests, refactors, research), in the area it names or the first area due. Answer no work only when the backlog has nothing that can be done without the user either.
+` : ''}
 ## Areas due now
 ${areas}
 
@@ -577,7 +621,7 @@ ${notesBlock(notes)}` : ''}`;
 // The lead agent's prompt (D73, D125): project-agnostic, shipped with Jérôme, and the same invariants in both modes.
 // In RESUME mode (D119) the task is the half-done work; otherwise the triage's task, in its area. A slot's text and
 // the project's own `heartbeat.prompt` are appended.
-export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, notes = [] } = {}) {
+export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, notes = [], fill = false } = {}) {
   const main = config?.mainBranch ?? 'main';
   const branch = (config?.workBranch ?? 'agent/*').replace('*', '<short-name>');
   const where = area ? `
@@ -590,7 +634,8 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
     ? `RESUME mode: an earlier run left work half done: ${resume}.
 - Finish that work or drop it, and nothing else in this run. Read open.md, decisions.md and \`git log\` first. Finish: commit on its branch, verify, merge into ${main}. Drop: discard it and delete the branch, and note why in open.md. If it needs the user, open a decision request and leave the branch unmerged, back on ${main}.`
     : `Task chosen by the triage: ${task}${where}
-- Do this task only. Work on a new branch named ${branch}.`;
+- Do this task only. Work on a new branch named ${branch}.${fill ? `
+- This is a fill run, started because the subscription's weekly quota is behind its pace. If the task is an item of the Backlog section of open.md, remove it from there once done.` : ''}`;
   const tests = config?.test ? `\`${config.test}\`` : 'the project\'s tests';
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
 ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
@@ -599,6 +644,7 @@ ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Verify with ${tests}, and with whatever PROJECT.md asks for, such as screenshots of visual changes. When it passes with no conflicts, merge the branch into ${main} and report it; if it fails or there is a conflict, open a decision request instead.
 - Run each command that changes the repository on its own, and stage explicit paths: never \`git add -A\`, \`git add .\` or \`git commit -a\`.
 - A command you are not allowed to run is refused, and the runner reports it to the user: do not work around it with another command; say which one in your last lines.
+- Work that would help and needs nobody, such as tests, refactors or research, that you notice but is not this task: add one line for it under \`## Backlog\` in open.md, for the runs that fill unused quota.
 - Before ending, append one line to .jerome/digest.md: \`- YYYY-MM-DD HH:MM · ${area ? `${area.name} · ` : ''}what you did · branches merged · requests opened\`, and update open.md. Commit them with your work, and END ON ${main.toUpperCase()} WITH A CLEAN WORKING TREE: the runner checks it, and anything else is an alert for the user.${config?.prompt ? `\n- ${config.prompt}` : ''}
 - End with at most 3 lines.${notes.length ? `
 

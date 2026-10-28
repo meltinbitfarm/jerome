@@ -274,6 +274,8 @@ Then (0.2.2, D127-D129), from running heartbeats unattended on a real project: s
 
 Then (0.3.0, D130-D137): Jérôme tells the user without being asked. A Telegram bridge for every project on the machine (what waits for the user out, with buttons for requests; answers, notes and /status in; no model, zero tokens); notes in the database, read by the triage, the lead agent and the next session; a watchdog job every minute that closes runs whose process died and reports heartbeats that did not start; the status line shows alerts, requests and a heartbeat running.
 
+Then (0.4.0, D138-D143): the quota governor, phase 1 of docs/specs/quota-governor.md, on one Mac. The real quota from Claude Code's usage endpoint (only in src/quota.js, the token never leaving the Mac), a pace towards 90% of the week at its reset with 20% kept for Fabio and released over the last 24 hours, and fill runs started by the watchdog in the governor's projects, one at a time, with a backlog in open.md for when no area has work; each run's cost in quota points is measured. `jerome governor`, `jerome quota`. Phase 2 is Jérôme Director, the coordinator on the VPS, under the security rules of D139; phase 3 its dashboard and Telegram bot.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

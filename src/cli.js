@@ -20,6 +20,7 @@ import { projects } from './projects.js';
 import { note } from './notes.js';
 import { setup as telegramSetup, off as telegramOff, telegramStatus, telegramTest } from './telegram.js';
 import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
+import { governor, governorStatus, quota } from './governor.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -68,6 +69,8 @@ const USAGE = `Usage:
                           jobs, the run going on, open alerts and the latest runs (--runs <n>, default 8)
   jerome heartbeat run <slot> [dir]
                           one run of that slot, as its job starts it (--max-tokens, --max-turns)
+  jerome heartbeat fill [dir]
+                          one fill run, as the quota governor starts it when the week is behind its pace
   jerome heartbeat marathon --until <HH:MM> [dir]
                           runs back to back until that time today (24:00 for midnight)
   jerome heartbeat override --today [dir]
@@ -81,6 +84,12 @@ const USAGE = `Usage:
                           the Telegram bridge of this machine: what waits for you, answers, notes, /status
   jerome watchdog install | uninstall | status | run
                           the job of this machine, every minute: lost runs, missed heartbeats, the Telegram bridge
+  jerome governor on | off | status | add [dir] | remove [dir]
+                          the quota governor of this machine: fill runs while the subscription's week is behind its pace
+    --target <n>          the 7-day window's target at its reset, in % (default 90)
+    --reserve <n>         % of the week kept for your own use, released over its last 24 hours (default 20)
+    --five-hour-cap <n>   no run starts with the 5-hour window at or over this % (default 90)
+  jerome quota [--json]   the subscription's windows as Claude Code's usage endpoint gives them, and the pace
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
   jerome limits [dir]     show the usage limits, global and of the project, with the current usage
@@ -126,11 +135,14 @@ const OPTIONS = {
   view: { type: 'boolean' },
   until: { type: 'string' },
   today: { type: 'boolean' },
+  target: { type: 'string' },
+  reserve: { type: 'string' },
+  'five-hour-cap': { type: 'string' },
 };
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'] };
 
 export async function main(argv) {
   let parsed;
@@ -223,7 +235,7 @@ export async function main(argv) {
       if (only('max-tokens', 'max-turns').length) return usageError(`${only('max-tokens', 'max-turns').map((o) => `--${o}`).join(', ')} not available for jerome heartbeat${sub === 'run' ? ' run' : ''}.`);
       const slot = sub === 'run' ? args[0] : null;
       if (sub === 'run' && !slot) return usageError('jerome heartbeat run takes the name of a slot.');
-      const folders = sub === 'run' ? args.slice(1) : rest;
+      const folders = sub === 'run' ? args.slice(1) : sub === 'fill' ? args : rest;
       if (folders.length > 1) return usageError('jerome heartbeat takes at most one folder.');
       const cap = (name) => {
         const raw = parsed.values[name];
@@ -234,7 +246,7 @@ export async function main(argv) {
       const maxTokens = cap('max-tokens');
       const maxTurns = cap('max-turns');
       if (Number.isNaN(maxTokens) || Number.isNaN(maxTurns)) return usageError('--max-tokens and --max-turns take positive whole numbers.');
-      return heartbeat(folders[0] ?? '.', { maxTokens, maxTurns, slot });
+      return heartbeat(folders[0] ?? '.', { maxTokens, maxTurns, slot, fill: sub === 'fill' });
     }
     case 'request': {
       const [action, ...args] = rest;
@@ -268,6 +280,18 @@ export async function main(argv) {
       if (action === 'run') return watchdogRun();
       return usageError('jerome watchdog takes install, uninstall, status or run.');
     }
+    case 'governor': {
+      const [action, ...args] = rest;
+      const v = parsed.values;
+      const usage = 'jerome governor takes on, off, status, add [dir] or remove [dir].';
+      if (!['on', 'off', 'status', 'add', 'remove'].includes(action) || args.length > (['add', 'remove'].includes(action) ? 1 : 0)) return usageError(usage);
+      if (action !== 'on' && Object.keys(v).length) return usageError('--target, --reserve and --five-hour-cap go with jerome governor on.');
+      if (action === 'status') return governorStatus();
+      return governor(action, args[0], { target: v.target, reserve: v.reserve, fiveHourCap: v['five-hour-cap'] });
+    }
+    case 'quota':
+      if (rest.length) return usageError('jerome quota takes no folder: the quota is the account\'s.');
+      return quota({ json: parsed.values.json === true });
     case 'digest':
       if (rest.length > 1) return usageError('jerome digest takes at most one folder.');
       return digest(rest[0] ?? '.', { since: parsed.values.since ?? '7d' });

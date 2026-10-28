@@ -124,7 +124,7 @@ export function projectFiles(brief) {
     [STATE.scope]: `# Scope\n\n${present(SCOPE_SECTIONS)}${areaScope}`,
     [STATE.areas]: `# Areas\n\n${areas.map(formatArea).join('\n')}`,
     [STATE.decisions]: `# Decisions\n\n${sections.Decisions || 'none'}\n`,
-    [STATE.open]: `# Open\n\n${block('Open questions')}\n${block('Parked')}`,
+    [STATE.open]: `# Open\n\n${block('Open questions')}\n${block('Parked')}\n## Backlog\nnone\n`,
   };
 }
 

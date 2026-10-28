@@ -16,6 +16,7 @@ import { needsYou, oneRunCap } from './heartbeat.js';
 import { lostRuns } from './alerts.js';
 import { missedStarts, missedText } from './missed.js';
 import { openDb } from './db.js';
+import { governorSettings, currentPace } from './governor.js';
 
 export const PROJECTS_SCHEMA = 'jerome.projects/v1';
 const INTERVAL_MS = { hourly: 3_600_000, daily: 86_400_000, weekly: 7 * 86_400_000 };
@@ -40,9 +41,17 @@ export function readProjects({ now = new Date(), account = safeAccount() } = {})
     at: now.toISOString(),
     // The subscription windows are the account's: once for all projects.
     windows: globalLimits(now, account).windows,
+    governor: governorRow(account, now),
     projects: [...attention.sort(byActivity), ...rest.sort(byActivity)],
     orphans,
   };
+}
+
+// The quota governor of this machine (D141), or null when off.
+function governorRow(account, now) {
+  if (!governorSettings(account).on) return null;
+  const p = currentPace(account, now);
+  return { verdict: p.verdict, why: p.why, target: p.target };
 }
 
 function safeAccount() {
@@ -163,6 +172,7 @@ export function formatProjects(p) {
   if (windows.length) {
     lines.push(`account ${windows.map(([name, w]) => `${name === 'five_hour' ? '5h' : '7d'} ${w.stale ? 'no reading since its reset' : `${w.used}%${w.limit !== null ? `/${w.limit}%` : ''}${NEAR_LEVELS.has(w.level) ? ` (${w.level})` : ''}`}`).join(' · ')}`);
   } else lines.push('account no reading of the subscription windows yet');
+  if (p.governor) lines.push(`governor ${p.governor.verdict}: ${p.governor.why}`);
   if (!count && !p.orphans.length) {
     lines.push('', 'No project on this machine yet: `jerome new <name>` creates one, `jerome init` brings Jérôme into an existing one.');
     return lines.join('\n');

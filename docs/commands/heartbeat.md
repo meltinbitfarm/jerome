@@ -61,6 +61,15 @@ It also shows a `resume` line when the next run will resume half-done work, and 
 
 `--until HH:MM` runs heartbeats back to back until that time of the day it started, `24:00` being midnight: never into the next day, and not at all when started after it. 2 minutes between runs where the lead agent worked, 30 after a skip, a failure or no work; it waits while another heartbeat holds the lock. It holds the terminal until it ends.
 
+## fill
+
+`jerome heartbeat fill [dir]` is one fill run, as the [quota governor](../quota-governor.md) starts it from the watchdog when the subscription's week is behind its pace (D142).
+- **The checks:** it goes through the same checks, triage and end check as any heartbeat. It stops as `blocked`, with no alert, when the governor is off or its verdict is no longer go.
+- **Areas:** an area's pace does not hold it back.
+- **The backlog:** with no task in an area, the triage may take an item from the `## Backlog` section of `open.md`.
+- **Model:** with a model whose own weekly limit is ahead of the curve, it runs on Sonnet.
+- **Caps:** `--max-tokens` and `--max-turns` apply as for a run by hand.
+
 ## override
 
 `--today` lifts the global and project limits on this project's heartbeats until local midnight. It is kept on this machine (`~/.cache/jerome/heartbeat/`), not in the project.

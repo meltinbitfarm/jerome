@@ -12,6 +12,8 @@ They are in **API-equivalent dollars**, per calendar day (from local midnight) a
 
 Defaults: **$5 a day, $20 a week.** A project's heaviest day so far was $3.09, during intense development, while a heartbeat that does real work costs about $0.25 to $0.65: an hourly heartbeat that works every time stops after 8 to 20 runs in a day. Set them per project with [`jerome limits`](commands/limits.md).
 
+With the [quota governor](quota-governor.md) on, both kinds of limit stay in force as a ceiling. The governor also starts fill runs while the week is behind its pace, and holds every heartbeat at its 5-hour cap and at the reserve it keeps for you.
+
 ## Pauses
 
 A heartbeat checks the limits after its other checks and before any token is spent. If a window is at or over its limit, it stops with the reason, for example:

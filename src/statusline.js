@@ -6,10 +6,11 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { claudeConfigDir } from './claude.js';
 import { MARKER } from './template.js';
-import { recordWindows, WINDOWS } from './account.js';
+import { readAccount, recordWindows, WINDOWS } from './account.js';
 import { openDb, dbPath } from './db.js';
 import { projectStatus, globalLimits, money, limitText } from './budget.js';
 import { lockHolder } from './runstate.js';
+import { governorSettings, currentPace } from './governor.js';
 
 export const STATUSLINE_COMMAND = 'jerome statusline';
 
@@ -32,6 +33,12 @@ export async function statusline({ input = readStdin(), env = process.env } = {}
     for (const [name, w] of Object.entries(globalLimits().windows)) {
       if (w.stale) continue;
       parts.push(paint(`${name === 'five_hour' ? '5h' : '7d'} ${w.used}%${w.limit ? `/${w.limit}%` : ''}`, w.level));
+    }
+    // With the quota governor on (D141), where the week should be now.
+    const account = readAccount();
+    if (governorSettings(account).on) {
+      const p = currentPace(account);
+      if (p.target !== null) parts.push(`pace ${p.target}%${p.verdict === 'go' ? ' ▲' : ''}`);
     }
   } catch {
     // Without account data the line shows the rest.

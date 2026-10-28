@@ -54,7 +54,7 @@ test('projectFiles sorts the sections following the Import table', () => {
   assert.equal(files['.jerome/PROJECT.md'], '# Demo app\n\n## Goal\nA demo.\n\n## Constraints\n- V1: no network.\n\n## Agent limits\n- L1: drafts only.\n');
   assert.equal(files['.jerome/scope.md'], '# Scope\n\n## Context\n- Built for tests.\n\n## Out of scope\n- Mobile.\n\n## Success\n- Tests pass.\n');
   assert.equal(files['.jerome/decisions.md'], '# Decisions\n\n- D1: Node only — fewer tools.\n');
-  assert.equal(files['.jerome/open.md'], '# Open\n\n## Open questions\n- Q1: which name?\n\n## Parked\nnone\n');
+  assert.equal(files['.jerome/open.md'], '# Open\n\n## Open questions\n- Q1: which name?\n\n## Parked\nnone\n\n## Backlog\nnone\n');
   // A brief without areas gets one, main, from its Goal and Success (D98).
   assert.equal(files['.jerome/areas.md'], '# Areas\n\n## main\n- Goal: A demo.\n- Milestone: first\n- Criteria: Tests pass.\n- Folder: .\n- Agents: none\n- Pace: daily\n- Priority: 1\n');
 });

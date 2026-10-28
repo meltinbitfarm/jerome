@@ -42,6 +42,18 @@ test('every result, status line and subagent meta field the code reads is listed
   for (const f of new Set(all(/meta\.([a-zA-Z]+)/g, src('delegations.js')).filter((f) => f !== 'json'))) assert.ok(listed('subagent-meta', f), `meta ${f}`);
 });
 
+test('every field of the usage endpoint the governor reads is listed', () => {
+  const quota = src('quota.js');
+  // The endpoint's fields are read in parseUsage; w.readAt and the like further on are Jérôme's own records.
+  const parse = quota.slice(quota.indexOf('export function parseUsage'), quota.indexOf('export async function fetchQuota'));
+  for (const f of new Set(all(/\bw\??\.([a-z_]+)/g, parse))) {
+    for (const w of ['five_hour', 'seven_day']) assert.ok(listed('quota-endpoint', `${w}.${f}`), `${w}.${f}`);
+  }
+  for (const f of new Set(all(/\bl\??\.([a-z_]+)/g, parse).filter((f) => f !== 'scope'))) assert.ok(listed('quota-endpoint', `limits[].${f}`), `limits[].${f}`);
+  assert.ok(listed('quota-endpoint', 'limits[].scope.model.display_name'));
+  for (const f of new Set(all(/oauth\??\.([a-zA-Z]+)/g, quota))) assert.ok(listed('quota-login', `claudeAiOauth.${f}`), `claudeAiOauth.${f}`);
+});
+
 test('every flag passed to claude and every /context section parsed is listed', () => {
   // Flags these files pass to git, not to claude.
   const git = new Set(['--verify', '--porcelain', '--untracked-files', '--oneline', '--first-parent', '--abbrev-ref', '--count']);

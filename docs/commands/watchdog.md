@@ -4,7 +4,8 @@ The job of this machine, apart from the heartbeats: one launchd job, `com.jerome
 
 1. closes the runs whose process is gone ([lost runs](../heartbeat.md#lost-runs), D136);
 2. tells you, once, about heartbeats that should have started and did not ([missed starts](../heartbeat.md#missed-starts), D135);
-3. runs the [Telegram bridge](../telegram.md), when it is set up: your answers and notes in, the queue out.
+3. with the [quota governor](../quota-governor.md) on, reads the subscription's quota (at most every 5 minutes) and, while the week is behind its pace, starts a fill run in one of the governor's projects, one at a time on the machine (D142);
+4. runs the [Telegram bridge](../telegram.md), when it is set up: your answers and notes in, the queue out.
 
 ```sh
 jerome watchdog install     # write and load the job; again, it only refreshes it

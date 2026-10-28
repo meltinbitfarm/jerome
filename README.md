@@ -87,7 +87,8 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it; `install`, `uninstall`, `status`, `run <slot>`, `marathon --until HH:MM` and `override --today` for a project's slots and their runs |
 | [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
 | [`jerome telegram setup`](docs/commands/telegram.md) | Connects a Telegram bot: what waits for you from every project, answers to requests, notes, `/status`; no model, zero tokens |
-| [`jerome watchdog install`](docs/commands/watchdog.md) | The machine's job, every minute: closes lost runs, reports heartbeats that did not start, runs the Telegram bridge |
+| [`jerome watchdog install`](docs/commands/watchdog.md) | The machine's job, every minute: closes lost runs, reports heartbeats that did not start, runs the Telegram bridge and the quota governor |
+| [`jerome governor on`](docs/commands/governor.md), [`jerome quota`](docs/commands/quota.md) | The quota governor: reads the subscription's real quota and starts fill runs while the week is behind its pace, to reach the weekly reset at about 90% |
 | [`jerome note`](docs/commands/note.md) | Lists and closes the notes you sent a project from Telegram |
 | [`jerome digest [dir]`](docs/commands/digest.md) | What happened recently, at zero tokens |
 | [`jerome limits [dir]`](docs/commands/limits.md) | Shows and sets the usage limits that pause heartbeats: global in % of the subscription windows, per project in API-equivalent dollars |
@@ -132,7 +133,7 @@ After the brief, the lead agent proposes a team from Jérôme's catalog (develop
 
 ## Heartbeats
 
-Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work and in which area, by each area's priority and pace, within a token and turn cap. When it needs you it leaves a decision request instead of asking. Heartbeats pause when a global or project limit is reached, and start again when it resets. A project can have several slots a day (`jerome heartbeat install`); no run is ever skipped silently, half-done work is resumed before anything new, every run is checked when it ends, and anything wrong is an alert you hear about first: in the status line, at the start of a session, and on [Telegram](docs/telegram.md) if you connect it, where you can also answer requests and leave the project notes. A watchdog job reports heartbeats that did not start and closes runs whose process died. See [docs/heartbeat.md](docs/heartbeat.md) and [docs/limits.md](docs/limits.md); to replace scripts of your own, [docs/migrating-heartbeat-scripts.md](docs/migrating-heartbeat-scripts.md).
+Nothing runs on its own until you schedule it. `jerome schedule daily` starts the lead agent every day through launchd, after cheap checks and a triage on Haiku that decide whether there is work and in which area, by each area's priority and pace, within a token and turn cap. When it needs you it leaves a decision request instead of asking. Heartbeats pause when a global or project limit is reached, and start again when it resets. A project can have several slots a day (`jerome heartbeat install`); no run is ever skipped silently, half-done work is resumed before anything new, every run is checked when it ends, and anything wrong is an alert you hear about first: in the status line, at the start of a session, and on [Telegram](docs/telegram.md) if you connect it, where you can also answer requests and leave the project notes. A watchdog job reports heartbeats that did not start and closes runs whose process died. With the [quota governor](docs/quota-governor.md) on, it also reads the subscription's real quota and starts fill runs while the week is behind its pace, so the weekly quota is used rather than lost. See [docs/heartbeat.md](docs/heartbeat.md) and [docs/limits.md](docs/limits.md); to replace scripts of your own, [docs/migrating-heartbeat-scripts.md](docs/migrating-heartbeat-scripts.md).
 
 ## The briefing
 
@@ -150,7 +151,8 @@ Every project starts from a brief in the `brief/v3` format, with the areas to st
 8. ✓ Scheduled headless runs, with a lock and a cap per run (`jerome schedule`, `jerome heartbeat`, `jerome request`); since 0.2.0 with slots, RESUME runs, an end check, a max duration, alerts and marathons
 9. ✓ Daily and weekly limits with automatic pause (`jerome limits`)
 10. ✓ Telegram bridge and watchdog (`jerome telegram`, `jerome watchdog`), since 0.3.0
-11. Areas and milestones, with the area briefing (`.jerome/areas.md`): in place and tested, not yet tried on a real project
+11. ✓ Quota governor on one Mac (`jerome governor`, `jerome quota`), since 0.4.0; next, Jérôme Director, a coordinator for several Macs ([spec](docs/specs/quota-governor.md))
+12. Areas and milestones, with the area briefing (`.jerome/areas.md`): in place and tested, not yet tried on a real project
 
 Along the way: `jerome deps` lists what Jérôme depends on in Claude Code, and `jerome forget` removes the database of a project that is gone.
 

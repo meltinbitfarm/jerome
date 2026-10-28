@@ -8,6 +8,6 @@ It records the subscription windows in `~/.config/jerome/account.json` when they
 ⚠ 1 alert · 2 requests · 5h 57%/70% · 7d 22%/75% · today ≈$3.36/$5 API · ♥ heartbeat running
 ```
 
-The open alerts and decision requests come first, and `♥ heartbeat running` last while a heartbeat runs (D137).
+The open alerts and decision requests come first, and `♥ heartbeat running` last while a heartbeat runs (D137). With the [quota governor](../quota-governor.md) on, `pace 6.4% ▲` follows the windows: where the 7-day window should be now, and ▲ when fill runs may start (D141).
 
 When the project has no database, for example after its folder moved, the part reads `no database: run jerome doctor` (see [database.md](../database.md#where-it-lives)). It never fails: whatever goes wrong, it prints what it can. Details: [hooks.md](../hooks.md#status-line).
