@@ -127,6 +127,10 @@ test('a tool a run was refused is allowed for the project with a button, and an 
   const block = p.sent().find((c) => /mcp__vault__search/.test(c.params.text));
   assert.match(block.params.text, /^Jérôme · demo\nIt needed something its runs may not use \(mcp__vault__search\)\. Allow it for this project, or let it skip that\./);
   assert.deepEqual(block.params.reply_markup.inline_keyboard.map((r) => r[0].callback_data), ['x:1:allow', 'x:1:skip']);
+  // As an alert from before the rules were kept on it (D172): the ones its reason names are allowed.
+  const w = p.writableDb();
+  w.prepare('UPDATE alerts SET rules = NULL').run();
+  w.close();
   p.receive({ callback_query: { id: 'q1', data: 'x:1:allow', message: { message_id: p.idOf(/mcp__vault__search/), chat: CHAT } } });
   p.tick();
   assert.ok(p.sent().some((c) => c.params.text === 'demo: Allowed for this project: mcp__vault. A run starts now.'));
@@ -228,7 +232,7 @@ test('the watchdog tells the user once about a slot that did not start, and jero
   p.runWith({ JEROME_NOTIFY_LOG: log }, 'watchdog', 'run');
   p.runWith({ JEROME_NOTIFY_LOG: log }, 'watchdog', 'run');
   const notified = readFileSync(log, 'utf8').trim().split('\n');
-  assert.deepEqual(notified, ['demo: Its scheduled runs do not start, as when the Mac is off or asleep. Check that the Mac stays on. Stuck for 7 h, 1 run lost.']);
+  assert.deepEqual(notified, ['demo: Its scheduled runs do not start, as when the Mac is off or asleep. Try again now, and check that the Mac stays on. Stuck for 7 h, 1 run lost.']);
   assert.match(p.sent()[0].params.text, /Its scheduled runs do not start/);
   const row = JSON.parse(p.run('projects', '--json').stdout).projects[0];
   assert.ok(row.attention.some((a) => /the heartbeat of slot evening due at .* did not start/.test(a)));

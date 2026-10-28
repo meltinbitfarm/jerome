@@ -13,7 +13,7 @@ Jérôme can reach you on Telegram, for every project on a machine, and you can 
 
    Paste the token (it is not echoed), then send `/start` to your bot from your own Telegram account. Jérôme shows who the message came from and asks you to confirm: from then on, only that private chat is heard. It installs the [watchdog](commands/watchdog.md), the machine's job that runs the bridge every minute, and sends you a test message.
 
-The token is kept in `~/.config/jerome/telegram.json`, readable by you only (`600`, in a `700` folder), never in a project or a log; `jerome doctor` warns if others can read it. The bridge asks Telegram for new messages every minute (`getUpdates`): nothing on the machine listens on the internet.
+The token is kept in `~/.config/jerome/telegram.json`, readable by you only (`600`, in a `700` folder), never in a project or a log; `jerome doctor` warns if others can read it. The bridge asks Telegram for new messages from the watchdog's pass each minute, and keeps asking for most of that minute (`getUpdates` with long polling), so a tap or a message is handled within a second or two: the Mac calls Telegram, and nothing on the machine listens on the internet.
 
 ## What you get
 
@@ -51,7 +51,8 @@ A block comes with one to three buttons, chosen by its kind (D166, [the spec](sp
 | needed a tool its runs may not use (the message names it) | **Allow it for this project** (added to `heartbeat.allow`, an MCP tool as its whole server, then a run starts) · **Skip it, go on** |
 | the folder not trusted in Claude Code | **Trust this folder** (what Claude Code's dialog records, for that folder only, then a run starts) |
 | wrong branch, detached HEAD, a git operation half done | **Back to the main branch** (the operation aborted, the work kept on its branch) |
-| anything else Jérôme can try again | **Try again now** |
+| a scheduled time that no longer exists | **Update the schedule** (`jerome heartbeat install`) |
+| anything else | **Try again now**, and **Skip it, go on** where the work itself is stuck |
 
 Only a provisional PROJECT.md and a folder with no git have no buttons: both happen once, when a project is made at the Mac. A block no run clears by itself reaches you at once (D173); one that may clear, such as a run stopped at its budget, when it lasts. A push, a deploy or a release the work needs comes as a decision request with the command to run (D174).
 

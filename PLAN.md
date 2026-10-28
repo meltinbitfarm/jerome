@@ -312,6 +312,8 @@ Then (0.9.3, D171): heartbeats use WebSearch and WebFetch without a rule; MCP se
 
 Then (0.10.0, D172-D174): every block reaches Fabio on Telegram and can be cleared from there. A block no run clears by itself is told at once; a refused tool is named and allowed for the project with a button (alerts.rules, schema v11; an MCP tool as its server, never a Bash command); an untrusted folder is trusted with a button; only a provisional PROJECT.md and a folder with no git, both made at the Mac, have none. The lead agent asks for a push, deploy or release with the exact command instead of stopping.
 
+Then (0.10.1, D172, D175): the bridge listens for most of each minute (long polling), so a tap is answered in a second or two; no block asks for a session or a command, each points to its buttons (try again, skip, update the schedule); an alert from before 0.10.0 allows the rules its reason names.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

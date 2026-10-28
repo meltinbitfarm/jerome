@@ -26,6 +26,8 @@ import { quotaWatch } from './quotawatch.js';
 export { WATCHDOG_LABEL } from './schedule.js';
 import { WATCHDOG_LABEL } from './schedule.js';
 export const WATCHDOG_SECONDS = 60;
+// How long, from the start of a pass, the Telegram bridge keeps listening: the pass ends before the next one starts.
+const LISTEN_MS = 50_000;
 const logFile = () => cacheDir('logs', 'watchdog.log');
 const seenPath = () => cacheDir('watchdog', 'missed.json');
 
@@ -100,7 +102,8 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
   } catch (err) {
     log(`quota watch error: ${err.message}`);
   }
-  const bridge = await bridgeTick({ env, now });
+  // Last, and listening until shortly before the next minute's pass, so a tap is answered at once (D168).
+  const bridge = await bridgeTick({ env, now, until: env.JEROME_TELEGRAM_FAKE ? null : now.getTime() + LISTEN_MS });
   if (bridge.configured && (bridge.received || bridge.sent || bridge.ignored || bridge.errors.length)) {
     log(`telegram: ${bridge.received} received, ${bridge.sent} sent${bridge.ignored ? `, ${bridge.ignored} from other chats ignored` : ''}${bridge.errors.length ? `; errors: ${bridge.errors.join('; ')}` : ''}`);
   }

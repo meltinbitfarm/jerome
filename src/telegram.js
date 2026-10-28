@@ -123,61 +123,76 @@ export function optionList(options) {
 
 const clip = (text) => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}…` : text);
 
-// One pass of the bridge: the updates first, then the queue. Returns what it did, for the watchdog's log.
-export async function bridgeTick({ env = process.env, now = new Date(), api = null } = {}) {
+// One pass of the bridge: the updates first, then the queue. With `until`, it then keeps listening (Telegram's long
+// polling) until that time, so a tap or a message is handled within a second or two rather than at the next minute;
+// the queue is sent after each answer. Returns what it did, for the watchdog's log.
+export async function bridgeTick({ env = process.env, now = new Date(), api = null, until = null } = {}) {
   const config = readConfig();
   if (!config) return { configured: false };
   const call = api ?? telegramApi(config.token, env);
   const state = readState();
   const done = { configured: true, received: 0, ignored: 0, sent: 0, errors: [] };
-  try {
-    const updates = await call('getUpdates', { offset: state.offset, timeout: 0, allowed_updates: ['message', 'callback_query'] });
-    for (const u of updates) {
-      state.offset = Math.max(state.offset, u.update_id + 1);
-      const chat = u.message?.chat ?? u.callback_query?.message?.chat;
-      // Only the user's own private chat is heard; anything else is counted and dropped, unread.
-      if (!chat || chat.type !== 'private' || String(chat.id) !== String(config.chatId)) {
-        done.ignored += 1;
-        continue;
+  let wait = 0;
+  for (;;) {
+    let got = 0;
+    try {
+      const updates = await call('getUpdates', { offset: state.offset, timeout: wait, allowed_updates: ['message', 'callback_query'] });
+      got = updates.length;
+      for (const u of updates) {
+        state.offset = Math.max(state.offset, u.update_id + 1);
+        const chat = u.message?.chat ?? u.callback_query?.message?.chat;
+        // Only the user's own private chat is heard; anything else is counted and dropped, unread.
+        if (!chat || chat.type !== 'private' || String(chat.id) !== String(config.chatId)) {
+          done.ignored += 1;
+          continue;
+        }
+        done.received += 1;
+        try {
+          if (u.callback_query) await onButton(u.callback_query, state, call, config, new Date(), env);
+          else if (typeof u.message.text === 'string') await onMessage(u.message, state, call, config, new Date());
+        } catch (err) {
+          done.errors.push(err.message);
+        }
       }
-      done.received += 1;
-      try {
-        if (u.callback_query) await onButton(u.callback_query, state, call, config, now, env);
-        else if (typeof u.message.text === 'string') await onMessage(u.message, state, call, config, now);
-      } catch (err) {
-        done.errors.push(err.message);
-      }
+    } catch (err) {
+      done.errors.push(err.message);
+      got = -1;
     }
-  } catch (err) {
-    done.errors.push(err.message);
-  }
-  // The state is saved before sending, so an update is never handled twice.
-  writeState(state);
-  const queued = existsSync(outboxPath()) ? readFileSync(outboxPath(), 'utf8').split('\n').filter(Boolean) : [];
-  if (queued.length) {
-    const sending = `${outboxPath()}.sending`;
-    renameSync(outboxPath(), sending);
-    const left = [];
-    for (const line of queued) {
-      let item;
-      try {
-        item = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      try {
-        await send(item, state, call, config);
-        done.sent += 1;
-      } catch (err) {
-        done.errors.push(err.message);
-        if (now.getTime() - Date.parse(item.at) < OUTBOX_DAYS * 86_400_000) left.push(line);
-      }
-    }
-    if (left.length) appendFileSync(outboxPath(), `${left.join('\n')}\n`);
-    rmSync(sending, { force: true });
+    // The state is saved before sending, so an update is never handled twice.
     writeState(state);
+    await sendQueue(state, call, config, done, now);
+    const left = until ? Math.floor((until - Date.now()) / 1000) : 0;
+    // A failed call is not retried in a loop: the next minute tries again.
+    if (got < 0 || left < 2) break;
+    wait = Math.min(25, left - 1);
   }
   return done;
+}
+
+async function sendQueue(state, call, config, done, now) {
+  const queued = existsSync(outboxPath()) ? readFileSync(outboxPath(), 'utf8').split('\n').filter(Boolean) : [];
+  if (!queued.length) return;
+  const sending = `${outboxPath()}.sending`;
+  renameSync(outboxPath(), sending);
+  const left = [];
+  for (const line of queued) {
+    let item;
+    try {
+      item = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    try {
+      await send(item, state, call, config);
+      done.sent += 1;
+    } catch (err) {
+      done.errors.push(err.message);
+      if (now.getTime() - Date.parse(item.at) < OUTBOX_DAYS * 86_400_000) left.push(line);
+    }
+  }
+  if (left.length) appendFileSync(outboxPath(), `${left.join('\n')}\n`);
+  rmSync(sending, { force: true });
+  writeState(state);
 }
 
 // A queued message: the project's name first; a request with its options as buttons, and remembered, so a button

@@ -25,6 +25,10 @@ const OFFERED = {
   yours: ['commit', 'stash'],
   cap: ['budget', 'skip'],
   denied: ['allow', 'skip'],
+  slot: ['install'],
+  duration: ['retry', 'skip'],
+  endcheck: ['retry', 'skip'],
+  other: ['retry', 'skip'],
   branch: ['main'],
   detached: ['main'],
   operation: ['main'],
@@ -32,7 +36,7 @@ const OFFERED = {
   provisional: [],
   nogit: [],
 };
-export const ACTIONS = ['commit', 'stash', 'budget', 'skip', 'did', 'main', 'retry', 'allow', 'trust'];
+export const ACTIONS = ['commit', 'stash', 'budget', 'skip', 'did', 'main', 'retry', 'allow', 'trust', 'install'];
 
 // What "allow it" adds to heartbeat.allow (D172), from the rules a run was refused: an MCP tool as its whole server
 // (mcp__vault__search → mcp__vault), any other tool as refused. A Bash command never: any command but the blacklist
@@ -113,6 +117,13 @@ export function runAction(dir, alertId, action, { origin, env = process.env, now
       resolve();
       return { ok: true, text: say('acted.skip') };
     }
+    if (action === 'install') {
+      // The jobs again from the project's slots, as `jerome heartbeat install` does at the Mac.
+      const r = spawnSync(process.execPath, [BIN, 'heartbeat', 'install', dir], { env, encoding: 'utf8', timeout: 60_000 });
+      if (r.status !== 0) return failed(r);
+      resolve();
+      return { ok: true, text: say('acted.install') };
+    }
     if (action === 'trust') {
       // What Claude Code's trust dialog records, for this folder only: the user's tap is their accepting it (D173).
       const config = join(env.CLAUDE_CONFIG_DIR || homedir(), '.claude.json');
@@ -133,10 +144,12 @@ export function runAction(dir, alertId, action, { origin, env = process.env, now
     if (action === 'allow') {
       let refused = [];
       try {
-        refused = JSON.parse(alert.rules ?? '[]');
+        refused = JSON.parse(alert.rules ?? 'null') ?? [];
       } catch {
-        // No rules recorded: nothing to allow.
+        // Unreadable: as none recorded.
       }
+      // An alert from before the rules were kept (D172): the ones its reason names, the first three.
+      if (!refused.length) refused = (alert.reason.match(/permission denied for (.+?): add the rules/)?.[1] ?? '').split(', ').filter((r) => !/^and \d+ more$/.test(r));
       const rules = allowable(refused);
       if (!rules.length) return { ok: false, text: say('acted.noallow') };
       // In .jerome/project.json, which the next run commits as Jérôme's own (D158).
