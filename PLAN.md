@@ -306,6 +306,8 @@ Then (0.8.3, D170): a heartbeat may read anywhere but credentials (Read, Glob, G
 
 Then (0.9.0, D166-D168): unblocking from Telegram (docs/specs/unblock.md, src/unblock.js). A lasting block comes with its buttons, chosen by its kind: commit or set aside your changes, twice the budget for one run or skip the work, done or skip for what only Fabio does, back to the main branch, try again now; also under each block of /status. A button carries the alert's id and an action from a closed list; the project checks the alert is open and offers it, refuses while a heartbeat runs, never discards, pushes or deploys, and records who closed the alert (alerts.resolved_by, schema v10). Next: the same buttons on the Director's dashboard (D169).
 
+Then (0.9.2, D130): a tap on a Telegram button is acted on even when the bridge, which runs once a minute, sees it after Telegram's 15 seconds, when answerCallbackQuery is refused; before, that refusal dropped the tap (Fabio's tap on R4 of climbdaily, 2026-10-28 22:19). The buttons of an answered request go from its message.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

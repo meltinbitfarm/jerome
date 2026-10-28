@@ -61,7 +61,8 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   assert.equal(p.sent().length, 3);
 
   p.receive(
-    { callback_query: { id: 'q1', data: 'a:1:1', message: { message_id: p.idOf(/R1 Merge/), chat: CHAT } } },
+    // A tap the bridge sees after Telegram's 15 seconds: too late to stop the spinner, still an answer.
+    { callback_query: { id: 'old-q1', data: 'a:1:1', message: { message_id: p.idOf(/R1 Merge/), chat: CHAT } } },
     { message: { message_id: 7, chat: CHAT, text: '-- call it Pulse', reply_to_message: { message_id: p.idOf(/R2 Which name/) } } },
   );
   p.tick();

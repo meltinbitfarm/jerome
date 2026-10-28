@@ -94,6 +94,8 @@ export function telegramApi(token, env = process.env) {
       }
       if (method === 'getMe') return { username: 'jerome_test_bot' };
       if (method === 'sendMessage') return { message_id: next };
+      // Telegram refuses an answer to a tap older than about 15 seconds, and the bridge runs once a minute.
+      if (method === 'answerCallbackQuery' && params.callback_query_id?.startsWith('old')) throw new Error('Telegram answerCallbackQuery: Bad Request: query is too old and response timeout expired or query ID is invalid');
       return true;
     };
   }
@@ -206,18 +208,25 @@ async function reply(call, config, text, extra = {}) {
 async function onButton(q, state, call, config, now, env) {
   const [kind, a, b] = String(q.data ?? '').split(':');
   const about = state.sent[q.message?.message_id];
-  await call('answerCallbackQuery', { callback_query_id: q.id });
+  // It only stops the button's spinner, and fails on a tap older than about 15 seconds, which a bridge running once a
+  // minute often sees: the tap is still acted on.
+  try {
+    await call('answerCallbackQuery', { callback_query_id: q.id });
+  } catch {
+    // Too late to stop the spinner.
+  }
+  const clearButtons = async () => {
+    try {
+      await call('editMessageReplyMarkup', { chat_id: config.chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } });
+    } catch {
+      // The buttons left are harmless: a second tap finds the request answered, or the block closed.
+    }
+  };
   // A block's action (D167): only on the message that offered it, for its alert, and one of the closed list; the
   // project checks again that the alert is open and offers it.
   if (kind === 'x' && about?.alert === Number(a) && ACTIONS.includes(b)) {
     const done = runAction(about.dir, Number(a), b, { origin: 'telegram', env, now });
-    if (done.ok) {
-      try {
-        await call('editMessageReplyMarkup', { chat_id: config.chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } });
-      } catch {
-        // The buttons left are harmless: a second tap finds the block closed.
-      }
-    }
+    if (done.ok) await clearButtons();
     return reply(call, config, `${about.project}: ${done.text}`);
   }
   if (kind === 'a' && about?.request === Number(a)) {
@@ -225,7 +234,10 @@ async function onButton(q, state, call, config, now, env) {
     const row = db?.prepare('SELECT options FROM requests WHERE id = ?').get(Number(a));
     db?.close();
     const option = optionList(row?.options)[Number(b)];
-    if (option) await answer(about, Number(a), option, call, config);
+    if (option) {
+      await answer(about, Number(a), option, call, config);
+      await clearButtons();
+    }
     return;
   }
   // The project chosen for a note that named none.
