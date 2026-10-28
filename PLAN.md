@@ -282,6 +282,8 @@ Then (0.5.0, D145-D155): Jérôme Director, phase 2 of the quota governor, step 
 
 Then (0.5.1, D151, D156): step 2 of the Director, the read-only dashboard on the Director's own address (`jerome director dashboard`): the quota on the week's curve with the pace and the reserve, the Macs, what waits for Fabio, the projects by Mac, the runs with filters, the past weeks; data only with the token from the URL's fragment, a strict CSP, texts set with textContent, times in the device's time zone. Next: permits (step 3).
 
+Then (0.5.2, D157): the first look at the real dashboard showed paths from the Mac Mini in alerts, requests and run reasons (a `cd /Users/…` in a denied command, a request naming the project's folder): every text a Mac sends is scrubbed, each absolute path down to `…/` and its last name, line breaks to spaces, and the Director scrubs again what it shows, for the runs already stored.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

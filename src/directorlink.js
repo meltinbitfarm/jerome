@@ -16,6 +16,7 @@ import { refreshQuota, readingTime } from './quota.js';
 import { governorSettings } from './governor.js';
 import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { openAlerts } from './alerts.js';
+import { scrub } from './scrub.js';
 import { projectStatus, projectOver } from './budget.js';
 import { lockHolder, cacheDir } from './runstate.js';
 
@@ -158,7 +159,7 @@ export async function disconnect({ env = process.env } = {}) {
   return 0;
 }
 
-const cut = (text, n) => String(text ?? '').slice(0, n);
+const cut = (text, n) => scrub(text).slice(0, n);
 const real = (p) => {
   try {
     return realpathSync(p);

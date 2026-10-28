@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pace, GOVERNOR_DEFAULTS } from './pacing.js';
 import { VERSION } from './template.js';
+import { scrub } from './scrub.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'director.html');
 const STYLE = join(import.meta.dirname, '..', 'viewer', 'style.css');
@@ -60,9 +61,10 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+// Stored data as the page gets it: every text scrubbed again, for what Macs before 0.5.2 sent.
 const parse = (text) => {
   try {
-    return JSON.parse(text);
+    return JSON.parse(text, (key, value) => (typeof value === 'string' && ['reason', 'question'].includes(key) ? scrub(value) : value));
   } catch {
     return null;
   }

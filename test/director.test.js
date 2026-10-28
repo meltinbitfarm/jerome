@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { privateAddress, parseListen, checkListen, checkShape } from '../src/director.js';
 import { newKeys, signRequest, verifyResponse } from '../src/sign.js';
+import { scrub } from '../src/scrub.js';
 import { readyProject } from './sandbox.js';
 
 const BIN = new URL('../bin/jerome.js', import.meta.url).pathname;
@@ -33,6 +34,14 @@ test('a beat with a field the Director does not know, or a text too long, is ref
   assert.match(checkShape({ name: 'toolong', list: [] }, shape), /at most 5 characters/);
   assert.match(checkShape({ name: 'mini', list: [{ id: 1 }, { id: 2 }, { id: 3 }] }, shape), /list of at most 2/);
   assert.match(checkShape({ name: 'mini', list: [{ id: '1' }] }, shape), /body\.list\[0\]\.id must be a number/);
+});
+
+test('a text leaves the Mac with no path and no line break', () => {
+  assert.equal(scrub('permission denied for Bash(cd /Users/odinai/Projects/climbdaily/data && python3 -c "\nimport json")'),
+    'permission denied for Bash(cd …/data && python3 -c " import json")');
+  assert.equal(scrub('Run `jerome doctor` in /Users/odinai/Projects/meltinbit-radar and fix it'), 'Run `jerome doctor` in …/meltinbit-radar and fix it');
+  assert.equal(scrub("tail /tmp/check-fame.log, /private/var/folders/x/T/a.json; /home/me/"), 'tail …/check-fame.log, …/a.json; …/me');
+  assert.equal(scrub('uncommitted changes (.claude/settings.json) on main'), 'uncommitted changes (.claude/settings.json) on main');
 });
 
 // A free port on loopback for the Director.

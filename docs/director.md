@@ -23,7 +23,7 @@ The Director is built so that nobody can intercept the subscription's tokens or 
   - its projects' state: name, slots, open alerts and requests as short texts, usage, last heartbeat;
   - its finished runs.
 
-  Never the subscription's token or any credential, code, prompts, transcripts, file paths or file contents.
+  Never the subscription's token or any credential, code, prompts, transcripts, file paths or file contents. Every text is scrubbed before it leaves: an absolute path becomes `…/` and its last name.
 - **The Director never contacts a Mac.** It only answers, and nothing listens on the Macs.
 - **Any VPN, or none.** It listens on one address, your server's VPN address (Tailscale, WireGuard, any other), and refuses a public one. In Docker, the port is published on that address only.
 - **Signed both ways.** Each Mac signs its requests with an Ed25519 key that never leaves it. The Director signs its answers, and each Mac checks them against the Director key it pinned when it connected. A VPN set up wrong still lets nobody pass for a Mac or for the Director.
