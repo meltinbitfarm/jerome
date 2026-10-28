@@ -300,6 +300,8 @@ Then (0.8.0, D163): autonomy step 6, the last. The Director's dashboard is redon
 
 Then (0.8.1, D158, D163): a template file left uncommitted exactly as the installed Jérôme has it, which `jerome update` wrote while a heartbeat held the lock, is Jérôme's own and carried by the next run instead of stopping it; the dashboard shows as last work only a run done, and a snag being retried as its sentence for a person.
 
+Then (0.8.2, D158, D160): the watchdog settles every minute what an older Jérôme left open, without waiting for the project's next run: the runner's old setup questions are dropped, and an alert for uncommitted files that are all Jérôme's own is closed, since the next run carries them.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

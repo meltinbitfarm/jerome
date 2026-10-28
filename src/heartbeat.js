@@ -33,7 +33,7 @@ import { transcriptMeter } from './meter.js';
 import { checkPages, saveHashes, watchedPages } from './watch.js';
 import { n } from './state.js';
 import { heartbeatConfig, runAllowed } from './heartbeatconfig.js';
-import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
+import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE, isOwnFile, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
 import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, lostRuns } from './alerts.js';
 import { announceAlerts } from './announce.js';
 import { t, lang, leadLanguageLine } from './i18n.js';
@@ -431,9 +431,30 @@ const DOCTOR_BLOCKING = ['project', 'db', 'limits', 'hooks'];
 const RUNNER_QUESTIONS = ['Run `jerome doctor` in %', 'Open `claude` in % once and accept the trust dialog%', 'PROJECT.md is still provisional%'];
 function dropRunnerRequests(dir) {
   const db = openDb(dir);
+  if (!db) return;
   try {
     const where = RUNNER_QUESTIONS.map(() => 'question LIKE ?').join(' OR ');
     db.prepare(`UPDATE requests SET status = 'dropped', answered_at = ? WHERE status = 'open' AND (${where})`).run(new Date().toISOString(), ...RUNNER_QUESTIONS);
+  } finally {
+    db.close();
+  }
+}
+
+// What an older Jérôme left open and this one settles by itself, every minute from the watchdog: the runner's old
+// questions, and the alerts for uncommitted files that are all Jérôme's own, which the next run carries (D158).
+export function tidyStale(dir, now = new Date()) {
+  dropRunnerRequests(dir);
+  const db = openDb(dir);
+  if (!db) return 0;
+  try {
+    let closed = 0;
+    for (const a of db.prepare("SELECT id, reason FROM alerts WHERE status = 'open'").all()) {
+      const files = a.reason.match(/uncommitted changes \(([^)…]+)\)/)?.[1].split(', ');
+      if (files?.every((f) => isOwnFile(f, dir))) {
+        closed += db.prepare("UPDATE alerts SET status = 'resolved', resolved_at = ? WHERE id = ?").run(now.toISOString(), a.id).changes;
+      }
+    }
+    return closed;
   } finally {
     db.close();
   }

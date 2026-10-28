@@ -391,3 +391,26 @@ test('a run is given the test command and the allowed tools, and one refused a t
   assert.doesNotMatch(p.calls().trim().split('\n').pop(), /WebFetch/, 'a slot\'s rules are for its runs only');
   assert.deepEqual(p.alerts(), []);
 });
+
+test('the watchdog settles what an older Jérôme left open: its own questions, and blocks on its own files (D158, D160)', async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { openDb } = await import('../src/db.js');
+  const { raiseAlert } = await import('../src/alerts.js');
+  const { tidyStale } = await import('../src/heartbeat.js');
+  const dir = mkdtempSync(join(tmpdir(), 'jerome-tidy-'));
+  const db = openDb(dir, { create: true });
+  const ask = db.prepare("INSERT INTO requests (opened_at, question, status) VALUES (?, ?, 'open')");
+  ask.run(new Date().toISOString(), 'Run `jerome doctor` in …/x and fix what it reports');
+  ask.run(new Date().toISOString(), 'Which name for the app?');
+  raiseAlert(db, { reason: 'uncommitted changes (.claude/settings.json) on main, not left by a heartbeat: commit or discard them' });
+  db.close();
+  assert.equal(tidyStale(dir), 1);
+  const after = openDb(dir);
+  // The user's own file stays a block.
+  raiseAlert(after, { reason: 'uncommitted changes (README.md) on main, not left by a heartbeat: commit or discard them' });
+  assert.equal(tidyStale(dir), 0);
+  assert.deepEqual(after.prepare("SELECT question FROM requests WHERE status = 'open'").all().map((r) => r.question), ['Which name for the app?']);
+  assert.deepEqual(after.prepare("SELECT reason FROM alerts WHERE status = 'open'").all().map((r) => r.reason.slice(0, 30)), ['uncommitted changes (README.md']);
+  after.close();
+});

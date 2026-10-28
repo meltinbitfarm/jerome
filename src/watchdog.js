@@ -17,7 +17,7 @@ import { sweepLostRuns } from './lostruns.js';
 import { missedStarts, missedText } from './missed.js';
 import { raiseAlert } from './alerts.js';
 import { announceAlerts } from './announce.js';
-import { announceLost } from './heartbeat.js';
+import { announceLost, tidyStale } from './heartbeat.js';
 import { bridgeTick, readConfig } from './telegram.js';
 import { governorTick } from './governor.js';
 import { directorBeat } from './directorlink.js';
@@ -72,6 +72,7 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
       } finally {
         db.close();
       }
+      tidyStale(dir, now);
       // Every minute, the blocks that have lasted reach the user (D160), even with no heartbeat running.
       announceAlerts(dir, { env, config, now, log: say });
     } catch (err) {
