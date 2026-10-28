@@ -1,17 +1,18 @@
-# Jérôme Director (D153), built from this repository. In Coolify: the repository as source, the Docker Compose
-# build pack, base directory /director and compose file /compose.yaml (Coolify resolves the paths below from the
-# base directory), the variable DIRECTOR_ADDRESS set to the server's address on your
-# VPN (Tailscale, WireGuard or any other), and no domain. By hand: clone the repository, write director/.env with
+# Jérôme Director (D153), built from this repository. Its paths start from the repository's root, which Coolify
+# always uses as the project directory. In Coolify: the repository as source, the Docker Compose build pack, base
+# directory /, compose file /director/compose.yaml, the variable DIRECTOR_ADDRESS set to the server's address on your
+# VPN (Tailscale, WireGuard or any other), and no domain. By hand, from the repository's root, with DIRECTOR_ADDRESS in
+# a .env file there:
 #
-#   DIRECTOR_ADDRESS=100.101.102.103
+#   docker compose --project-directory . -f director/compose.yaml up -d
 #
-# and `docker compose up -d` in director/. Then `jerome director init`, run in the container, prints the address and
-# the fingerprint to compare on each Mac. The port is published on that address only, never on all interfaces: Docker's
-# published ports go around ufw, and the Director refuses to start when the address is missing or public (D145).
+# Then `jerome director init`, run in the container, prints the address and the fingerprint to compare on each Mac.
+# The port is published on that address only, never on all interfaces: Docker's published ports go around ufw, and
+# the Director refuses to start when the address is missing or public (D145).
 services:
   director:
     build:
-      context: ..
+      context: .
       dockerfile: director/Dockerfile
     image: jerome-director
     restart: unless-stopped
