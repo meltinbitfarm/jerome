@@ -79,6 +79,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome prompt`](docs/commands/prompt.md) | Prints the briefing instructions, to paste into any chat |
 | [`jerome doctor [dir] [--check] [--json]`](docs/commands/doctor.md) | Checks the setup and restores the lean profile of a project; `--check` only reports, `--json` gives a machine-readable report; relinks the database of a project that moved |
 | [`jerome forget <key>`](docs/commands/forget.md) | Removes the database of a project that is gone, after a backup |
+| [`jerome language [code]`](docs/commands/language.md) | The language Jérôme writes to you in: notifications, Telegram, decision requests (`en`, `it`) |
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
 | [`jerome state [dir] [--json]`](docs/commands/state.md) | Shows a project's usage, areas, runs and open decision requests in a few lines, with dollars as API equivalents |
 | [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, areas, runs, usage, subscription windows and the messages between agents |

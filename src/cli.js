@@ -21,6 +21,7 @@ import { note } from './notes.js';
 import { setup as telegramSetup, off as telegramOff, telegramStatus, telegramTest } from './telegram.js';
 import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
 import { governor, governorStatus, quota } from './governor.js';
+import { language } from './i18n.js';
 import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke, dashboard as directorDashboard } from './director.js';
 import { connect, connectStatus, disconnect } from './directorlink.js';
 
@@ -92,6 +93,8 @@ const USAGE = `Usage:
     --reserve <n>         % of the week kept for your own use, released over its last 24 hours (default 20)
     --five-hour-cap <n>   no run starts with the 5-hour window at or over this % (default 90)
   jerome quota [--json]   the subscription's windows as Claude Code's usage endpoint gives them, and the pace
+  jerome language [<code> | auto]
+                          the language Jérôme writes to you in: notifications, Telegram, decision requests (en, it)
   jerome connect <address> [--name <name>] | connect status | disconnect
                           connect this Mac to Jérôme Director, the coordinator of your Macs, over your VPN
   jerome director init --listen <address> | serve | status | machines | approve <code> | revoke <mac> | dashboard [--new-token]
@@ -151,7 +154,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], director: ['listen', 'new-token'], connect: ['name'], disconnect: [] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token'], connect: ['name'], disconnect: [] };
 
 export async function main(argv) {
   let parsed;
@@ -320,6 +323,9 @@ export async function main(argv) {
     case 'disconnect':
       if (rest.length) return usageError('jerome disconnect takes nothing.');
       return disconnect();
+    case 'language':
+      if (rest.length > 1) return usageError('jerome language takes one code, such as it or en, or auto.');
+      return language(rest[0] ?? null);
     case 'quota':
       if (rest.length) return usageError('jerome quota takes no folder: the quota is the account\'s.');
       return quota({ json: parsed.values.json === true });

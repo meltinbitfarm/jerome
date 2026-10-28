@@ -12,6 +12,9 @@ import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
 import { stores } from './store.js';
 import { addNote } from './notes.js';
+import { t } from './i18n.js';
+import { readAccount } from './account.js';
+import { blockMessage, howLong } from './announce.js';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'jerome.js');
 // Telegram refuses longer messages.
@@ -50,10 +53,10 @@ export function writeConfig(config) {
 }
 
 // Queues a message for the user (D131), when the bridge is set up: { dir, text, request? }.
-export function enqueue({ dir, text, request = null, now = new Date() }) {
+export function enqueue({ dir = null, text, request = null, now = new Date() }) {
   if (!readConfig()) return;
   mkdirSync(dataDir(), { recursive: true });
-  appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: basename(dir), text, request })}\n`);
+  appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: dir ? basename(dir) : null, text, request })}\n`);
 }
 
 function readState() {
@@ -178,9 +181,11 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
 // or a reply answers it.
 async function send(item, state, call, config) {
   const r = item.request;
+  // A message about the account, not a project (the quota running fast), has no project's name.
+  const head = item.project ? `Jérôme · ${item.project}` : 'Jérôme';
   const text = r
-    ? `Jérôme · ${item.project}\n❓ R${r.id} ${r.question}${r.options ? `\nOptions: ${r.options}` : ''}${r.recommendation ? `\nRecommended: ${r.recommendation}` : ''}\n\nTap an option, or reply to this message with your answer.`
-    : `Jérôme · ${item.project}\n${item.text}`;
+    ? `${head}\n❓ R${r.id} ${r.question}${r.options ? `\n${t('request.options')}: ${r.options}` : ''}${r.recommendation ? `\n${t('request.recommended')}: ${r.recommendation}` : ''}\n\n${t('request.how')}`
+    : `${head}\n${item.text}`;
   const options = r ? optionList(r.options) : [];
   const message = await call('sendMessage', {
     chat_id: config.chatId, text: clip(text),
@@ -210,7 +215,7 @@ async function onButton(q, state, call, config, now) {
     const text = state.pending[a];
     const project = knownProjects()[Number(b)];
     delete state.pending[a];
-    if (!text || !project) return reply(call, config, 'That note is no longer waiting: send it again.');
+    if (!text || !project) return reply(call, config, t('note.expired'));
     return saveNote(project, text, call, config, now);
   }
   return null;
@@ -220,8 +225,8 @@ async function onMessage(m, state, call, config, now) {
   const text = m.text.trim();
   const command = text.match(/^\/(\w+)/)?.[1]?.toLowerCase();
   if (command === 'status') return reply(call, config, statusText());
-  if (command === 'start' || command === 'help') return reply(call, config, HELP);
-  if (command) return reply(call, config, `I only know /status and /help.\n\n${HELP}`);
+  if (command === 'start' || command === 'help') return reply(call, config, t('bot.help'));
+  if (command) return reply(call, config, `${t('bot.unknown')}\n\n${t('bot.help')}`);
   const about = m.reply_to_message ? state.sent[m.reply_to_message.message_id] : null;
   if (about?.request) return answer(about, about.request, text, call, config);
   if (about) return saveNote({ name: about.project, dir: about.dir }, text, call, config, now);
@@ -229,15 +234,15 @@ async function onMessage(m, state, call, config, now) {
   const tag = text.match(/^#([\w.-]+)\s+([\s\S]+)$/);
   if (tag) {
     const project = projects.find((p) => p.name.toLowerCase() === tag[1].toLowerCase());
-    if (!project) return reply(call, config, `There is no project called ${tag[1]} on this machine: ${projects.map((p) => p.name).join(', ') || 'none'}.`);
+    if (!project) return reply(call, config, t('note.unknown', { name: tag[1], list: projects.map((p) => p.name).join(', ') || '—' }));
     return saveNote(project, tag[2].trim(), call, config, now);
   }
-  if (!projects.length) return reply(call, config, 'There is no Jérôme project on this machine.');
+  if (!projects.length) return reply(call, config, t('note.none'));
   if (projects.length === 1) return saveNote(projects[0], text, call, config, now);
   // Which project: asked with a button each; the text waits in the bridge's state meanwhile.
   const key = String(m.message_id);
   state.pending[key] = text;
-  return reply(call, config, 'Which project is this note for?', { reply_markup: { inline_keyboard: projects.map((p, i) => [{ text: p.name, callback_data: `n:${key}:${i}` }]) } });
+  return reply(call, config, t('note.which'), { reply_markup: { inline_keyboard: projects.map((p, i) => [{ text: p.name, callback_data: `n:${key}:${i}` }]) } });
 }
 
 // The answer goes through `jerome request answer`, run without a shell, in the project's folder: the same write as
@@ -246,43 +251,45 @@ async function answer(about, id, text, call, config) {
   const db = openDb(about.dir);
   const row = db?.prepare('SELECT status FROM requests WHERE id = ?').get(id);
   db?.close();
-  if (!row) return reply(call, config, `${about.project}: R${id} is not there any more.`);
-  if (row.status !== 'open') return reply(call, config, `${about.project}: R${id} is already ${row.status}; nothing changed.`);
+  if (!row) return reply(call, config, t('request.gone', { project: about.project, id }));
+  if (row.status !== 'open') return reply(call, config, t('request.closed', { project: about.project, id, status: row.status }));
   const r = spawnSync(process.execPath, [BIN, 'request', 'answer', String(id), '--', text], { cwd: about.dir, encoding: 'utf8', timeout: 30_000 });
-  return reply(call, config, r.status === 0 ? `${about.project}: R${id} answered: ${text}` : `${about.project}: R${id} could not be answered: ${(r.stderr || r.stdout).trim()}`);
+  return reply(call, config, r.status === 0 ? t('request.answered', { project: about.project, id, text }) : t('request.failed', { project: about.project, id, error: (r.stderr || r.stdout).trim() }));
 }
 
 async function saveNote(project, text, call, config, now) {
   const db = openDb(project.dir);
-  if (!db) return reply(call, config, `${project.name}: the project database is missing, so the note was not saved.`);
+  if (!db) return reply(call, config, t('note.nodb', { project: project.name }));
   let id;
   try {
     id = addNote(db, text, { now });
   } finally {
     db.close();
   }
-  return reply(call, config, `${project.name}: note N${id} saved. The next heartbeat's triage reads it, and so does your next session.`);
+  return reply(call, config, t('note.saved', { project: project.name, id }));
 }
 
-const HELP = `I am Jérôme's bridge on this machine.
-• Reply to a decision request, or tap an option, to answer it.
-• Reply to any other message of a project, or start with #project, to leave that project a note; the next heartbeat reads it.
-• /status: what waits for you, in every project.
-I run nothing else.`;
-
-// What waits for the user, from `jerome projects`.
+// What waits for the user (D161): the open decision requests and the blocks, each as a sentence for a person, from
+// `jerome projects`; then the quota.
 function statusText() {
   const r = spawnSync(process.execPath, [BIN, 'projects', '--json'], { encoding: 'utf8', timeout: 60_000 });
   let p;
   try {
     p = JSON.parse(r.stdout);
   } catch {
-    return 'jerome projects did not answer.';
+    return t('status.noanswer');
   }
-  const waiting = p.projects.filter((x) => x.attention.length);
-  const governor = p.governor ? `\n\nGovernor ${p.governor.verdict}: ${p.governor.why}` : '';
-  if (!waiting.length) return `Nothing waits for you in ${p.projects.length} ${p.projects.length === 1 ? 'project' : 'projects'}.${governor}`;
-  return `${waiting.map((x) => `${x.name}\n${x.attention.map((a) => `• ${a}`).join('\n')}`).join('\n\n')}${governor}`;
+  const windows = readAccount().windows ?? {};
+  const live = (w) => (w && (w.resetsAt ?? 0) * 1000 > Date.now() ? w.used : null);
+  const quota = live(windows.seven_day) !== null ? `\n\n${t('status.quota', { seven: live(windows.seven_day), five: live(windows.five_hour) })}` : '';
+  const waiting = p.projects.filter((x) => x.requests.length || x.alerts.length || x.error);
+  if (!waiting.length) return `${t('status.nothing', { n: p.projects.length })}${quota}`;
+  const lines = (x) => [
+    ...x.requests.map((q) => t('status.request', { id: q.id, question: q.question })),
+    ...x.alerts.map((a) => `⚠ ${blockMessage(a.reason)} ${howLong(a)}`),
+    ...(x.error ? [`⚠ ${x.error}`] : []),
+  ];
+  return `${waiting.map((x) => `${x.name}\n${lines(x).join('\n')}`).join('\n\n')}${quota}`;
 }
 
 // `jerome telegram setup`: the token, checked; the user's chat, from the first message they send the bot; the
@@ -351,7 +358,7 @@ export async function setup({ env = process.env, input = process.stdin, output =
     writeConfig({ token, chatId: chat.id, chat: who, bot: me.username, at: new Date().toISOString() });
     writeState({ ...readState(), offset });
     console.log(`✓ Saved in ${configPath()}, readable by you only.`);
-    await call('sendMessage', { chat_id: chat.id, text: `Jérôme is connected on this machine. You will get here what waits for you, from every project.\n\n${HELP}` });
+    await call('sendMessage', { chat_id: chat.id, text: `${t('bot.connected')}\n\n${t('bot.help')}` });
     return 0;
   } finally {
     rl.close();
@@ -383,7 +390,7 @@ export async function telegramTest({ env = process.env } = {}) {
     return 1;
   }
   try {
-    await telegramApi(c.token, env)('sendMessage', { chat_id: c.chatId, text: 'Jérôme: test message from this machine.' });
+    await telegramApi(c.token, env)('sendMessage', { chat_id: c.chatId, text: t('bot.test') });
   } catch (err) {
     console.error(err.message);
     return 1;

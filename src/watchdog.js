@@ -21,6 +21,7 @@ import { announceLost } from './heartbeat.js';
 import { bridgeTick, readConfig } from './telegram.js';
 import { governorTick } from './governor.js';
 import { directorBeat } from './directorlink.js';
+import { quotaWatch } from './quotawatch.js';
 
 export { WATCHDOG_LABEL } from './schedule.js';
 import { WATCHDOG_LABEL } from './schedule.js';
@@ -91,6 +92,12 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
     await directorBeat({ env, now, log });
   } catch (err) {
     log(`director error: ${err.message}`);
+  }
+  // The quota running fast (D164), told where the Telegram bridge is.
+  try {
+    await quotaWatch({ env, now, log });
+  } catch (err) {
+    log(`quota watch error: ${err.message}`);
   }
   const bridge = await bridgeTick({ env, now });
   if (bridge.configured && (bridge.received || bridge.sent || bridge.ignored || bridge.errors.length)) {

@@ -130,6 +130,8 @@ export function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
       JEROME_BIN: BIN,
       FAKE_NODE: process.execPath,
       JEROME_NOTIFY: 'off',
+      // The tests read English, whatever the machine's language (D162).
+      JEROME_LANGUAGE: 'en',
       ...env,
       ...extra,
     },

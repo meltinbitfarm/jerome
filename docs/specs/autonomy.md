@@ -1,6 +1,6 @@
 # Autonomy
 
-Status: approved by Fabio on 2026-10-28 (D158-D163).
+Status: approved by Fabio on 2026-10-28 (D158-D163); D164 and D165 added while building it.
 
 ## Why
 
@@ -53,7 +53,8 @@ The deny rules stay in `.claude/settings.json`, which Claude Code applies even w
 ### 5. Jérôme speaks the user's language (D162)
 
 - The language is the user's, from the system (macOS's preferred language; `LANG` elsewhere), and `jerome language <code>` sets it. Italian for Fabio.
-- In that language: notifications, Telegram, decision requests and their options (the lead agent is told to write them so), `jerome projects`, `jerome heartbeat status`, the dashboard. The repository's files, the digest and the docs stay in English.
+- In that language: notifications, Telegram, decision requests and their options (the lead agent is told to write them so), the dashboard. The repository's files, the digest and the docs stay in English, and so, for now, do the terminal commands such as `jerome projects` (D165).
+- The weekly quota running fast is told too, once a day at most (D164).
 
 ### 6. Then the dashboard, simpler (D163)
 

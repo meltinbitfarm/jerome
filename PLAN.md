@@ -292,6 +292,8 @@ Then (0.6.1, D159): autonomy step 2. Heartbeats are given `Bash` whole, so the l
 
 Then (0.6.2, D160, D161): autonomy steps 3 and 4. The runner never opens a decision request: an untrusted folder or a provisional PROJECT.md is an alert, and the questions it opened before are dropped by the next run; the lead agent is told that a request is only for a product or implementation choice, never a technical obstacle. An alert is recorded at once but reaches Fabio only when it lasts (three runs in a row or six hours, then once a day), checked after each heartbeat and by the watchdog every minute (src/announce.js), as one sentence for a person with the one thing to do; pauses for limits and the governor's are no longer alerts or notifications, nor is a failed run on its own. Next: the user's language (step 5).
 
+Then (0.7.0, D162, D164, D165): autonomy step 5. Jérôme writes to the user in their language (`jerome language`, else macOS's first preferred language; `en` and `it` today, src/i18n.js): blocks, decision request notifications, the whole Telegram bridge and its /status (now requests and blocks in plain words, and the quota), and the lead agent is told to write its requests in it. The watchdog of the Mac with the Telegram bridge keeps a week of quota readings and tells Fabio, once a day at most, when the weekly window rose in 24 hours by more than twice the pace (src/quotawatch.js). Next: the dashboard, simpler and in the user's language (step 6).
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

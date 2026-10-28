@@ -7,8 +7,9 @@ import { enqueue } from './telegram.js';
 
 // Returns why the macOS notification could not be shown, or null. `outbox: false` when the message reaches
 // Telegram another way, as a decision request does with its buttons.
+// A null dir is a message about the account rather than a project, such as the quota running fast.
 export function notify(env, dir, message, { outbox = true } = {}) {
-  const project = basename(dir);
+  const project = dir ? basename(dir) : null;
   if (outbox) {
     try {
       enqueue({ dir, text: message });
@@ -17,13 +18,13 @@ export function notify(env, dir, message, { outbox = true } = {}) {
     }
   }
   if (env.JEROME_NOTIFY_LOG) {
-    writeFileSync(env.JEROME_NOTIFY_LOG, `${project}: ${message}\n`, { flag: 'a' });
+    writeFileSync(env.JEROME_NOTIFY_LOG, `${project ?? 'jerome'}: ${message}\n`, { flag: 'a' });
     return null;
   }
   if (env.JEROME_NOTIFY === 'off') return null;
   if (process.platform !== 'darwin') return 'notifications are shown on macOS only: set heartbeat.alerts.command';
   const quote = (s) => `"${String(s).replace(/["\\]/g, '\\$&')}"`;
-  const r = spawnSync('osascript', ['-e', `display notification ${quote(message)} with title ${quote(`Jérôme · ${project}`)}`], { encoding: 'utf8', timeout: 5000 });
+  const r = spawnSync('osascript', ['-e', `display notification ${quote(message)} with title ${quote(project ? `Jérôme · ${project}` : 'Jérôme')}`], { encoding: 'utf8', timeout: 5000 });
   if (r.error) return r.error.message;
   return r.status === 0 ? null : (r.stderr.trim() || `osascript exited with ${r.status}`);
 }

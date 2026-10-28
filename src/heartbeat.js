@@ -36,6 +36,7 @@ import { heartbeatConfig, runAllowed } from './heartbeatconfig.js';
 import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
 import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, lostRuns } from './alerts.js';
 import { announceAlerts } from './announce.js';
+import { t, lang, leadLanguageLine } from './i18n.js';
 import { notify } from './notify.js';
 import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 import { sweepLostRuns, processStart, INTERACTIVE_HOURS } from './lostruns.js';
@@ -75,7 +76,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     const flags = [record.mode, slotName ? `slot ${slotName}` : null, fill ? 'fill' : null, `${Math.round((Date.now() - now.getTime()) / 60_000)} min`,
       record.exitCode !== null ? `exit ${record.exitCode}` : null, record.outcome ? `end check ${record.outcome.ok ? 'ok' : 'failed'}` : null].filter(Boolean);
     log(`${status} [${flags.join(', ')}]: ${reason}${ended.request ? ` (decision request R${ended.request})` : ''}`);
-    if (ended.request) notify(env, dir, `Decision request R${ended.request}: ${request.question}`, { outbox: false });
+    if (ended.request) notify(env, dir, t('request.notice', { id: ended.request, question: request.question }, lang(env)), { outbox: false });
     // No silent skips (D121): a broken state is an alert at once, any other block or failure on its second time. The
     // user hears of it only when it lasts (D160), from announceAlerts.
     const db = openDb(dir);
@@ -222,7 +223,7 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   if (windowsBefore) saveQuota(dir, run, { model, before: windowsBefore, after: quotaPoints(await refreshQuota({ env, force: true })) });
   closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
   const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
-  for (const r of opened) notify(env, dir, `Decision request R${r.id}: ${r.question}`, { outbox: false });
+  for (const r of opened) notify(env, dir, t('request.notice', { id: r.id, question: r.question }, lang(env)), { outbox: false });
 
   // Jérôme's own files left uncommitted on main (a hook rewritten, project.json) are committed, not a failure (D158).
   carryState(dir, config, null, OWN_MESSAGE);
@@ -625,6 +626,8 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
 - Work in the area's folder, with its agents. If its milestone's criteria are met, open a decision request with \`jerome request open --milestone\` proposing the next milestone and its criteria (options: open it / continue / area briefing), and stop.` : '';
   const asked = requests.length ? `
 - Already asked, still open: ${requests.map((r) => `R${r.id} ${r.question}`).join(' · ')}. Do not ask again, nor do what depends on them.` : '';
+  const language = leadLanguageLine();
+  const spoken = language ? `\n- ${language}` : '';
   const what = resume
     ? `RESUME mode: an earlier run left work half done: ${resume}.
 - Finish that work or drop it, and nothing else in this run. Read open.md, decisions.md and \`git log\` first. Finish: commit on its branch, verify, merge into ${main}. Drop: discard it and delete the branch, and note why in open.md. If it needs the user, open a decision request and leave the branch unmerged, back on ${main}.`
@@ -635,7 +638,7 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
 ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Delegate reading and work to the agents in .claude/agents/, in the foreground: wait for every result before going on, never start one in the background, and never end while one is still working. Keep your own turns few.
-- Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "…" --recommendation "…"\`, then go on with the parts of the task that do not depend on it. A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${asked}
+- Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "…" --recommendation "…"\`, then go on with the parts of the task that do not depend on it. A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${spoken}${asked}
 - Verify with ${tests}, and with whatever PROJECT.md asks for, such as screenshots of visual changes. When it passes with no conflicts, merge the branch into ${main} and report it; if it fails or there is a conflict, open a decision request instead.
 - Run each command that changes the repository on its own, and stage explicit paths: never \`git add -A\`, \`git add .\` or \`git commit -a\`.
 - You may run any command the machine has (python3, node, the project's scripts) but a few: pushing, publishing, deploying, mail, sudo, deleting outside the project, credentials. A refused command tells you why: do not retry it in another form, do the task another way.
