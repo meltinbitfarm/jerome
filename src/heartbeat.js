@@ -33,8 +33,8 @@ import { transcriptMeter } from './meter.js';
 import { checkPages, saveHashes, watchedPages } from './watch.js';
 import { n } from './state.js';
 import { heartbeatConfig, runAllowed } from './heartbeatconfig.js';
-import { acquireLock, releaseLock, cacheDir, startState, carryState, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
-import { raiseAlert, resolveAlerts, sameAsBefore, pushAlert, lostRuns } from './alerts.js';
+import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
+import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, pushAlert, lostRuns } from './alerts.js';
 import { notify } from './notify.js';
 import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 import { sweepLostRuns, processStart, INTERACTIVE_HOURS } from './lostruns.js';
@@ -83,7 +83,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     const db = openDb(dir);
     try {
       // A lock, or a governor that changed its mind before a fill run started (D142), is nothing to call the user for.
-      const raise = alert || (['blocked', 'stopped', 'failed'].includes(status) && !/^(locked|governor:)/.test(reason) && sameAsBefore(db, run.id, reason));
+      const raise = alert || (['blocked', 'stopped', 'failed'].includes(status) && !/^(locked|governor:)/.test(reason) && (capStop(reason) ? capsBefore(db, run.id) : sameAsBefore(db, run.id, reason)));
       if (raise) {
         const a = raiseAlert(db, { reason, key: alertKey, runId: run.id, count: alert ? 1 : 2 });
         // A new alert is notified at once; one still open, again every few hours with the runs it has cost (D128).
@@ -120,11 +120,12 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
   process.once('SIGTERM', onSignal);
   try {
     const checked = await checks(dir, config);
-    if (checked.carried) log(`state files carried over from the interactive session: ${checked.carried.join(', ')}`);
+    if (checked.carried) log(`Jérôme's files committed before the run: ${checked.carried.join(', ')}`);
+    for (const w of checked.warned ?? []) log(`doctor warning, not stopping the run: ${w}`);
     if (checked.reason) return finish('blocked', checked.reason, checked);
     const start = checked.start;
     record.mode = start.mode;
-    const carried = checked.carried ? ` (state files carried over: ${checked.carried.join(', ')})` : '';
+    const carried = checked.carried ? ` (Jérôme's files committed: ${checked.carried.join(', ')})` : '';
 
     // Limits (D84, D124): a window at or over its limit pauses heartbeats, at zero tokens, until it resets; the project
     // may set its own thresholds on the windows, and an override lifts all of it for the day. The user is notified
@@ -238,6 +239,8 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
   for (const r of opened) notify(env, dir, `Decision request R${r.id}: ${r.question}`, { outbox: false });
 
+  // Jérôme's own files left uncommitted on main (a hook rewritten, project.json) are committed, not a failure (D158).
+  carryState(dir, config, null, OWN_MESSAGE);
   const check = endCheck(dir, config, { digestBefore, exitCode: lead.exitCode, timedOut: lead.timedOut, stopped: lead.capped || lead.interrupted || lead.subtype === 'error_max_turns', maxMinutes: config.maxMinutes, interactive: interactiveAlongside(dir, run) });
   record.exitCode = lead.exitCode;
   record.outcome = check;
@@ -253,8 +256,8 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   // One open alert for a run that ended badly, whatever stopped it, counted again while the next runs do too.
   const result = (status, reason, alert = !check.ok, alertKey = lead.timedOut ? 'max duration' : 'end check') => ({ status, reason, alert, alertKey });
   const after = check.ok ? '' : `; end check: ${failed}${tidy}; next run resumes`;
-  if (lead.capped) return result('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${capDetail(given.tokens, lead.byAgent)}${after}`);
-  if (lead.subtype === 'error_max_turns') return result('stopped', `turn cap: ${caps.maxTurns} turns${given.turns ? ' (this run)' : ''}${after}`);
+  if (lead.capped) return result('stopped', `token cap: ${lead.tokens.toLocaleString('en')} tokens over ${caps.maxTokens.toLocaleString('en')}${capDetail(given.tokens, lead.byAgent)}${after}`, false);
+  if (lead.subtype === 'error_max_turns') return result('stopped', `turn cap: ${caps.maxTurns} turns${given.turns ? ' (this run)' : ''}${after}`, false);
   if (lead.timedOut) return result('stopped', `max duration: ${config.maxMinutes} min, process tree stopped${after}`, true);
   if (lead.interrupted) return result('stopped', `interrupted${after}`);
   if (lead.error) return result('failed', `${lead.error}${after}`);
@@ -439,6 +442,9 @@ export const needsYou = (reason) => NEEDS_YOU.some((r) => r.test(String(reason ?
 // their caps since D115; the reason's text tells it for the runs from before.
 export const oneRunCap = (reason) => /^(token|turn) cap: .*\(this run[;)]/.test(String(reason ?? ''));
 
+// The doctor checks without which a heartbeat cannot work (D158).
+const DOCTOR_BLOCKING = ['project', 'db', 'limits', 'hooks'];
+
 // The checks that cost nothing, in order. Each failure has a reason and, when the user must act, a decision request
 // or an alert; when all pass, the start state they found (D119). An interactive session no longer stops a heartbeat
 // (D122): the PreToolUse hook keeps it off the repository while the heartbeat runs.
@@ -463,15 +469,16 @@ async function checks(dir, config) {
   const start = startState(dir, config);
   if (start.mode === 'skip') return { reason: start.reason, alert: start.alert === true, carried };
   const report = await runDoctor(dir, { setup: true, fix: true });
-  if (!report.ok) {
-    const failed = report.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`);
-    return {
-      carried,
-      reason: `jerome doctor failed: ${failed.join('; ')}`,
-      request: { question: `Run \`jerome doctor\` in ${dir} and fix what it reports: ${failed.join('; ')}.`, recommendation: 'Fix it; the next heartbeat starts by itself.' },
-    };
-  }
-  return { reason: null, start, carried };
+  // Only a check without which the run cannot work stops it (D158): the size of the startup context, the profile or
+  // the scheduled job are warnings for the log.
+  const failed = report.checks.filter((c) => !c.ok && DOCTOR_BLOCKING.includes(c.id)).map((c) => `${c.label}: ${c.detail}`);
+  const warned = report.checks.filter((c) => !c.ok && !DOCTOR_BLOCKING.includes(c.id)).map((c) => `${c.label}: ${c.detail}`);
+  if (failed.length) return { carried, reason: `jerome doctor failed: ${failed.join('; ')}`, alert: true };
+  // What doctor wrote (the hooks and the status line after an update) is committed here, so the run starts clean.
+  const own = start.mode === 'normal' ? carryState(dir, config, null, OWN_MESSAGE) : null;
+  if (own?.error) return { reason: `Jérôme's files (${own.files.join(', ')}) could not be committed: ${own.error}`, alert: true, carried };
+  const all = [...(carried ?? []), ...(own?.files ?? [])];
+  return { reason: null, start, carried: all.length ? all : null, warned };
 }
 
 // What the triage looks at: when none of it changed since a "no work" verdict, there is nothing new to do. A slot's

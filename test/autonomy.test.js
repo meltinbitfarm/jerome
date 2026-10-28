@@ -299,7 +299,7 @@ test('changes on main limited to the state files are committed by the run, which
   p.run('heartbeat', 'demo');
   const run = p.lastRun();
   assert.equal(run.status, 'done', run.reason);
-  assert.match(run.reason, /\(state files carried over: \.jerome\/open\.md\)/);
+  assert.match(run.reason, /\(Jérôme's files committed: \.jerome\/open\.md\)/);
   assert.match(execFileSync('git', ['log', '--format=%s', '-3'], { cwd: p.dir, encoding: 'utf8' }), /State: carried over from the interactive session/);
   assert.equal(p.tracked(), '');
   assert.deepEqual(p.alerts(), []);
@@ -314,6 +314,24 @@ test('changes on main limited to the state files are committed by the run, which
   assert.match(p.lastRun().reason, /^uncommitted changes \(\.jerome\/open\.md, README\.md\) on main, not left by a heartbeat/);
   assert.match(p.tracked(), /\.jerome\/open\.md/);
   assert.equal(p.alerts().length, 1);
+});
+
+test('Jérôme commits its own settings.json, and a doctor warning does not stop the run (D158)', () => {
+  const p = project({ FAKE_TRIAGE: WORK });
+  p.git('config', 'user.email', 't@example.com');
+  p.git('config', 'user.name', 't');
+  // What doctor leaves after an update of Jérôme: the hooks rewritten in .claude/settings.json, uncommitted.
+  const file = join(p.dir, '.claude', 'settings.json');
+  const settings = JSON.parse(readFileSync(file, 'utf8'));
+  writeFileSync(file, `${JSON.stringify({ ...settings, env: { SOME: 'x' } }, null, 2)}\n`);
+  // And a /context output doctor does not recognise: a warning, no longer a stop with a request.
+  p.runWith({ FAKE_CONTEXT: 'renamed' }, 'heartbeat', 'demo');
+  const run = p.lastRun();
+  assert.equal(run.status, 'done', run.reason);
+  assert.match(run.reason, /Jérôme's files committed: \.claude\/settings\.json/);
+  assert.equal(p.tracked(), '');
+  assert.deepEqual(p.alerts(), []);
+  assert.match(execFileSync('git', ['log', '--format=%s', '-5'], { cwd: p.dir, encoding: 'utf8' }), /State: carried over|Jérôme: its own files/);
 });
 
 test('an alert still open is notified and pushed again every few hours, with the runs it has cost (D128)', () => {

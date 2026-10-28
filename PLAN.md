@@ -286,6 +286,8 @@ Then (0.5.2, D157): the first look at the real dashboard showed paths from the M
 
 Then (0.5.3): the dashboard has its icon, Jérôme as a French painter in pixel art (red beret, handlebar moustache, marinière; Fabio's pick of three), served without the token since it holds nothing, and opens as an app from the iPhone's home screen or the Mac's Dock.
 
+Then (0.6.0, D158-D163): autonomy (docs/specs/autonomy.md), after the first look at the real dashboard showed 12 of 17 heartbeats on the Mac Mini blocked or stopped, none for a reason Fabio had to decide. Step 1 of 6: Jérôme repairs what is its own. It commits its own files left uncommitted (`.claude/settings.json` that doctor rewrites after an update, `project.json`, the state files) at the start and at the end of a run; doctor stops a run only for a check it cannot work without; a run stopped by its cap is an alert only on the third time in a row. Next: any command but a blacklist (step 2).
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

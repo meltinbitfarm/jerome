@@ -136,16 +136,23 @@ export function isStateFile(file) {
   return file.startsWith('.jerome/') && (file.endsWith('.md') || file.startsWith('.jerome/notes/'));
 }
 
-export const CARRY_MESSAGE = 'State: carried over from the interactive session';
+// What Jérôme itself writes in a project (D158): the state files, its settings in project.json, and the hooks and
+// status line doctor keeps in .claude/settings.json. Left uncommitted, they are Jérôme's to commit, never a reason to stop.
+export function isOwnFile(file) {
+  return isStateFile(file) || file === '.jerome/project.json' || file === '.claude/settings.json';
+}
 
-// Uncommitted changes on main limited to the state files (D127) are the interactive lead agent's bookkeeping, not
-// work in progress: the run commits them, by their paths, and starts. Null when there is nothing of the kind to
-// carry (changes to anything else still stop the run, in startState); { files } once committed; { files, error }.
-export function carryState(dir, config, resume = readResume(dir)) {
+export const CARRY_MESSAGE = 'State: carried over from the interactive session';
+export const OWN_MESSAGE = 'Jérôme: its own files, committed by the runner';
+
+// Uncommitted changes on main limited to Jérôme's own files (D127, D158) are its bookkeeping, not work in progress:
+// the run commits them, by their paths, and starts. Null when there is nothing of the kind to carry (changes to
+// anything else still stop the run, in startState); { files } once committed; { files, error }.
+export function carryState(dir, config, resume = readResume(dir), message = CARRY_MESSAGE) {
   if (resume || operationInProgress(dir) || currentBranch(dir) !== config.mainBranch) return null;
   const files = uncommitted(dir) ?? [];
-  if (!files.length || !files.every((f) => isStateFile(f) && !f.includes(' -> '))) return null;
-  const r = git(dir, 'commit', '-q', '-m', CARRY_MESSAGE, '--', ...files);
+  if (!files.length || !files.every((f) => isOwnFile(f) && !f.includes(' -> '))) return null;
+  const r = git(dir, 'commit', '-q', '-m', message, '--', ...files);
   return r.status === 0 ? { files } : { files, error: (r.stderr || r.stdout).trim().split('\n').pop() || `git commit exited with ${r.status}` };
 }
 

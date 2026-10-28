@@ -125,6 +125,18 @@ test('the token cap stops the lead agent, and so does the turn cap', () => {
   p.run('heartbeat', 'demo');
   assert.equal(p.lastRun().status, 'stopped');
   assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 500,000/);
+  // A normal end, which the next run resumes: an alert only when the same work stops three times in a row (D158).
+  const alerts = () => {
+    const d = p.db();
+    const n = d.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n;
+    d.close();
+    return n;
+  };
+  assert.equal(alerts(), 0);
+  p.run('heartbeat', 'demo');
+  assert.equal(alerts(), 0);
+  p.run('heartbeat', 'demo');
+  assert.equal(alerts(), 1);
 
   const q = project({ FAKE_TRIAGE: '{"work": true, "task": "Long task"}', FAKE_LEAD_RESULT: 'error_max_turns' });
   q.run('heartbeat', 'demo');

@@ -38,6 +38,15 @@ export function sameAsBefore(db, runId, reason) {
   return Boolean(before) && ['blocked', 'stopped', 'failed'].includes(before.status) && alertKey(before.reason) === alertKey(reason);
 }
 
+// A run stopped by its token or turn cap, a resumed one too: a normal end, which the next run resumes (D158).
+export const capStop = (reason) => /(^|→ )(token|turn) cap:/.test(String(reason ?? ''));
+
+// Whether the two heartbeats before this one were stopped by their cap too: three in a row is an alert (D158).
+export function capsBefore(db, runId) {
+  const before = db.prepare("SELECT status, reason FROM runs WHERE kind = 'heartbeat' AND id < ? AND status != 'running' ORDER BY id DESC LIMIT 2").all(runId);
+  return before.length === 2 && before.every((b) => b.status === 'stopped' && capStop(b.reason));
+}
+
 // The push channel (D121), off by default: the project's command, run with the alert on standard input and in
 // JEROME_ALERT_*. Its output is never logged, since it may echo a secret it reads; only a failure is returned.
 export function pushAlert(command, { project, dir, message, env = process.env }) {
