@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sandbox } from './sandbox.js';
+import { execFileSync } from 'node:child_process';
+import { sandbox, readyProject } from './sandbox.js';
 import { BRIEF_V2 } from './fixtures.js';
 
 const TEMPLATE = join(import.meta.dirname, '..', 'template');
@@ -226,4 +227,21 @@ test('options of other commands are refused', () => {
   assert.equal(run('new', 'demo', '--yes').status, 2);
   assert.equal(run('update', '--json').status, 2);
   assert.equal(run('doctor', '--from-file', 'x').status, 2);
+});
+
+test('update commits the files it writes, so the next heartbeat does not stop on them (D158)', () => {
+  const p = readyProject();
+  p.git('config', 'user.email', 't@example.com');
+  p.git('config', 'user.name', 't');
+  writeFileSync(join(p.dir, '.claude', 'rules', 'jerome.md'), 'old lead agent\n');
+  const m = marker(p.dir);
+  m.files['.claude/rules/jerome.md'] = sha('old lead agent\n');
+  writeFileSync(join(p.dir, '.jerome', 'project.json'), JSON.stringify(m));
+  p.git('add', '-A');
+  p.git('commit', '-q', '-m', 'an older template');
+  const r = p.run('update', 'demo', '--yes');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /✓ Committed as "Jérôme: template files updated to /);
+  assert.equal(execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: p.dir, encoding: 'utf8' }), '');
+  assert.match(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: p.dir, encoding: 'utf8' }), /^Jérôme: template files updated to /);
 });

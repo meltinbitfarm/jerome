@@ -294,6 +294,8 @@ Then (0.6.2, D160, D161): autonomy steps 3 and 4. The runner never opens a decis
 
 Then (0.7.0, D162, D164, D165): autonomy step 5. Jérôme writes to the user in their language (`jerome language`, else macOS's first preferred language; `en` and `it` today, src/i18n.js): blocks, decision request notifications, the whole Telegram bridge and its /status (now requests and blocks in plain words, and the quota), and the lead agent is told to write its requests in it. The watchdog of the Mac with the Telegram bridge keeps a week of quota readings and tells Fabio, once a day at most, when the weekly window rose in 24 hours by more than twice the pace (src/quotawatch.js). Next: the dashboard, simpler and in the user's language (step 6).
 
+Then (0.7.1, D158): `jerome update` commits the template files it writes and project.json, by their paths: left uncommitted, they stopped the next heartbeat as someone's changes.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

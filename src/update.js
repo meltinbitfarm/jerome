@@ -11,6 +11,7 @@ import { storeDir, STORE_DB } from './store.js';
 import { TREE_DB } from './paths.js';
 import { jobLabel } from './schedule.js';
 import { homedir } from 'node:os';
+import { lockHolder } from './runstate.js';
 
 const LABELS = { new: 'new', update: 'update', modified: 'changed here', remove: 'remove' };
 
@@ -93,7 +94,22 @@ export async function update(dirArg, { check = false, yes = false } = {}) {
   const removed = apply.filter((f) => f.status === 'remove').length;
   const updated = apply.length - removed;
   console.log(`✓ ${updated} ${updated === 1 ? 'file' : 'files'} updated${removed ? `, ${removed} removed` : ''}${kept.length ? `, ${kept.length} kept as changed in this project` : ''}`);
+  // Committed here, by their paths (D158): left uncommitted, they would stop the next heartbeat as someone's changes.
+  const committed = commitTemplate(dir, [...apply.map((f) => f.path), MARKER]);
+  if (committed) console.log(committed);
   return 0;
+}
+
+// The template files just written, and the marker, in one commit of their own. A line to print, or null.
+function commitTemplate(dir, paths) {
+  const git = (...args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+  if (git('rev-parse', '--verify', '-q', 'HEAD').status !== 0) return null;
+  if (lockHolder(dir)) return '! A heartbeat is running: commit these files after it ends, or the next one finds them as uncommitted changes.';
+  const changed = paths.filter((p) => git('status', '--porcelain', '--', p).stdout.trim());
+  if (!changed.length) return null;
+  git('add', '-A', '--', ...changed);
+  const r = git('commit', '-q', '-m', `Jérôme: template files updated to ${VERSION}`, '--', ...changed);
+  return r.status === 0 ? `✓ Committed as "Jérôme: template files updated to ${VERSION}"` : `! Not committed (${(r.stderr || r.stdout).trim().split('\n').pop()}): commit them before the next heartbeat.`;
 }
 
 async function migrate(dir, { check, yes }) {

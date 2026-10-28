@@ -7,6 +7,10 @@ npm install -g github:meltinbitfarm/jerome   # update Jérôme first
 jerome update                                # in the project folder
 ```
 
+## What it commits
+
+The files it writes, and `.jerome/project.json`, are committed at once by their paths, as `Jérôme: template files updated to <version>` (D158): left uncommitted, they would stop the next heartbeat as someone's changes. In a folder with no commit yet, or while a heartbeat runs, it says so and commits nothing.
+
 ## What it touches
 
 Only the paths listed in the template's `MANIFEST`: today `.claude/rules/jerome.md` and the `project-brief`, `project-team` and `docs` skills. The `MANIFEST` itself stays in the installed package; projects created before this rule received a copy at their root, which `jerome update` removes if it is unchanged. Project state is never touched, and a `MANIFEST` that listed it would be refused: `PROJECT.md`, `scope.md`, `decisions.md`, `open.md`, `archive.md`, `brief.md`, `.jerome/project.json` and `.claude/settings.local.json`. The same holds for the paths that belong to the project even when they started from Jérôme: the agents in `.claude/agents/`, created from the catalog (see [agents.md](../agents.md)), `.claude/settings.json` with its deny rules, which [`jerome doctor`](doctor.md) maintains, `docs/` and `notes/`.
