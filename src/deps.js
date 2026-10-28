@@ -31,6 +31,7 @@ export const DEPS = [
   d('cli', '--model', 'model of a service call or heartbeat', { kind: 'flag', decisions: ['D43', 'D73'], phase: 4, code: ['src/docs.js', 'src/heartbeat.js'] }),
   d('cli', '--tools', 'built-in tools allowed; "" for none', { kind: 'flag', decisions: ['D43', 'D73'], phase: 4, code: ['src/docs.js', 'src/heartbeat.js'] }),
   d('cli', '--allowedTools', 'write access limited with absolute rules such as Edit(//abs/docs/**); a heartbeat\'s test command and its allow rules, such as Bash(npm test:*)', { kind: 'flag', decisions: ['D43', 'D129'], phase: 4, code: ['src/docs.js', 'src/heartbeat.js'] }),
+  d('cli', '--disallowedTools', 'a heartbeat may read anywhere but credentials: Read(~/.ssh/**) and the like, applied to Grep and Glob too', { kind: 'flag', decisions: ['D159', 'D170'], phase: 8, code: ['src/heartbeat.js'] }),
   d('cli', '--output-format', '"json" and "stream-json"', { kind: 'flag', decisions: ['D43', 'D73'], phase: 4, code: ['src/docs.js', 'src/heartbeat.js'] }),
   d('cli', '--verbose', 'required by stream-json', { kind: 'flag', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
   d('cli', '--session-id', 'the heartbeat gives its run\'s id to the session', { kind: 'flag', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),

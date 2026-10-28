@@ -219,7 +219,7 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   const maxMs = config.maxMinutes * 60_000;
   // With the governor on, the windows before and after the lead agent (D143): what a run costs, learnt run by run.
   const windowsBefore = governed ? quotaPoints(await refreshQuota({ env })) : null;
-  const lead = await runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, [...runAllowed(config, slot), 'Bash']);
+  const lead = await runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, [...runAllowed(config, slot), ...LEAD_TOOLS]);
   if (windowsBefore) saveQuota(dir, run, { model, before: windowsBefore, after: quotaPoints(await refreshQuota({ env, force: true })) });
   closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
   const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
@@ -679,13 +679,19 @@ ${notesBlock(notes)}` : ''}`;
 // (D159): the deny rules of settings.json, which hold whatever is allowed, and the PreToolUse hook; a tool it is
 // refused anyway, by the permission mode with nobody to ask, is reported. A hook's refusal is not: the agent is told why and goes on.
 const METER_MS = Number(process.env.JEROME_METER_MS) || 3000;
+// What the lead agent may use anywhere on the machine (D159): any command, reading any file, watching what it started.
+// Reading credentials stays refused, by --disallowedTools, which Claude Code applies to Grep and Glob too.
+const LEAD_TOOLS = ['Bash', 'Read', 'Glob', 'Grep', 'Monitor'];
+export const UNREADABLE = ['~/.ssh/**', '~/.aws/**', '~/.gnupg/**', '~/.netrc', '~/.npmrc', '~/.pypirc', '~/.docker/config.json',
+  '~/.kube/**', '~/.config/gh/**', '~/.config/gcloud/**', '~/.config/jerome/**', '~/.claude/.credentials.json', '~/Library/Keychains/**']
+  .map((p) => `Read(${p})`);
 const KILL_GRACE_MS = 10_000;
 
 function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, allowed = []) {
   return new Promise((done) => {
     const child = spawn('claude', ['-p', prompt, '--model', model, '--max-turns', String(caps.maxTurns),
       '--permission-mode', 'acceptEdits', '--output-format', 'stream-json', '--verbose', '--session-id', run.sessionId,
-      ...(allowed.length ? ['--allowedTools', ...allowed] : [])], {
+      ...(allowed.length ? ['--allowedTools', ...allowed] : []), '--disallowedTools', ...UNREADABLE], {
       cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], detached: true,
       env: { ...env, JEROME_RUN_KIND: 'heartbeat', JEROME_SESSION_ID: run.sessionId, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '0' },
     });

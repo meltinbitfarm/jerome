@@ -302,6 +302,8 @@ Then (0.8.1, D158, D163): a template file left uncommitted exactly as the instal
 
 Then (0.8.2, D158, D160): the watchdog settles every minute what an older Jérôme left open, without waiting for the project's next run: the runner's old setup questions are dropped, and an alert for uncommitted files that are all Jérôme's own is closed, since the next run carries them.
 
+Then (0.8.3, D170): a heartbeat may read anywhere but credentials (Read, Glob, Grep allowed, the credential folders refused by --disallowedTools, tried with real claude) and use Monitor; a process's start time is read in one locale and zone, so a heartbeat started from a terminal in Italian is no longer taken by the watchdog for a run whose runner died.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

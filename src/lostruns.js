@@ -22,7 +22,8 @@ export const INTERACTIVE_HOURS = 12;
 // When a process started, as ps prints it, or null when there is no such process.
 export function processStart(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return null;
-  const r = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' });
+  // In one locale and zone: a run started from a terminal in Italian is checked by the watchdog under launchd in C.
+  const r = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' } });
   return r.status === 0 ? r.stdout.trim() || null : null;
 }
 

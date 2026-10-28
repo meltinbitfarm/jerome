@@ -11,7 +11,7 @@ import { realpathSync } from 'node:fs';
 import { splitCommand } from './chain.js';
 
 const HOME = String.raw`(?:~|\$HOME|\$\{HOME\}|/Users/[^/\s'"]+|/home/[^/\s'"]+)`;
-const CREDENTIALS = new RegExp(`${HOME}/(?:\\.ssh|\\.aws|\\.gnupg|\\.netrc|\\.npmrc|\\.pypirc|\\.docker/config\\.json|\\.kube|\\.config/gh|\\.config/gcloud|\\.claude/\\.credentials|Library/Keychains)`);
+const CREDENTIALS = new RegExp(`${HOME}/(?:\\.ssh|\\.aws|\\.gnupg|\\.netrc|\\.npmrc|\\.pypirc|\\.docker/config\\.json|\\.kube|\\.config/gh|\\.config/gcloud|\\.config/jerome|\\.claude/\\.credentials|Library/Keychains)`);
 const ROOT = /(^|[\s;&|(`'"])(sudo|doas)\s|(^|[;&|(`]\s*)su(\s|$)/;
 const KEYCHAIN = /(^|[\s;&|(`'"])security\s+[a-z]/;
 const PIPED = /\b(curl|wget)\b[^|;&]*\|\s*(sudo\s+)?(sh|bash|zsh|dash|fish|python3?|node|perl|ruby)\b|\b(sh|bash|zsh)\s+(-c\s+)?["']?(\$\(|<\()\s*(curl|wget)\b/;
