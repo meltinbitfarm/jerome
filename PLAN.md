@@ -298,6 +298,8 @@ Then (0.7.1, D158): `jerome update` commits the template files it writes and pro
 
 Then (0.8.0, D163): autonomy step 6, the last. The Director's dashboard is redone in the user's language, the one each Mac now sends in its beat: one sentence on top (everything goes on by itself, or how many things wait), then what Fabio must do (open requests with their options, blocks that lasted, as the same sentences the notifications use, from src/blocks.js; a silent Mac), one line per project with its state in words, the quota in one line and its curve, and the Macs, runs and past weeks closed under details. The beat now carries each alert's count and start and each request's options, and the Director stores the Mac's language.
 
+Then (0.8.1, D158, D163): a template file left uncommitted exactly as the installed Jérôme has it, which `jerome update` wrote while a heartbeat held the lock, is Jérôme's own and carried by the next run instead of stopping it; the dashboard shows as last work only a run done, and a snag being retried as its sentence for a person.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

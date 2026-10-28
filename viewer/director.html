@@ -58,7 +58,7 @@ const WORDS = {
     state: { running: 'working now', stuck: 'stopped, needs you', retrying: 'hit a snag, trying again by itself', asking: 'waiting for your answer', paused: 'paused at its limit', idle: 'waiting for its next turn' },
     next: (s) => `turns: ${s}`,
     lastWork: (ago, what) => `last work ${ago}: ${what}`,
-    noWork: 'no run yet',
+    noWork: 'no work done yet',
     quota: 'Quota this week',
     noQuota: 'No reading yet: it comes with the first beat of a Mac.',
     used: (seven, five) => `Week ${seven}%${five !== null ? ` · 5 hours ${five}%` : ''}`,
@@ -92,7 +92,7 @@ const WORDS = {
     state: { running: 'sta lavorando', stuck: 'fermo, serve te', retrying: 'ha trovato un intoppo, riprova da solo', asking: 'aspetta una tua risposta', paused: 'in pausa al suo limite', idle: 'aspetta il prossimo turno' },
     next: (s) => `turni: ${s}`,
     lastWork: (ago, what) => `ultimo lavoro ${ago}: ${what}`,
-    noWork: 'ancora nessuna run',
+    noWork: 'nessun lavoro finito ancora',
     quota: 'Quota della settimana',
     noQuota: 'Ancora nessuna lettura: arriva col primo battito di un Mac.',
     used: (seven, five) => `Settimana ${seven}%${five !== null ? ` · 5 ore ${five}%` : ''}`,
@@ -196,13 +196,16 @@ function renderProjects() {
   if (!data.projects.length) return fill('projects', title(W.projects), el('div', { class: 'muted' }, W.noProjects));
   const order = { stuck: 0, asking: 1, retrying: 2, running: 3, paused: 4, idle: 5 };
   const rows = [...data.projects].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name)).map((p) => {
-    const h = p.lastHeartbeat;
+    const h = p.lastDone;
     const last = h ? W.lastWork(ago(h.at), h.reason) : W.noWork;
+    // A snag it is retrying: the sentence for a person, not the runner's reason.
+    const snag = p.state === 'retrying' && p.blocks.length ? el('div', { class: 'warn small' }, p.blocks[0].text) : null;
     return el('div', { class: 'row-card' },
       el('div', { class: 'row-head' },
         el('span', { class: 'name' }, p.name),
         el('span', { class: STATE_CLASS[p.state] }, W.state[p.state]),
         data.machines.length > 1 ? el('span', { class: 'muted small' }, p.machine) : null),
+      snag,
       el('div', { class: 'muted small clip' }, last),
       p.slots.length ? el('div', { class: 'muted small' }, W.next(p.slots.map((s) => s.at).join(' · '))) : null);
   });

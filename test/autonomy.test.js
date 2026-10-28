@@ -328,6 +328,20 @@ test('Jérôme commits its own settings.json, and a doctor warning does not stop
   assert.equal(p.tracked(), '');
   assert.deepEqual(p.alerts(), []);
   assert.match(execFileSync('git', ['log', '--format=%s', '-5'], { cwd: p.dir, encoding: 'utf8' }), /State: carried over|Jérôme: its own files/);
+
+  // A template file exactly as the installed Jérôme has it, which `jerome update` wrote and left: Jérôme's too.
+  const rules = join(p.dir, '.claude', 'rules', 'jerome.md');
+  const current = readFileSync(rules, 'utf8');
+  writeFileSync(rules, 'an older version\n');
+  p.git('commit', '-q', '-am', 'older rules');
+  writeFileSync(rules, current);
+  p.run('heartbeat', 'demo');
+  assert.equal(p.lastRun().status, 'done', p.lastRun().reason);
+  assert.equal(p.tracked(), '');
+  // The same file changed by hand is the user's: the run stops.
+  writeFileSync(rules, `${current}\nmine\n`);
+  p.run('heartbeat', 'demo');
+  assert.match(p.lastRun().reason, /^uncommitted changes \(\.claude\/rules\/jerome\.md\)/);
 });
 
 test('a block reaches the user only when it lasts, as one plain sentence, then once a day (D160, D161)', () => {

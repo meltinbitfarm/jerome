@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { jobLabel } from './schedule.js';
 import { STATE } from './paths.js';
-import { MARKER } from './template.js';
+import { MARKER, TEMPLATE_DIR } from './template.js';
 
 export function cacheDir(...parts) {
   return join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'jerome', ...parts);
@@ -136,10 +136,18 @@ export function isStateFile(file) {
   return file.startsWith('.jerome/') && (file.endsWith('.md') || file.startsWith('.jerome/notes/'));
 }
 
-// What Jérôme itself writes in a project (D158): the state files, its settings in project.json, and the hooks and
-// status line doctor keeps in .claude/settings.json. Left uncommitted, they are Jérôme's to commit, never a reason to stop.
-export function isOwnFile(file) {
-  return isStateFile(file) || file === '.jerome/project.json' || file === '.claude/settings.json';
+// What Jérôme itself writes in a project (D158): the state files, its settings in project.json, the hooks and status
+// line doctor keeps in .claude/settings.json, and a template file exactly as the installed Jérôme has it, which
+// `jerome update` wrote. Left uncommitted, they are Jérôme's to commit, never a reason to stop.
+export function isOwnFile(file, dir = null) {
+  if (isStateFile(file) || file === '.jerome/project.json' || file === '.claude/settings.json') return true;
+  if (!dir) return false;
+  const template = join(TEMPLATE_DIR, file);
+  try {
+    return existsSync(template) && readFileSync(template).equals(readFileSync(join(dir, file)));
+  } catch {
+    return false;
+  }
 }
 
 export const CARRY_MESSAGE = 'State: carried over from the interactive session';
@@ -151,7 +159,7 @@ export const OWN_MESSAGE = 'Jérôme: its own files, committed by the runner';
 export function carryState(dir, config, resume = readResume(dir), message = CARRY_MESSAGE) {
   if (resume || operationInProgress(dir) || currentBranch(dir) !== config.mainBranch) return null;
   const files = uncommitted(dir) ?? [];
-  if (!files.length || !files.every((f) => isOwnFile(f) && !f.includes(' -> '))) return null;
+  if (!files.length || !files.every((f) => isOwnFile(f, dir) && !f.includes(' -> '))) return null;
   const r = git(dir, 'commit', '-q', '-m', message, '--', ...files);
   return r.status === 0 ? { files } : { files, error: (r.stderr || r.stdout).trim().split('\n').pop() || `git commit exited with ${r.status}` };
 }

@@ -227,6 +227,8 @@ test('the dashboard is a page under a strict policy, its data only with the toke
   // In the language of the Mac that beat last (D163), with each project's state and what waits for the user.
   assert.equal(o.language, 'en');
   assert.equal(o.projects[0].state, 'idle');
+  // The last work is the last run done, never a stop's reason.
+  assert.equal(o.projects[0].lastDone?.at ?? null, o.runs.find((x) => x.status === 'done')?.endedAt ?? null);
   assert.deepEqual(o.attention, []);
   assert.ok(!JSON.stringify(o).includes(m.root), 'no path reaches the dashboard');
 

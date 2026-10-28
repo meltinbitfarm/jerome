@@ -119,6 +119,9 @@ export function overview(db, now = new Date()) {
   const projects = db.prepare('SELECT machine, key, data FROM projects ORDER BY name').all().filter((p) => names.has(p.machine)).map((p) => {
     const data = parse(p.data);
     const mine = db.prepare('SELECT data FROM runs WHERE machine = ? AND project = ? AND ended_at >= ?').all(p.machine, p.key, since).map((r) => parse(r.data));
+    // The last work done: a heartbeat that stopped is a block, told apart, never "the last work".
+    const done = db.prepare("SELECT data FROM runs WHERE machine = ? AND project = ? AND json_extract(data, '$.status') = 'done' ORDER BY ended_at DESC LIMIT 1").get(p.machine, p.key);
+    const lastDone = done ? parse(done.data) : null;
     const costs = mine.map((r) => r.quota?.after?.seven_day - r.quota?.before?.seven_day).filter((d) => Number.isFinite(d) && d >= 0);
     // Each block as the user reads it (D160, D161): a sentence, how long, and whether it has lasted enough to need them.
     const blocks = (data.alerts ?? []).map((a) => {
@@ -131,6 +134,7 @@ export function overview(db, now = new Date()) {
       ...data,
       blocks,
       state,
+      lastDone: lastDone ? { at: lastDone.endedAt ?? lastDone.startedAt, reason: lastDone.reason } : null,
       machine: names.get(p.machine),
       runs7d: mine.length,
       fill7d: mine.filter((r) => r.kind === 'fill').length,
