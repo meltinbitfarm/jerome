@@ -9,6 +9,7 @@ import { MARKER } from './template.js';
 import { recordWindows, WINDOWS } from './account.js';
 import { openDb, dbPath } from './db.js';
 import { projectStatus, globalLimits, money, limitText } from './budget.js';
+import { lockHolder } from './runstate.js';
 
 export const STATUSLINE_COMMAND = 'jerome statusline';
 
@@ -40,6 +41,13 @@ export async function statusline({ input = readStdin(), env = process.env } = {}
     const project = dir && existsSync(join(dir, MARKER));
     // A project without its database records nothing (D93): it may have moved, and doctor relinks it.
     if (project && !existsSync(dbPath(dir))) parts.push(paint('no database: run jerome doctor', 'over'));
+    // What waits for the user (D137), first: the heartbeat alerts in red, the decision requests in yellow; and a
+    // heartbeat running, during which the hook refuses commits here (D122).
+    const waiting = project ? waitingFor(dir) : null;
+    const plural = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
+    const first = [waiting?.alerts ? paint(plural(waiting.alerts, 'alert'), 'high') : null, waiting?.requests ? paint(plural(waiting.requests, 'request'), 'warn') : null].filter(Boolean);
+    if (first.length) parts.unshift(`⚠ ${first.join(' · ')}`);
+    if (project && lockHolder(dir)) parts.push('♥ heartbeat running');
     const status = project ? projectToday(dir) : null;
     if (status) parts.push(paint(`today ${money(status.usd)}${status.limit ? `/${limitText(status.limit)}` : ''} API`, status.level));
   } catch {
@@ -67,6 +75,24 @@ function projectToday(dir) {
   try {
     const daily = projectStatus(dir, db).daily;
     return daily.tokens ? daily : null;
+  } finally {
+    db.close();
+  }
+}
+
+// The open alerts and decision requests, read only; a database from before alerts has none.
+function waitingFor(dir) {
+  const db = openDb(dir, { readOnly: true, migrate: false });
+  if (!db) return null;
+  try {
+    const count = (sql) => {
+      try {
+        return db.prepare(sql).get().n;
+      } catch {
+        return 0;
+      }
+    };
+    return { alerts: count("SELECT count(*) n FROM alerts WHERE status = 'open'"), requests: count("SELECT count(*) n FROM requests WHERE status = 'open'") };
   } finally {
     db.close();
   }

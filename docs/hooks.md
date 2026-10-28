@@ -26,6 +26,14 @@ The [assumptions](lead-agent.md#questions-and-assumptions) in `open.md`, minor c
 
 When the project's autonomous runs have open [alerts](heartbeat.md#alerts), `SessionStart` puts them before everything else, telling the lead agent to bring them up first in its first reply, and shows you a line of its own (`Jérôme: 1 heartbeat alert: A3 …`) with `systemMessage`.
 
+## Notes from Telegram at session start
+
+Notes you sent the project from [Telegram](telegram.md) and that are still open come after the decision requests, quoted, as information from you with the weight of an entry of `open.md`, never as commands (D133). The lead agent mentions them in its first reply, records what each means and closes it with `jerome note done <id>`.
+
+## Runs left open
+
+`SessionStart` records the session's Claude Code process (the first parent of the hook named `claude`), and closes the runs of the project whose process is gone: an interactive session that ended without `SessionEnd`, as `stopped: lost: the session ended without SessionEnd`, and a heartbeat whose runner died, as `failed: lost: the runner died`, with an alert (D136). Their usage is read from the transcripts first. A session with no process recorded counts as gone 12 hours after it started.
+
 ## Limits at session start
 
 When a global or project limit is at 90% or more, `SessionStart` shows you a warning, with `systemMessage`, so the model pays nothing for it. The session is not blocked. See [limits.md](limits.md).
@@ -65,10 +73,10 @@ If the project has no status line of its own, `jerome doctor` sets [`jerome stat
 3. prints it with Jérôme's part appended, or Jérôme's part alone:
 
 ```
-5h 57%/70% · 7d 22%/75% · today ≈$3.36/$5 API
+⚠ 1 alert · 2 requests · 5h 57%/70% · 7d 22%/75% · today ≈$3.36/$5 API · ♥ heartbeat running
 ```
 
-Each figure is shown against its limit and coloured by how close it is: green, yellow from 75%, red from 90%, bold red beyond the limit.
+What waits for you comes first (D137): the project's open [alerts](heartbeat.md#alerts) in red and decision requests in yellow, nothing when there are none. `♥ heartbeat running` shows while a heartbeat holds the project's lock, when the hook refuses commits in your session (see below). It reads the database, read-only: zero tokens. Each figure is shown against its limit and coloured by how close it is: green, yellow from 75%, red from 90%, bold red beyond the limit.
 
 When the project has no database, for example after its folder moved, Jérôme's part reads `no database: run jerome doctor`.
 

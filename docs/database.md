@@ -15,7 +15,7 @@ Outside the project's folder, in `~/.local/share/jerome/projects/<name>-<hash>/j
 
 ## Who writes it
 
-Only the CLI and the hooks. The model never runs SQL and never touches the file: tracking costs no tokens. The one exception is decision requests: the lead agent opens and closes them with [`jerome request`](commands/request.md), where the CLI writes and the model only passes the text. Hooks never make a session fail: on an error they exit quietly and record an `error` event if they can.
+Only the CLI and the hooks. The model never runs SQL and never touches the file: tracking costs no tokens. The exceptions are decision requests, which the lead agent opens and closes with [`jerome request`](commands/request.md), and the user's notes, which it closes with [`jerome note done`](commands/note.md): the CLI writes and the model only passes the text. The [Telegram bridge](telegram.md) writes answers and notes the same way. Hooks never make a session fail: on an error they exit quietly and record an `error` event if they can.
 
 The hooks that write it are described in [hooks.md](hooks.md). The lead agent reads the database with [`jerome state`](commands/state.md).
 
@@ -23,12 +23,13 @@ The hooks that write it are described in [hooks.md](hooks.md). The lead agent re
 
 | Table | One row per |
 |---|---|
-| `runs` | session or run: kind (`interactive`, `heartbeat`, `service`), start and end, status (`running`, `done`, `failed`, `blocked`, `stopped`), reason, the [area](areas.md) a heartbeat worked on, its triage's verdict, the caps it ran with (`maxTokens`, `maxTurns`, `once` when given to that run only), and for a heartbeat its `mode` (`normal`, `resume`), `slot`, the lead agent's `exit_code` and `outcome`, the end check as JSON (D118-D120) |
+| `runs` | session or run: kind (`interactive`, `heartbeat`, `service`), start and end, status (`running`, `done`, `failed`, `blocked`, `stopped`), reason, the [area](areas.md) a heartbeat worked on, its triage's verdict, the caps it ran with (`maxTokens`, `maxTurns`, `once` when given to that run only), and for a heartbeat its `mode` (`normal`, `resume`), `slot`, the lead agent's `exit_code` and `outcome`, the end check as JSON (D118-D120); the process behind it, `pid` and `pid_started` (the heartbeat's runner, or an interactive session's Claude Code) and `lead_pid` and `lead_started` (a heartbeat's lead agent), so a run whose process is gone is closed as `lost:` (D136) |
 | `usage` | API call, keyed by `request_id`: agent, model, input, output, cache reads, cache writes (5 minutes and 1 hour), time |
 | `usage_daily` | day, agent and model, summing `usage` rows older than 90 days |
 | `transcript_reads` | transcript, with how far it has been read |
 | `events` | hook event: kind and numbers or names only, never message contents |
 | `alerts` | something wrong with the autonomous runs (D121): key, reason, the run, when it opened and last happened, how many times, `open` or `resolved` |
+| `notes` | note the user sent the project from Telegram (D133): its text, when it came, `open` until the lead agent records it and closes it with `jerome note done` |
 | `requests` | decision request: question, options, recommendation, status, answer, its area, and its `kind`: `milestone` holds up the whole area, `question` only the work that depends on it (D117) |
 
 Allowed values are checked by the schema itself. Model prices are not in the database: they live in the code (`src/models.js`), so a price change comes with a Jérôme update.

@@ -14,6 +14,8 @@ import { describe, launchd } from './schedule.js';
 import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { needsYou, oneRunCap } from './heartbeat.js';
 import { lostRuns } from './alerts.js';
+import { missedStarts, missedText } from './missed.js';
+import { openDb } from './db.js';
 
 export const PROJECTS_SCHEMA = 'jerome.projects/v1';
 const INTERVAL_MS = { hourly: 3_600_000, daily: 86_400_000, weekly: 7 * 86_400_000 };
@@ -60,7 +62,7 @@ function projectRow(s, now, account) {
     // With slots (D118), the shortest interval they may leave: hourly, daily, or weekly when some run on given days only.
     if (slots.length) {
       const every = slots.some((x) => x.times.some((t) => t.hour === undefined)) ? 'hourly' : slots.some((x) => x.days) ? 'weekly' : 'daily';
-      row.schedule = { every, text: `slots ${slots.map((x) => `${x.name} ${describeSlot(x)}`).join(' · ')}` };
+      row.schedule = { every, slots: true, text: `slots ${slots.map((x) => `${x.name} ${describeSlot(x)}`).join(' · ')}` };
     } else if (h?.every) row.schedule = { every: h.every, text: describe(h) };
   } catch {
     // A marker that cannot be read leaves the project unscheduled here; doctor reports it.
@@ -106,9 +108,20 @@ function attention(row, dir, now) {
 }
 
 // A scheduled project whose latest heartbeat is older than twice its interval: launchd is not starting it. With no
-// heartbeat at all, the job file's age stands for the time it was scheduled.
+// heartbeat at all, the job file's age stands for the time it was scheduled. A project with slots is checked slot by
+// slot, against the last time each should have started (D135).
 function lateHeartbeat(row, dir, now) {
   if (!row.schedule) return null;
+  if (row.schedule.slots) {
+    const db = openDb(dir, { readOnly: true, migrate: false });
+    if (!db) return null;
+    try {
+      const missed = missedStarts(dir, db, { now });
+      return missed.length ? missed.map(missedText).join(' · ') : null;
+    } finally {
+      db.close();
+    }
+  }
   const interval = INTERVAL_MS[row.schedule.every];
   const last = row.lastHeartbeat?.startedAt ? Date.parse(row.lastHeartbeat.startedAt) : null;
   let since = last;

@@ -117,8 +117,8 @@ export function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
   mkdirSync(join(config, 'skills', 'synced', 'acct', 'docx'), { recursive: true });
   writeFileSync(join(config, 'skills', 'synced', 'acct', 'docx', 'SKILL.md'), '');
   // runWith adds environment variables for one call, e.g. a broken /context on an existing project.
-  const call = (extra, input, args) => spawnSync(process.execPath, [BIN, ...args], {
-    cwd: root,
+  const call = (extra, input, args, cwd = root) => spawnSync(process.execPath, [BIN, ...args], {
+    cwd,
     input,
     encoding: 'utf8',
     env: {
@@ -140,7 +140,9 @@ export function sandbox({ loggedIn = true, withClaude = true, env = {} } = {}) {
   const runInput = (input, ...args) => call({}, input, args);
   // runWithInput does both, e.g. a hook payload with CLAUDE_PROJECT_DIR set.
   const runWithInput = (extra, input, ...args) => call(extra, input, args);
-  return { root, run, runWith, runInput, runWithInput };
+  // runIn runs it from another folder, e.g. a project's, for commands that take the current one.
+  const runIn = (cwd, ...args) => call({}, '', args, cwd);
+  return { root, run, runWith, runInput, runWithInput, runIn };
 }
 
 // Where a sandbox project's database is (D93): the store under the sandbox's home, which the CLI runs with.
@@ -159,6 +161,8 @@ export function readyProject(env = {}) {
   const trust = (value) => writeFileSync(join(box.root, 'claude-config', '.claude.json'), JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: value } } }));
   trust(true);
   const db = () => new DatabaseSync(sandboxDb(box.root, dir), { readOnly: true });
+  // For tests that put the database in a state of their own.
+  const writableDb = () => new DatabaseSync(sandboxDb(box.root, dir));
   const lastRun = () => {
     const d = db();
     const r = d.prepare('SELECT * FROM runs ORDER BY id DESC LIMIT 1').get();
@@ -176,5 +180,5 @@ export function readyProject(env = {}) {
     mkdirSync(join(box.root, '.config', 'jerome'), { recursive: true });
     writeFileSync(join(box.root, '.config', 'jerome', 'account.json'), JSON.stringify({ schema: 'jerome.account/v1', ...data }));
   };
-  return { ...box, dir, git, trust, db, lastRun, requests, calls, account };
+  return { ...box, dir, git, trust, db, writableDb, lastRun, requests, calls, account };
 }

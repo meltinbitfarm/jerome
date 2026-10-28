@@ -11,6 +11,8 @@ import { projectStatus, projectSummary, globalLimits } from './budget.js';
 import { readAssumptions } from './assumptions.js';
 import { lockHolder } from './runstate.js';
 import { openAlerts, alertsContext, lostRuns } from './alerts.js';
+import { claudePid, processStart, sweepLostRuns } from './lostruns.js';
+import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 
 export const HOOK_EVENTS = ['session-start', 'subagent-stop', 'stop', 'session-end', 'pre-tool-use'];
 const RUN_KINDS = ['heartbeat', 'service'];
@@ -138,6 +140,13 @@ function ensureRun(db, sessionId, kind = 'interactive') {
 function sessionStart(db, payload, env, dir) {
   const kind = RUN_KINDS.includes(env.JEROME_RUN_KIND) ? env.JEROME_RUN_KIND : 'interactive';
   const runId = payload.session_id ? ensureRun(db, payload.session_id, kind) : null;
+  // An interactive session's Claude Code process, so the run can be closed if it ends without SessionEnd (D136); and
+  // the runs other sessions or heartbeats left that way are closed now. A heartbeat's runner records its own.
+  if (runId && kind === 'interactive' && payload.source !== 'compact') {
+    const pid = env.JEROME_CLAUDE_PID ? Number(env.JEROME_CLAUDE_PID) : claudePid();
+    if (pid) db.prepare('UPDATE runs SET pid = ?, pid_started = ? WHERE id = ?').run(pid, processStart(pid), runId);
+    sweepLostRuns(dir);
+  }
   const pruned = prune(db);
   logEvent(db, runId, 'session-start', 'main', { source: payload.source ?? null, pruned: pruned.usage + pruned.events + pruned.reads });
   // Decision requests opened by heartbeats wait for the user: an interactive session starts by knowing about them (D74).
@@ -148,7 +157,9 @@ function sessionStart(db, payload, env, dir) {
   // autonomous runs (D121) come before everything, for the lead agent and, in a line of their own, for the user.
   const assumptions = readAssumptions(dir);
   const alerts = openAlerts(db);
-  const context = [alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
+  // Notes the user sent from Telegram (D133), as quoted data, after the requests.
+  const notes = openNotes(db);
+  const context = [alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
   const alertLine = alerts.length ? `Jérôme: ${alerts.length} heartbeat ${alerts.length === 1 ? 'alert' : 'alerts'}: ${alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}` : null;
   const message = [alertLine, limitsWarning(db, dir)].filter(Boolean).join('\n');
   return { context: context || null, message: message || null };

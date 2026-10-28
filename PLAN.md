@@ -272,6 +272,8 @@ Then (0.2.1, D126): the lead agent is Jérôme, with a warm, lightly ironic pers
 
 Then (0.2.2, D127-D129), from running heartbeats unattended on a real project: state files left on main by an interactive session are committed by the run instead of blocking it; open alerts are notified and pushed again every 3 hours and say how many runs they cost; each run is allowed its test command and the project's and slot's `allow` rules, and a run refused a tool ends blocked with an alert instead of done.
 
+Then (0.3.0, D130-D137): Jérôme tells the user without being asked. A Telegram bridge for every project on the machine (what waits for the user out, with buttons for requests; answers, notes and /status in; no model, zero tokens); notes in the database, read by the triage, the lead agent and the next session; a watchdog job every minute that closes runs whose process died and reports heartbeats that did not start; the status line shows alerts, requests and a heartbeat running.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

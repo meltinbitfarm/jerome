@@ -36,6 +36,7 @@ export const DEPS = [
   d('cli', '--session-id', 'the heartbeat gives its run\'s id to the session', { kind: 'flag', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
   d('cli', '--max-turns', 'heartbeat turn cap; ends with subtype error_max_turns', { kind: 'flag', documented: false, decisions: ['D71', 'D73'], phase: 8, code: ['src/heartbeat.js'], note: 'absent from --help' }),
   d('cli', '--permission-mode', '"acceptEdits" for heartbeats', { kind: 'flag', decisions: ['D73'], phase: 8, code: ['src/heartbeat.js'] }),
+  d('cli', 'process name claude', 'an interactive session\'s Claude Code process, found by SessionStart as the first parent of the hook named claude, so a session ended without SessionEnd is closed', { kind: 'behaviour', documented: false, decisions: ['D136'], phase: 8, code: ['src/lostruns.js'], note: 'the native install runs as "claude"; an npm install as node with a claude script in its arguments, also matched; read in 2.1.312' }),
   d('cli', 'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS', 'set to 0 for a heartbeat\'s lead agent, so claude -p waits for background subagents with no ceiling; the runner\'s max duration bounds the run instead', { kind: 'env', documented: false, decisions: ['D120'], phase: 8, code: ['src/heartbeat.js'], note: 'default 600000 (10 min after the last turn, then background tasks are killed); a value > 0 is a ceiling, 0 none; read in 2.1.311' }),
 
   // Result of -p --output-format json.

@@ -7,6 +7,7 @@ import { MARKER } from './template.js';
 import { openDb } from './db.js';
 import { notProjectMessage } from './paths.js';
 import { readAreas } from './areas.js';
+import { enqueue } from './telegram.js';
 
 export async function request(action, args, { dir: dirArg = '.', question, options, recommendation, area = null, milestone = false, env = process.env } = {}) {
   const dir = resolve(dirArg);
@@ -32,7 +33,7 @@ export async function request(action, args, { dir: dirArg = '.', question, optio
           return 2;
         }
       }
-      const id = openRequest(db, { question, options, recommendation, area, kind: milestone ? 'milestone' : 'question', sessionId: env.JEROME_SESSION_ID ?? null });
+      const id = openRequest(db, { question, options, recommendation, area, kind: milestone ? 'milestone' : 'question', sessionId: env.JEROME_SESSION_ID ?? null, dir });
       const held = db.prepare('SELECT area FROM requests WHERE id = ?').get(id).area;
       console.log(milestone
         ? `R${id} opened. ${held ? `Area ${held} waits` : 'Stop this line of work'} until the user answers.`
@@ -71,12 +72,22 @@ export async function request(action, args, { dir: dirArg = '.', question, optio
 // (D100) is the one given, or that of the heartbeat that opened it; while a milestone request is open, that area
 // gets no work, while a question holds up only what depends on it (D117).
 // The same question already open is not opened twice.
-export function openRequest(db, { question, options = null, recommendation = null, area = null, kind = 'question', sessionId = null, runId = null }) {
+// A new request goes to the user on Telegram, with its options as buttons, when the bridge is set up (D131): `dir`
+// is the project's folder.
+export function openRequest(db, { question, options = null, recommendation = null, area = null, kind = 'question', sessionId = null, runId = null, dir = null }) {
   const open = db.prepare("SELECT id FROM requests WHERE status = 'open' AND question = ?").get(question);
   if (open) return open.id;
   const run = runId !== null
     ? db.prepare('SELECT id, area FROM runs WHERE id = ?').get(runId)
     : sessionId ? db.prepare('SELECT id, area FROM runs WHERE session_id = ?').get(sessionId) : null;
-  return Number(db.prepare('INSERT INTO requests (run_id, opened_at, question, options, recommendation, area, kind) VALUES (?, ?, ?, ?, ?, ?, ?)')
+  const id = Number(db.prepare('INSERT INTO requests (run_id, opened_at, question, options, recommendation, area, kind) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(run?.id ?? runId, new Date().toISOString(), question, options, recommendation, area ?? run?.area ?? null, kind).lastInsertRowid);
+  if (dir) {
+    try {
+      enqueue({ dir, text: question, request: { id, question, options, recommendation } });
+    } catch {
+      // Telegram is one more channel: the request is open whatever happens to it.
+    }
+  }
+  return id;
 }

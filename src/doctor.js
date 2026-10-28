@@ -11,7 +11,8 @@ import { areaWarnings } from './areas.js';
 import { planHooks, applyHooks } from './hookconfig.js';
 import { latestSession, toolProblems } from './session-shape.js';
 import { projectLimitSettings } from './budget.js';
-import { heartbeatProblems, rescheduleCommand } from './schedule.js';
+import { heartbeatProblems, rescheduleCommand, launchAgentsDir, launchd, WATCHDOG_LABEL } from './schedule.js';
+import { readConfig as readTelegram, configPath as telegramConfigPath } from './telegram.js';
 import { heartbeatConfig } from './heartbeatconfig.js';
 import { openDb, dbPath, treeDb, schemaVersion, peekVersion, applyMigrations, LATEST } from './db.js';
 import { candidates, relink, stores, describeStore, storeSummary } from './store.js';
@@ -70,6 +71,7 @@ export async function runDoctor(dir, { setup = true, fix = true, db: dbOptions =
   if (beat) report.checks.push(beat);
   // Settings of the autonomous runs that cannot be used (D118): their defaults apply.
   for (const message of heartbeatConfig(dir).problems) report.warnings.push({ id: 'heartbeat-config', message });
+  for (const message of watchdogWarnings(dir)) report.warnings.push({ id: 'watchdog', message });
   const db = await dbCheck(dir, { fix, ...dbOptions });
   report.db = db.db;
   report.checks.push(db.check);
@@ -556,4 +558,18 @@ export async function ensureLeanProfile(dir, { fix = true } = {}) {
   } finally {
     progress.stop();
   }
+}
+
+// The machine's watchdog (D134) and Telegram bridge (D130): a token file others can read, a bridge nobody runs, and
+// heartbeats whose missed starts nobody watches.
+function watchdogWarnings(dir) {
+  const warnings = [];
+  const watched = existsSync(join(launchAgentsDir(), `${WATCHDOG_LABEL}.plist`));
+  if (readTelegram()) {
+    if ((statSync(telegramConfigPath()).mode & 0o077) !== 0) warnings.push(`${telegramConfigPath()} holds the Telegram token and others can read it: chmod 600 it.`);
+    if (!watched) warnings.push('Telegram is set up but the watchdog that runs the bridge is not installed: run `jerome watchdog install`.');
+  } else if (!watched && launchd.installed(dir).length && process.platform === 'darwin') {
+    warnings.push('Nothing watches for heartbeats that do not start, nor closes runs whose process died: run `jerome watchdog install` (once per machine).');
+  }
+  return warnings;
 }

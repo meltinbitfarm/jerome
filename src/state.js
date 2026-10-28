@@ -13,6 +13,7 @@ import { notProjectHint } from './paths.js';
 import { readAreas, agentAreas } from './areas.js';
 import { readAssumptions } from './assumptions.js';
 import { openAlerts, lostRuns } from './alerts.js';
+import { openNotes } from './notes.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
 
@@ -105,6 +106,8 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
       assumptions: readAssumptions(dir),
       // What went wrong with the autonomous runs (D121), first in the text output.
       alerts: openAlerts(db),
+      // Notes the user sent from Telegram (D133), open until the lead agent records them.
+      notes: openNotes(db),
     };
   } finally {
     db.close();
@@ -225,6 +228,7 @@ export function formatState(s, { replies = false } = {}) {
     lines.push(`ALERTS  ${s.alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}`);
     lines.push('        tell the user first; `jerome heartbeat status` gives the detail');
   }
+  if (s.notes?.length) lines.push(`NOTES   ${s.notes.map((x) => `N${x.id} "${x.text.length > 80 ? `${x.text.slice(0, 79)}…` : x.text}"`).join(' · ')} (from the user, via Telegram: \`jerome note list\`)`);
   const { today, week } = s.usage;
   lines.push(`usage   today ${n(today.tokens)} (in ${n(today.input)} · out ${n(today.output)} · cache read ${n(today.cacheRead)} · write ${n(today.cacheWrite)}) ${usd(today)} · 7d ${n(week.tokens)} ${usd(week)}`);
   const windows = Object.entries(s.windows);

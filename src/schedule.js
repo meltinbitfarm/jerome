@@ -18,6 +18,8 @@ export const DEFAULT_CAPS = { maxTokens: 500_000, maxTurns: 40 };
 const MODEL = /^(opus|sonnet|haiku|default|claude-[a-z0-9.-]+)$/;
 const DAYS = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 const LABEL_PREFIX = 'com.jerome.heartbeat.';
+// The machine's own job (D134), not a project's.
+export const WATCHDOG_LABEL = 'com.jerome.watchdog';
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 
 export function launchAgentsDir() {
@@ -168,11 +170,12 @@ export function plistFor(dir, h) {
 
 // A launchd job: node running Jérôme with args, at each of the intervals, with a PATH that finds node, claude,
 // jerome and git, and its output appended to the project's log.
-export function jobPlist(dir, { label, paths, intervals, args, log = logPath(jobLabel(dir)) }) {
+// A job runs at calendar times (`intervals`), or every `every` seconds, as the watchdog does (D134).
+export function jobPlist(dir, { label, paths, intervals = [], every = null, args, log = logPath(jobLabel(dir)) }) {
   const path = [...new Set([dirname(paths.node), dirname(paths.claude), ...(paths.jeromeCommand ? [dirname(paths.jeromeCommand)] : []),
     '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'])].join(':');
   const entries = (o) => Object.entries(o).map(([k, v]) => `      <key>${k}</key><integer>${v}</integer>`).join('\n');
-  const calendar = intervals.length === 1
+  const calendar = every ? null : intervals.length === 1
     ? `  <dict>\n${entries(intervals[0])}\n  </dict>`
     : `  <array>\n${intervals.map((i) => `    <dict>\n${entries(i).replace(/^ {6}/gm, '      ')}\n    </dict>`).join('\n')}\n  </array>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -190,8 +193,7 @@ ${[paths.node, paths.jerome, ...args].map((a) => `    <string>${xml(a)}</string>
     <key>HOME</key><string>${xml(homedir())}</string>
   </dict>
   <key>WorkingDirectory</key><string>${xml(dir)}</string>
-  <key>StartCalendarInterval</key>
-${calendar}
+${every ? `  <key>StartInterval</key><integer>${every}</integer>` : `  <key>StartCalendarInterval</key>\n${calendar}`}
   <key>StandardOutPath</key><string>${xml(log)}</string>
   <key>StandardErrorPath</key><string>${xml(log)}</string>
   <key>ProcessType</key><string>Background</string>

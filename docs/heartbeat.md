@@ -127,7 +127,7 @@ Its usage is recorded by the [hooks](hooks.md), and the subscription windows it 
 
 An alert is something wrong with the autonomous runs themselves, as opposed to a decision. It is raised:
 
-- **at once** for a failed end check, a run stopped at its max duration, a tool refused (see [permissions](#permissions)), a start state that no heartbeat left (your changes on `main`, another branch, a detached HEAD, a merge in progress), or a slot job whose slot is gone;
+- **at once** for a run lost (its runner died, or it ran far past its max duration: see [lost runs](#lost-runs)), a heartbeat that should have started and did not (see [missed starts](#missed-starts)), a failed end check, a run stopped at its max duration, a tool refused (see [permissions](#permissions)), a start state that no heartbeat left (your changes on `main`, another branch, a detached HEAD, a merge in progress), or a slot job whose slot is gone;
 - **on the second time in a row** for any other skip or failure with the same reason: a limit pause, a failed triage, an untrusted folder. A run that finds the lock taken is never an alert: the lock clears by itself.
 
 Alerts live in the project database, like decision requests, and never in a tracked file. They show:
@@ -136,12 +136,24 @@ Alerts live in the project database, like decision requests, and never in a trac
 - at the start of your next session: `SessionStart` gives them to the lead agent, which tells you about them before anything else, and shows you a line of its own;
 - in `jerome projects`, as the first reason a project needs you;
 - in `jerome heartbeat status`, with the detail;
+- in the status line of every session of the project, as `⚠ 1 alert` (D137);
+- on [Telegram](telegram.md), when the bridge is set up, with the project's name (D131);
 - as a macOS notification when one opens, and again every 3 hours while it stays open and runs keep hitting it (D128); a limit pause keeps its single notification (D85). If the notification cannot be shown, the log says why;
 - through the push channel, if the project has one, at the same times.
 
 An open alert counts its repeats rather than opening another, and everywhere it is shown says what it has cost: `A3 uncommitted changes (src/app.js) on main, … (5 runs lost since 2026-10-27 18:00)`. A macOS notification reaches you only at that Mac: on a machine you do not sit at, set a push channel. All of a project's alerts close by themselves when a heartbeat ends well.
 
 **Push channel.** Off by default. `heartbeat.alerts.command` in `.jerome/project.json` is a shell command run in the project's folder, with the alert on standard input and in `JEROME_ALERT_PROJECT` and `JEROME_ALERT_MESSAGE`; its output is never logged. That file is versioned, so the command must hold no secret: have it read one from your machine, as in `curl -fsS -d @- "$(cat ~/.config/jerome/ntfy-url)"`, or from the keychain.
+
+## Lost runs
+
+A run whose process is gone stays `running` in the database unless something closes it. Each heartbeat records its runner's process and its lead agent's, and each interactive session its Claude Code process (D136). A heartbeat still marked running is closed as `failed`, `lost: the runner died`, when its runner is gone, and as `lost: still running … over its max duration` 15 minutes after its `maxMinutes`, its runner stopped. Its lead agent, in a process group of its own, is stopped with its whole group if it outlived the runner. Either is an alert at once, and the next run resumes what it left in the tree. They are closed by the next heartbeat of the project (which holds the lock, so any other running heartbeat is dead), at the start of a session, and every minute by the [watchdog](commands/watchdog.md).
+
+## Missed starts
+
+A job that should have started a heartbeat and did not leaves no run at all: launchd did not load it, `node` was not found, or the Mac was off. The [watchdog](commands/watchdog.md), one job per machine running every minute, checks each installed job: the last time its schedule fired, 10 minutes back, and whether a heartbeat of that slot started since (a skipped run counts as started). A missed one is an alert, notified once, saying why when it can: `the heartbeat of slot evening due at 2026-10-28 18:00 did not start: the Mac was off then`. `jerome projects` shows it too (D135).
+
+A Mac that is off cannot report itself: an outside check (a ping the watchdog would send to a service that tells you when the pings stop) is parked (P4).
 
 ## Marathon
 

@@ -17,6 +17,9 @@ import { deps } from './deps.js';
 import { limits } from './limitscmd.js';
 import { forget } from './forget.js';
 import { projects } from './projects.js';
+import { note } from './notes.js';
+import { setup as telegramSetup, off as telegramOff, telegramStatus, telegramTest } from './telegram.js';
+import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -72,6 +75,12 @@ const USAGE = `Usage:
   jerome request open --question <q> [--options <o>] [--recommendation <r>] [--area <name>] [--milestone]
   jerome request answer <id> <answer> | drop <id>
                           open or close a decision request
+  jerome note list [dir] | done <id> [dir]
+                          the notes the user sent the project from Telegram, and closing one once recorded
+  jerome telegram setup | status | test | off
+                          the Telegram bridge of this machine: what waits for you, answers, notes, /status
+  jerome watchdog install | uninstall | status | run
+                          the job of this machine, every minute: lost runs, missed heartbeats, the Telegram bridge
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
   jerome limits [dir]     show the usage limits, global and of the project, with the current usage
@@ -121,7 +130,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [] };
 
 export async function main(argv) {
   let parsed;
@@ -231,6 +240,33 @@ export async function main(argv) {
       const [action, ...args] = rest;
       if (!['open', 'answer', 'drop'].includes(action)) return usageError('jerome request takes open, answer or drop.');
       return request(action, args, { question: parsed.values.question, options: parsed.values.options, recommendation: parsed.values.recommendation, area: parsed.values.area ?? null, milestone: parsed.values.milestone === true });
+    }
+    case 'note': {
+      const [action, ...args] = rest;
+      if (action === 'list' && args.length <= 1) return note('list', [], { dir: args[0] ?? '.' });
+      if (action === 'done' && args.length >= 1 && args.length <= 2) return note('done', [args[0]], { dir: args[1] ?? '.' });
+      return usageError('jerome note takes list [dir] or done <id> [dir].');
+    }
+    case 'telegram': {
+      const action = rest[0];
+      if (rest.length !== 1) return usageError('jerome telegram takes setup, status, test or off.');
+      if (action === 'setup') {
+        const code = await telegramSetup();
+        return code === 0 ? watchdogInstall() : code;
+      }
+      if (action === 'status') return telegramStatus();
+      if (action === 'test') return telegramTest();
+      if (action === 'off') return telegramOff();
+      return usageError('jerome telegram takes setup, status, test or off.');
+    }
+    case 'watchdog': {
+      const action = rest[0];
+      if (rest.length !== 1) return usageError('jerome watchdog takes install, uninstall, status or run.');
+      if (action === 'install') return watchdogInstall();
+      if (action === 'uninstall') return watchdogUninstall();
+      if (action === 'status') return watchdogStatus();
+      if (action === 'run') return watchdogRun();
+      return usageError('jerome watchdog takes install, uninstall, status or run.');
     }
     case 'digest':
       if (rest.length > 1) return usageError('jerome digest takes at most one folder.');
