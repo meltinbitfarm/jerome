@@ -233,7 +233,7 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   const maxMs = config.maxMinutes * 60_000;
   // With the governor on, the windows before and after the lead agent (D143): what a run costs, learnt run by run.
   const windowsBefore = governed ? quotaPoints(await refreshQuota({ env })) : null;
-  const lead = await runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, runAllowed(config, slot));
+  const lead = await runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, [...runAllowed(config, slot), 'Bash']);
   if (windowsBefore) saveQuota(dir, run, { model, before: windowsBefore, after: quotaPoints(await refreshQuota({ env, force: true })) });
   closeSession(dir, { session_id: run.sessionId, transcript_path: findTranscript(run.sessionId), reason: 'heartbeat' });
   const opened = openRequests(dir).filter((r) => !before.some((b) => b.id === r.id));
@@ -663,8 +663,9 @@ ${notesBlock(notes)}` : ''}`;
 // passed to Claude Code and the token cap enforced here (D109): from the usage in the stream and, every few seconds,
 // from the session's transcripts, subagents included; the larger count decides. Claude Code is started in its own
 // process group with no ceiling on waiting for background work (D120), and the max duration stops the whole group.
-// It may use, beyond the project's allow rules, the tools the run allows (D129); a tool it is refused anyway, by
-// the permission mode with nobody to ask, is reported. A hook's refusal is not: the agent is told why and goes on.
+// It may use, beyond the project's allow rules, the tools the run allows (D129), and any command but the blacklist
+// (D159): the deny rules of settings.json, which hold whatever is allowed, and the PreToolUse hook; a tool it is
+// refused anyway, by the permission mode with nobody to ask, is reported. A hook's refusal is not: the agent is told why and goes on.
 const METER_MS = Number(process.env.JEROME_METER_MS) || 3000;
 const KILL_GRACE_MS = 10_000;
 

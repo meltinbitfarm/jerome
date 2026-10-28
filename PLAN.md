@@ -288,6 +288,8 @@ Then (0.5.3): the dashboard has its icon, Jérôme as a French painter in pixel 
 
 Then (0.6.0, D158-D163): autonomy (docs/specs/autonomy.md), after the first look at the real dashboard showed 12 of 17 heartbeats on the Mac Mini blocked or stopped, none for a reason Fabio had to decide. Step 1 of 6: Jérôme repairs what is its own. It commits its own files left uncommitted (`.claude/settings.json` that doctor rewrites after an update, `project.json`, the state files) at the start and at the end of a run; doctor stops a run only for a check it cannot work without; a run stopped by its cap is an alert only on the third time in a row. Next: any command but a blacklist (step 2).
 
+Then (0.6.1, D159): autonomy step 2. Heartbeats are given `Bash` whole, so the lead agent and its agents run what the machine has (python3 for climbdaily's news) without a request; the deny rules of D46 still hold, and the PreToolUse hook refuses in heartbeats only sudo/su, deletions outside the project and the temporary folders, credentials (Keychain, ~/.ssh, ~/.aws, gh, .env outside the project) and a download piped into a shell, failing closed when its check breaks. Next: only real decisions reach Fabio, in plain words (steps 3 and 4).
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

@@ -367,7 +367,7 @@ test('a run is given the test command and the allowed tools, and one refused a t
   p.settings({ test: 'npm test', allow: ['Bash(./tools/fetch.sh:*)'], slots: [{ name: 'evening', at: ['18:00'], allow: ['WebFetch(domain:example.org)'] }] });
   assert.equal(p.run('heartbeat', 'install', 'demo').status, 0);
   p.runWith({ FAKE_LEAD_DENIED: 'npm run e2e' }, 'heartbeat', 'run', 'evening', 'demo');
-  assert.match(p.calls(), /--allowedTools Bash\(npm test\) Bash\(npm test:\*\) Bash\(\.\/tools\/fetch\.sh:\*\) WebFetch\(domain:example\.org\)$/m);
+  assert.match(p.calls(), /--allowedTools Bash\(npm test\) Bash\(npm test:\*\) Bash\(\.\/tools\/fetch\.sh:\*\) WebFetch\(domain:example\.org\) Bash$/m);
   const run = p.lastRun();
   assert.equal(run.status, 'blocked');
   assert.match(run.reason, /^permission denied for Bash\(npm run e2e\): add the rules to heartbeat\.allow in \.jerome\/project\.json$/);

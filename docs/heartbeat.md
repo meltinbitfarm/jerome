@@ -98,13 +98,21 @@ Each project has one log, `~/.cache/jerome/logs/<project>.log`: one line per run
 
 ### Permissions
 
-A heartbeat runs with `--permission-mode acceptEdits`: file edits are allowed, and any other tool call that the project's allow rules (`.claude/settings.json`) do not cover would need someone to approve it. Nobody is there, so it is refused. Each run is therefore also given, with `--allowedTools` (D129):
+A heartbeat runs with `--permission-mode acceptEdits`: file edits are allowed, and any other tool call that the project's allow rules (`.claude/settings.json`) do not cover would need someone to approve it. Nobody is there, so it is refused. Each run is therefore also given, with `--allowedTools` (D129, D159):
 
+- **any command** (`Bash`), so the lead agent and its agents use what is on the machine (python3, node, npm, the project's scripts) without asking. Still refused:
+  - pushing, merging or releasing on GitHub, publishing, deploying, sending mail: the `deny` rules of `.claude/settings.json` (D46), which Claude Code applies whatever is allowed;
+  - `sudo`, `su`, `doas`;
+  - deleting outside the project's folder and the temporary folders, or a path that depends on a variable;
+  - credentials: the Keychain (`security`), `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.config/gh`, `~/.kube`, an `.env` file outside the project;
+  - a download piped into a shell (`curl … | sh`).
+
+  The last four are checked by Jérôme's `PreToolUse` hook in heartbeats only (`src/blacklist.js`); it tells the agent why, and the agent goes another way. In your own sessions you decide, as before;
 - the `test` command, as `Bash(npm test)` and `Bash(npm test:*)`, since its prompt tells it to run it;
 - the rules in `heartbeat.allow`, for every run;
 - the rules in the slot's `allow`, for that slot's runs only, such as the script its text names.
 
-The rules are Claude Code's: `Bash(./tools/import.sh:*)` for a command and any arguments, `Bash(npm run e2e)` for that exact command, `WebFetch(domain:example.org)`. `jerome heartbeat install` prints them for each slot.
+Since any command is allowed, `heartbeat.allow` and a slot's `allow` matter for the other tools, such as `WebFetch`. The rules are Claude Code's: `Bash(./tools/import.sh:*)` for a command and any arguments, `Bash(npm run e2e)` for that exact command, `WebFetch(domain:example.org)`. `jerome heartbeat install` prints them for each slot.
 
 A tool call refused anyway, by the lead agent or one of its subagents, ends the run as `blocked: permission denied for Bash(npm run e2e): add the rules to heartbeat.allow in .jerome/project.json`, with an alert at once, even when its end check passed: a run that could not run what it needed did not do its task. A call refused by a `deny` rule of the project's, or by Jérôme's own hooks (such as `git add -A`), is a refusal on purpose and does not count.
 

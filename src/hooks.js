@@ -7,6 +7,7 @@ import { MARKER } from './template.js';
 import { openDb, prune } from './db.js';
 import { ingestTranscript } from './usage.js';
 import { checkChain, checkStaging, splitCommand, changingGit } from './chain.js';
+import { blacklisted } from './blacklist.js';
 import { projectStatus, projectSummary, globalLimits } from './budget.js';
 import { readAssumptions } from './assumptions.js';
 import { lockHolder } from './runstate.js';
@@ -33,7 +34,15 @@ export async function hook(event, { input = readStdin(), env = process.env } = {
   if (event === 'pre-tool-use') {
     if (payload.tool_name !== 'Bash') return 0;
     const command = String(payload.tool_input?.command ?? '');
-    const verdict = checkChain(command) ?? checkStaging(command) ?? besideHeartbeat(dir, command, env);
+    const heartbeat = env.JEROME_RUN_KIND === 'heartbeat';
+    let verdict;
+    try {
+      verdict = checkChain(command) ?? checkStaging(command) ?? besideHeartbeat(dir, command, env)
+        ?? (heartbeat ? blacklisted(command, { dir, cwd: payload.cwd || dir }) : null);
+    } catch (err) {
+      // A heartbeat may run any command but the blacklist (D159): when the check itself fails, the command is refused.
+      verdict = heartbeat ? { reason: `Refused in a heartbeat: Jérôme could not check this command (${err.message}). Run it another way.` } : null;
+    }
     if (!verdict) return 0;
     process.stdout.write(`${JSON.stringify({
       hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: verdict.reason },
