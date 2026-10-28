@@ -12,6 +12,7 @@ import { scrub } from './scrub.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'director.html');
 const STYLE = join(import.meta.dirname, '..', 'viewer', 'style.css');
+const ICON = join(import.meta.dirname, '..', 'viewer', 'director-icon.png');
 const WEEK_MS = 7 * 86_400_000;
 // A Mac whose last beat is older than this is shown as unreachable: it beats every minute.
 export const UNREACHABLE_MIN = 3;
@@ -42,6 +43,12 @@ export function serveDashboard(req, res, { db, token, now = new Date() }) {
       'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
     });
     res.end(html);
+    return true;
+  }
+  // The icon for a phone's home screen or a browser's tab: no data in it, so no token.
+  if (['/apple-touch-icon.png', '/apple-touch-icon-precomposed.png', '/favicon.ico', '/icon.png'].includes(path)) {
+    res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=86400', 'x-content-type-options': 'nosniff' });
+    res.end(readFileSync(ICON));
     return true;
   }
   if (path === '/api/overview') {

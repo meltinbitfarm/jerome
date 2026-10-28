@@ -207,6 +207,10 @@ test('the dashboard is a page under a strict policy, its data only with the toke
   assert.ok(!html.includes(token), 'the page holds no secret');
   assert.ok(!/innerHTML/.test(html), 'every text is set with textContent');
 
+  const icon = await fetch(`${d.url}/apple-touch-icon.png`);
+  assert.equal(icon.headers.get('content-type'), 'image/png');
+  assert.deepEqual([...new Uint8Array(await icon.arrayBuffer()).slice(1, 4)], [0x50, 0x4e, 0x47]);
+
   for (const auth of [undefined, 'Bearer wrong', `Bearer ${token}x`]) {
     const r = await fetch(`${d.url}/api/overview`, { headers: auth ? { authorization: auth } : {} });
     assert.equal(r.status, 403, String(auth));

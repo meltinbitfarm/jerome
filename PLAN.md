@@ -284,6 +284,8 @@ Then (0.5.1, D151, D156): step 2 of the Director, the read-only dashboard on the
 
 Then (0.5.2, D157): the first look at the real dashboard showed paths from the Mac Mini in alerts, requests and run reasons (a `cd /Users/…` in a denied command, a request naming the project's folder): every text a Mac sends is scrubbed, each absolute path down to `…/` and its last name, line breaks to spaces, and the Director scrubs again what it shows, for the runs already stored.
 
+Then (0.5.3): the dashboard has its icon, Jérôme as a French painter in pixel art (red beret, handlebar moustache, marinière; Fabio's pick of three), served without the token since it holds nothing, and opens as an app from the iPhone's home screen or the Mac's Dock.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

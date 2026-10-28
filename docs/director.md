@@ -63,6 +63,7 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
 3. **The dashboard.** Run `jerome director dashboard` on the server: it prints the dashboard's address, with its token after the `#`. Open it from any device on your VPN, such as the iPhone, and keep it as a bookmark.
    - It shows the quota on the week's curve (the pace to keep and the reserve's ceiling), the Macs and whether each one is reachable, what waits for you, the projects by Mac, the runs and the past weeks. Times are in the device's own time zone. It refreshes every 30 seconds.
    - It is read-only: nothing on it changes anything. Its data come only with the token, which the browser never sends in the address: the page passes it in a header.
+   - **As an app:** on the iPhone, in Safari, Share → Add to Home Screen; on the Mac, in Safari, File → Add to Dock. It opens with its own icon, the token kept in the saved address.
    - Whoever has the address sees everything the Director knows. If it leaks, `jerome director dashboard --new-token` makes the old one stop working.
 
 The image is built from the repository. After an update: in Coolify, a deploy; by hand, `git pull` and the same `up -d` with `--build`. The Director's data, its keys included, live in the `director-data` volume.
