@@ -1,5 +1,6 @@
 # Jérôme Director (D153), built from this repository. In Coolify: the repository as source, the Docker Compose
-# build pack, compose file /director/compose.yaml, the variable DIRECTOR_ADDRESS set to the server's address on your
+# build pack, base directory /director and compose file /compose.yaml (Coolify resolves the paths below from the
+# base directory), the variable DIRECTOR_ADDRESS set to the server's address on your
 # VPN (Tailscale, WireGuard or any other), and no domain. By hand: clone the repository, write director/.env with
 #
 #   DIRECTOR_ADDRESS=100.101.102.103

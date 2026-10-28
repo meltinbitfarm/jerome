@@ -39,7 +39,7 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
 
 1. **On the server.**
    - **With Coolify:**
-     - Add the repository as a resource, with the **Docker Compose** build pack and the compose file `/director/compose.yaml`.
+     - Add the repository as a resource, with the **Docker Compose** build pack, base directory `/director` and compose file `/compose.yaml`: Coolify resolves the compose file's paths from the base directory.
      - Set the variable `DIRECTOR_ADDRESS` to the server's VPN address.
      - Give the service **no domain**: a domain would publish it on the internet through Coolify's proxy.
      - Deploy, then run `jerome director init` in the container's terminal.
