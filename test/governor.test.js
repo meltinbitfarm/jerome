@@ -90,7 +90,7 @@ test('jerome quota reads the endpoint and says the pace; with no answer it says 
   assert.match(failed.stdout, /7d 6%[\s\S]*the usage endpoint did not answer/);
 });
 
-test('the watchdog starts a fill run when the week is behind, one at a time, and a slot\'s run holds at the 5-hour cap', () => {
+test('the watchdog starts fill runs when the week is behind, staggered, and a slot\'s run holds at the 5-hour cap', () => {
   const p = governed({ FAKE_TRIAGE: '{"work": true, "task": "Add tests for the parser"}' });
   assert.equal(p.gov('governor', 'on').status, 0);
   assert.match(p.runIn(p.dir, 'governor', 'add').stdout, /gets fill runs[\s\S]*Its own limits still apply \(daily \$5, weekly \$20/);
@@ -111,6 +111,28 @@ test('the watchdog starts a fill run when the week is behind, one at a time, and
   // The project has just had its run: the next minute leaves it alone.
   p.gov('watchdog', 'run');
   assert.equal(runs().length, 1);
+  // Runs may go in parallel but start staggered (D144): with the project free again, not within 5 minutes of the
+  // last start, nor before a reading taken since; then it goes.
+  const d = p.writableDb();
+  d.prepare('UPDATE runs SET started_at = ?').run(new Date(Date.now() - 40 * 60_000).toISOString());
+  d.close();
+  p.gov('watchdog', 'run');
+  assert.equal(runs().length, 1, 'within 5 minutes of the last start');
+  const lastPath = join(p.root, '.cache', 'jerome', 'governor', 'last.json');
+  const accountPath = join(p.root, '.config', 'jerome', 'account.json');
+  const ago = (min) => new Date(Date.now() - min * 60_000).toISOString();
+  writeFileSync(lastPath, JSON.stringify({ ...JSON.parse(readFileSync(lastPath, 'utf8')), startedAt: ago(10) }));
+  const account = JSON.parse(readFileSync(accountPath, 'utf8'));
+  account.quota.readAt = ago(20);
+  for (const w of Object.values(account.windows)) w.readAt = ago(20);
+  writeFileSync(accountPath, JSON.stringify(account));
+  p.gov('watchdog', 'run');
+  assert.equal(runs().length, 1, 'no reading since the last start');
+  account.quota.readAt = ago(1);
+  writeFileSync(accountPath, JSON.stringify(account));
+  p.gov('watchdog', 'run');
+  assert.equal(runs().length, 2);
+  assert.equal(runs()[1].fill, 1);
   // At the 5-hour cap a scheduled run holds too, once notified, with no alert of its own.
   p.answers(answer(6, 93));
   p.gov('quota');
@@ -120,7 +142,7 @@ test('the watchdog starts a fill run when the week is behind, one at a time, and
   const status = p.gov('governor', 'status').stdout;
   assert.match(status, /^governor on · target 90%/);
   assert.match(status, /^projects demo$/m);
-  assert.match(status, /^cost {5}per run, 7 days: opus 0 pt of 7d \(1 run\)$/m);
+  assert.match(status, /^cost {5}per run, 7 days: opus 0 pt of 7d \(2 runs\)$/m);
   assert.equal(p.gov('governor', 'off').status, 0);
   assert.match(p.gov('heartbeat', 'fill', 'demo').stdout, /blocked .*governor: off/);
 });

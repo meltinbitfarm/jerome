@@ -1,6 +1,6 @@
-// The quota governor, phase 1 (D141-D143): on one Mac, the watchdog reads the real quota every few minutes and, when
-// the week is behind its pace, starts a fill run in one of the projects given to the governor, one run at a time on
-// the machine. Off by default, and machine-wide: its settings and projects live in account.json, not in a project.
+// The quota governor, phase 1 (D141-D144): on one Mac, the watchdog reads the real quota every few minutes and, while
+// the week is behind its pace, starts fill runs in the projects given to the governor, one per project at most and
+// staggered. Off by default, and machine-wide: its settings and projects live in account.json, not in a project.
 // `jerome governor on|off|add|remove|status` and `jerome quota`.
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
@@ -8,7 +8,6 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { readAccount, writeAccount } from './account.js';
 import { refreshQuota, readingTime } from './quota.js';
 import { pace, GOVERNOR_DEFAULTS } from './pacing.js';
-import { stores } from './store.js';
 import { MARKER } from './template.js';
 import { openDb, dbPath } from './db.js';
 import { lockHolder, cacheDir } from './runstate.js';
@@ -18,6 +17,8 @@ import { projectStatus, projectOver, projectLimitSettings, limitText } from './b
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 // A project whose last heartbeat started this recently is left alone: it has just looked for work.
 export const FILL_COOLDOWN_MIN = 30;
+// The least time between two fill runs started on the machine, the time of a fresh reading of the quota.
+export const STAGGER_MIN = 5;
 const lastVerdictPath = () => cacheDir('governor', 'last.json');
 
 export function governorSettings(account = readAccount()) {
@@ -40,24 +41,32 @@ export async function governorTick({ env = process.env, now = new Date(), log = 
   const p = currentPace(account, now);
   const g = governorSettings(account);
   // The verdict goes to the log when it changes, not every minute.
-  let last = null;
+  let last = {};
   try {
-    last = JSON.parse(readFileSync(lastVerdictPath(), 'utf8')).kind;
+    last = JSON.parse(readFileSync(lastVerdictPath(), 'utf8'));
   } catch {
     // None yet.
   }
-  if (last !== p.kind) {
-    log(`governor: ${p.verdict}, ${p.why}`);
+  const save = (next) => {
+    last = { ...last, ...next };
     mkdirSync(dirname(lastVerdictPath()), { recursive: true });
-    writeFileSync(lastVerdictPath(), JSON.stringify({ kind: p.kind, at: now.toISOString() }));
+    writeFileSync(lastVerdictPath(), JSON.stringify(last));
+  };
+  if (last.kind !== p.kind) {
+    log(`governor: ${p.verdict}, ${p.why}`);
+    save({ kind: p.kind, at: now.toISOString() });
   }
   if (p.verdict !== 'go') return p;
-  // One run at a time on the machine, a scheduled one included.
-  const running = stores().find((s) => !s.orphan && s.record?.path && lockHolder(s.record.path));
-  if (running) return p;
+  // Runs go in parallel, one per project at most (its lock), but they start staggered (D144): a new one only
+  // STAGGER_MIN minutes after the last, and on a reading taken since, so the pace sees what the runs already
+  // started are taking before it adds one.
+  const started = last.startedAt ? Date.parse(last.startedAt) : 0;
+  if (now.getTime() - started < STAGGER_MIN * 60_000) return p;
+  if (started && (readingTime(account)?.getTime() ?? 0) <= started) return p;
   const dir = pickProject(g.projects, now);
   if (!dir) return p;
   log(`governor: fill run in ${basename(dir)}: ${p.why}`);
+  save({ startedAt: now.toISOString() });
   launchFill(dir, env);
   return { ...p, started: dir };
 }

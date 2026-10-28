@@ -276,6 +276,8 @@ Then (0.3.0, D130-D137): Jérôme tells the user without being asked. A Telegram
 
 Then (0.4.0, D138-D143): the quota governor, phase 1 of docs/specs/quota-governor.md, on one Mac. The real quota from Claude Code's usage endpoint (only in src/quota.js, the token never leaving the Mac), a pace towards 90% of the week at its reset with 20% kept for Fabio and released over the last 24 hours, and fill runs started by the watchdog in the governor's projects, one at a time, with a backlog in open.md for when no area has work; each run's cost in quota points is measured. `jerome governor`, `jerome quota`. Phase 2 is Jérôme Director, the coordinator on the VPS, under the security rules of D139; phase 3 its dashboard and Telegram bot.
 
+Then (0.4.1, D144): fill runs go in parallel, one per project at most, started staggered (5 minutes apart, each on a fresh reading), since one at a time on the machine might not reach 90% of the week.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

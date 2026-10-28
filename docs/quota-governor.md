@@ -38,7 +38,11 @@ Change the settings with `jerome governor on --target 95 --reserve 15 --five-hou
 
 ## Fill runs
 
-Each minute the watchdog asks for the verdict. On a go, when no heartbeat is running anywhere on the Mac, it starts `jerome heartbeat fill` in one of the governor's projects. Only one runs at a time.
+Each minute the watchdog asks for the verdict. On a go, it starts `jerome heartbeat fill` in one of the governor's projects (D144). Fill runs go in parallel, at most one per project, but they start staggered:
+- a new one starts at least 5 minutes after the last;
+- and only on a reading of the quota taken since then, so the pace sees what the runs already going are taking before it adds one.
+
+Control starts at once, not at the end of the week: the pace is worked out again at every reading, every 5 minutes. As soon as the week reaches its curve, the 5-hour window its cap, or the reserve is touched, no new run starts. The runs already going are not stopped: each one ends within its project's `maxMinutes`.
 
 **Which project.** It picks the project whose last heartbeat is oldest, skipping any project that:
 - has an open alert;
