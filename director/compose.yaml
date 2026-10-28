@@ -14,9 +14,9 @@ services:
     image: jerome-director
     restart: unless-stopped
     environment:
-      DIRECTOR_ADDRESS: ${DIRECTOR_ADDRESS:?set DIRECTOR_ADDRESS in .env to the server's VPN address}
+      DIRECTOR_ADDRESS: ${DIRECTOR_ADDRESS:?DIRECTOR_ADDRESS is required}
     ports:
-      - "${DIRECTOR_ADDRESS:?set DIRECTOR_ADDRESS in .env to the server's VPN address}:7788:7788"
+      - "${DIRECTOR_ADDRESS:?DIRECTOR_ADDRESS is required}:7788:7788"
     volumes:
       - director-data:/data
     read_only: true
