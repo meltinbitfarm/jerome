@@ -11,29 +11,35 @@ export function lasting(alert, now = new Date()) {
   return alert.count >= LASTING_RUNS || now.getTime() - Date.parse(alert.openedAt) >= LASTING_HOURS * 3_600_000;
 }
 
+// What kind of block a runner's reason is, with what its sentence names: { kind, values }. The kind picks the
+// sentence (block.<kind>) and the actions offered from afar (D166).
+export function blockKind(reason) {
+  const r = String(reason ?? '');
+  let x;
+  if (/^the folder is not trusted/.test(r)) return { kind: 'untrusted' };
+  if (/^PROJECT\.md is provisional/.test(r)) return { kind: 'provisional' };
+  if (/^not a git repository/.test(r)) return { kind: 'nogit' };
+  if ((x = r.match(/^uncommitted changes \(([^)]*)\) on \S+, not left by a heartbeat/))) return { kind: 'yours', values: { files: x[1] } };
+  if ((x = r.match(/^on branch (\S+), neither/))) return { kind: 'branch', values: { branch: x[1] } };
+  if (/^detached HEAD/.test(r)) return { kind: 'detached' };
+  if ((x = r.match(/^a ([a-z-]+) in progress/))) return { kind: 'operation', values: { op: x[1] } };
+  if (/^jerome doctor failed/.test(r)) return { kind: 'doctor' };
+  if (/^no slot /.test(r)) return { kind: 'slot' };
+  if (/could not be committed/.test(r)) return { kind: 'commit' };
+  if (/permission denied for /.test(r)) return { kind: 'denied' };
+  if (/(^|→ )triage:/.test(r)) return { kind: 'triage' };
+  if (capStop(r)) return { kind: 'cap' };
+  if (/max duration/.test(r)) return { kind: 'duration' };
+  if (/^heartbeat of .* lost:/.test(r)) return { kind: 'lost' };
+  if (/did not start/.test(r)) return { kind: 'missed' };
+  if (/end check/.test(r)) return { kind: 'endcheck' };
+  return { kind: 'other' };
+}
+
 // The sentence for a block, from the runner's reason: what is wrong and the one thing to do, in the user's language.
 export function blockMessage(reason, code = lang()) {
-  const r = String(reason ?? '');
-  const say = (key, values) => t(key, values, code);
-  let x;
-  if (/^the folder is not trusted/.test(r)) return say('block.untrusted');
-  if (/^PROJECT\.md is provisional/.test(r)) return say('block.provisional');
-  if (/^not a git repository/.test(r)) return say('block.nogit');
-  if ((x = r.match(/^uncommitted changes \(([^)]*)\) on \S+, not left by a heartbeat/))) return say('block.yours', { files: x[1] });
-  if ((x = r.match(/^on branch (\S+), neither/))) return say('block.branch', { branch: x[1] });
-  if (/^detached HEAD/.test(r)) return say('block.detached');
-  if ((x = r.match(/^a ([a-z-]+) in progress/))) return say('block.operation', { op: x[1] });
-  if (/^jerome doctor failed/.test(r)) return say('block.doctor');
-  if (/^no slot /.test(r)) return say('block.slot');
-  if (/could not be committed/.test(r)) return say('block.commit');
-  if (/permission denied for /.test(r)) return say('block.denied');
-  if (/(^|→ )triage:/.test(r)) return say('block.triage');
-  if (capStop(r)) return say('block.cap');
-  if (/max duration/.test(r)) return say('block.duration');
-  if (/^heartbeat of .* lost:/.test(r)) return say('block.lost');
-  if (/did not start/.test(r)) return say('block.missed');
-  if (/end check/.test(r)) return say('block.endcheck');
-  return say('block.other');
+  const { kind, values = {} } = blockKind(reason);
+  return t(`block.${kind}`, values, code);
 }
 
 // "Stuck for 7 h, 4 runs lost."

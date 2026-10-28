@@ -12,6 +12,7 @@ import { cacheDir } from './runstate.js';
 import { jobLabel } from './schedule.js';
 import { openDb } from './db.js';
 import { lang } from './i18n.js';
+import { actionsFor } from './unblock.js';
 
 const REMIND_HOURS = 24;
 
@@ -40,7 +41,7 @@ export function announceAlerts(dir, { env = process.env, config = null, now = ne
     const message = `${blockMessage(a.reason, code)} ${howLong(a, now, code)}`;
     log(`alert A${a.id} told to the user: ${message}`);
     sent[a.id] = now.toISOString();
-    const unseen = notify(env, dir, message);
+    const unseen = notify(env, dir, message, { alert: { id: a.id, actions: actionsFor(a.reason) } });
     if (unseen) log(`alert notification failed: ${unseen}`);
     const failed = pushAlert(config?.alerts?.command, { project: basename(dir), dir, message: `Jérôme · ${basename(dir)} · ${message}`, env });
     if (failed) log(`alert push failed: ${failed}`);

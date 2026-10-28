@@ -33,11 +33,28 @@ The macOS notifications stay, and `heartbeat.alerts.command` stays for other cha
 |---|---|
 | a tap on an option of a request | the request is answered with that option, through `jerome request answer` in its project |
 | a reply to a request's message | the request is answered with your text |
+| a tap on a block's button | that one action, in that project (see below) |
 | a reply to any other message of a project | your text becomes a note for that project |
 | `#project text` | a note for that project |
 | any other text | a note: for the only project, or Jérôme asks which one, with a button each |
-| `/status` | what waits for you in every project, from `jerome projects` |
+| `/status` | what waits for you in every project, from `jerome projects`, then each block with its buttons |
 | `/help` | what you can send |
+
+## Unblocking with a button
+
+A block that has lasted comes with two or three buttons, chosen by its kind (D166, [the spec](specs/unblock.md)):
+
+| Block | Buttons |
+|---|---|
+| your uncommitted changes | **Commit them** (by their paths, "Kept by the user from afar") · **Set them aside** (`git stash`, found again with `git stash list`) |
+| stopped at its budget on the same work | **Twice the budget, one run** (starts now) · **Skip it, go on** (a note tells the next run to take another task) |
+| stopped on something only you do, such as a push | **Done, I did it** · **Skip it, go on** |
+| wrong branch, detached HEAD, a git operation half done | **Back to the main branch** (the operation aborted, the work kept on its branch) |
+| anything else Jérôme can try again | **Try again now** |
+
+A folder not trusted in Claude Code and a provisional PROJECT.md have no buttons: the first is Claude's own security prompt, the second a choice for a session.
+
+Each button carries only the alert's number and the action's name, from a list written in Jérôme (D167). The project checks that the alert is still open and offers that action; nothing is discarded, pushed, merged or deployed; no action runs while a heartbeat does ("try again when it ends"). The alert closes with who closed it and how (`telegram:commit`), and the buttons go from the message.
 
 Nothing else is done: the bridge runs no shell and no other command, and passes your text only to `jerome request answer`, without a shell. An answer to a request already closed changes nothing, and says so. Messages from other chats, or from groups, are dropped unread and only counted in the watchdog's log.
 

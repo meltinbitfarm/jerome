@@ -8,11 +8,12 @@ import { enqueue } from './telegram.js';
 // Returns why the macOS notification could not be shown, or null. `outbox: false` when the message reaches
 // Telegram another way, as a decision request does with its buttons.
 // A null dir is a message about the account rather than a project, such as the quota running fast.
-export function notify(env, dir, message, { outbox = true } = {}) {
+// `alert` ({ id, actions }) puts the block's buttons under the message on Telegram (D166).
+export function notify(env, dir, message, { outbox = true, alert = null } = {}) {
   const project = dir ? basename(dir) : null;
   if (outbox) {
     try {
-      enqueue({ dir, text: message });
+      enqueue({ dir, text: message, alert });
     } catch {
       // The queue is one more channel: a failure here never stops what notified.
     }

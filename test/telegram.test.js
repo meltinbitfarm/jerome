@@ -75,6 +75,50 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   assert.equal(requestRow(p, 1).answer, 'fix first');
 });
 
+test('a lasting block comes with its buttons, and a tap does that one action in the project, once (D166-D168)', () => {
+  const p = bridged();
+  p.tracked = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: p.dir, encoding: 'utf8' });
+  writeFileSync(join(p.dir, 'README.md'), 'mine\n');
+  p.git('add', 'README.md');
+  p.git('commit', '-q', '-m', 'readme');
+  writeFileSync(join(p.dir, 'README.md'), 'changed\n');
+  for (let i = 0; i < 3; i += 1) p.run('heartbeat', 'demo');
+  p.tick();
+  const [block] = p.sent();
+  assert.deepEqual(block.params.reply_markup.inline_keyboard, [[{ text: 'Commit them', callback_data: 'x:1:commit' }], [{ text: 'Set them aside', callback_data: 'x:1:stash' }]]);
+  const message = { message_id: p.idOf(/changes of yours/), chat: CHAT };
+  // A forged tap, an action this block does not offer or another alert's id, does nothing.
+  p.receive({ callback_query: { id: 'q0', data: 'x:1:retry', message } }, { callback_query: { id: 'q1', data: 'x:2:commit', message } });
+  p.tick();
+  assert.deepEqual(p.sent().slice(1).map((c) => c.params.text), ['demo: That block is already closed: nothing to do.']);
+  p.receive({ callback_query: { id: 'q2', data: 'x:1:commit', message } });
+  p.tick();
+  assert.match(p.sent().at(-1).params.text, /^demo: Committed \(README\.md\)\. The next run starts from there\.$/);
+  assert.equal(p.tracked(), '');
+  assert.match(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: p.dir, encoding: 'utf8' }), /^Kept by the user from afar \(Jérôme A1\)/);
+  const d = p.db();
+  assert.deepEqual({ ...d.prepare('SELECT status, resolved_by FROM alerts WHERE id = 1').get() }, { status: 'resolved', resolved_by: 'telegram:commit' });
+  d.close();
+  assert.ok(p.tg().some((c) => c.method === 'editMessageReplyMarkup'), 'the buttons go once used');
+  // A second tap finds the block closed.
+  p.receive({ callback_query: { id: 'q3', data: 'x:1:stash', message } });
+  p.tick();
+  assert.match(p.sent().at(-1).params.text, /^demo: That block is already closed: nothing to do\.$/);
+
+  // Set aside, never discarded: from /status, where each block comes with its buttons too.
+  writeFileSync(join(p.dir, 'README.md'), 'changed again\n');
+  for (let i = 0; i < 3; i += 1) p.run('heartbeat', 'demo');
+  p.receive({ message: { message_id: 20, chat: CHAT, text: '/status' } });
+  p.tick();
+  const card = p.sent().find((c) => c.params.reply_markup?.inline_keyboard?.[1]?.[0]?.callback_data === 'x:2:stash');
+  assert.ok(card, 'the block of /status has its buttons');
+  p.receive({ callback_query: { id: 'q4', data: 'x:2:stash', message: { message_id: p.idOf(/^Jérôme · demo\n⚠/), chat: CHAT } } });
+  p.tick();
+  assert.ok(p.sent().some((c) => /^demo: Set aside \(README\.md\): `git stash list`/.test(c.params.text)));
+  assert.equal(p.tracked(), '');
+  assert.match(execFileSync('git', ['stash', 'list'], { cwd: p.dir, encoding: 'utf8' }), /Jérôme: set aside from afar \(A2\)/);
+});
+
 test('only the user\'s chat is heard; a free message is a note the triage, the lead agent and the next session read; /status answers', () => {
   const p = bridged({ FAKE_TRIAGE: '{"work": true, "task": "Write the report"}' });
   p.receive(

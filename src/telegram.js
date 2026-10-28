@@ -15,6 +15,7 @@ import { addNote } from './notes.js';
 import { t } from './i18n.js';
 import { readAccount } from './account.js';
 import { blockMessage, howLong } from './blocks.js';
+import { ACTIONS, actionsFor, runAction } from './unblock.js';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'jerome.js');
 // Telegram refuses longer messages.
@@ -53,10 +54,10 @@ export function writeConfig(config) {
 }
 
 // Queues a message for the user (D131), when the bridge is set up: { dir, text, request? }.
-export function enqueue({ dir = null, text, request = null, now = new Date() }) {
+export function enqueue({ dir = null, text, request = null, alert = null, now = new Date() }) {
   if (!readConfig()) return;
   mkdirSync(dataDir(), { recursive: true });
-  appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: dir ? basename(dir) : null, text, request })}\n`);
+  appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: dir ? basename(dir) : null, text, request, alert })}\n`);
 }
 
 function readState() {
@@ -139,7 +140,7 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
       }
       done.received += 1;
       try {
-        if (u.callback_query) await onButton(u.callback_query, state, call, config, now);
+        if (u.callback_query) await onButton(u.callback_query, state, call, config, now, env);
         else if (typeof u.message.text === 'string') await onMessage(u.message, state, call, config, now);
       } catch (err) {
         done.errors.push(err.message);
@@ -187,21 +188,38 @@ async function send(item, state, call, config) {
     ? `${head}\n❓ R${r.id} ${r.question}${r.options ? `\n${t('request.options')}: ${r.options}` : ''}${r.recommendation ? `\n${t('request.recommended')}: ${r.recommendation}` : ''}\n\n${t('request.how')}`
     : `${head}\n${item.text}`;
   const options = r ? optionList(r.options) : [];
+  // A block's actions (D166), one button each: the alert's id and the action's name, nothing else.
+  const actions = !r && item.alert?.actions?.length ? item.alert.actions.filter((a) => ACTIONS.includes(a)) : [];
+  const keyboard = options.length ? options.map((o, i) => [{ text: o, callback_data: `a:${r.id}:${i}` }])
+    : actions.map((a) => [{ text: t(`action.${a}`), callback_data: `x:${item.alert.id}:${a}` }]);
   const message = await call('sendMessage', {
     chat_id: config.chatId, text: clip(text),
-    ...(options.length ? { reply_markup: { inline_keyboard: options.map((o, i) => [{ text: o, callback_data: `a:${r.id}:${i}` }]) } } : {}),
+    ...(keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {}),
   });
-  state.sent[message.message_id] = { dir: item.dir, project: item.project, request: r?.id ?? null };
+  state.sent[message.message_id] = { dir: item.dir, project: item.project, request: r?.id ?? null, alert: actions.length ? item.alert.id : null };
 }
 
 async function reply(call, config, text, extra = {}) {
   return call('sendMessage', { chat_id: config.chatId, text: clip(text), ...extra });
 }
 
-async function onButton(q, state, call, config, now) {
+async function onButton(q, state, call, config, now, env) {
   const [kind, a, b] = String(q.data ?? '').split(':');
   const about = state.sent[q.message?.message_id];
   await call('answerCallbackQuery', { callback_query_id: q.id });
+  // A block's action (D167): only on the message that offered it, for its alert, and one of the closed list; the
+  // project checks again that the alert is open and offers it.
+  if (kind === 'x' && about?.alert === Number(a) && ACTIONS.includes(b)) {
+    const done = runAction(about.dir, Number(a), b, { origin: 'telegram', env, now });
+    if (done.ok) {
+      try {
+        await call('editMessageReplyMarkup', { chat_id: config.chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } });
+      } catch {
+        // The buttons left are harmless: a second tap finds the block closed.
+      }
+    }
+    return reply(call, config, `${about.project}: ${done.text}`);
+  }
   if (kind === 'a' && about?.request === Number(a)) {
     const db = openDb(about.dir);
     const row = db?.prepare('SELECT options FROM requests WHERE id = ?').get(Number(a));
@@ -224,7 +242,7 @@ async function onButton(q, state, call, config, now) {
 async function onMessage(m, state, call, config, now) {
   const text = m.text.trim();
   const command = text.match(/^\/(\w+)/)?.[1]?.toLowerCase();
-  if (command === 'status') return reply(call, config, statusText());
+  if (command === 'status') return status(state, call, config);
   if (command === 'start' || command === 'help') return reply(call, config, t('bot.help'));
   if (command) return reply(call, config, `${t('bot.unknown')}\n\n${t('bot.help')}`);
   const about = m.reply_to_message ? state.sent[m.reply_to_message.message_id] : null;
@@ -269,16 +287,31 @@ async function saveNote(project, text, call, config, now) {
   return reply(call, config, t('note.saved', { project: project.name, id }));
 }
 
+// /status: the summary, then each block that has actions as a message of its own with its buttons (D168).
+async function status(state, call, config) {
+  const p = projectsNow();
+  await reply(call, config, statusText(p));
+  for (const x of p?.projects ?? []) {
+    for (const a of x.alerts) {
+      const actions = actionsFor(a.reason);
+      if (actions.length) await send({ dir: x.path, project: x.name, text: `⚠ ${blockMessage(a.reason)} ${howLong(a)}`, alert: { id: a.id, actions } }, state, call, config);
+    }
+  }
+}
+
+function projectsNow() {
+  const r = spawnSync(process.execPath, [BIN, 'projects', '--json'], { encoding: 'utf8', timeout: 60_000 });
+  try {
+    return JSON.parse(r.stdout);
+  } catch {
+    return null;
+  }
+}
+
 // What waits for the user (D161): the open decision requests and the blocks, each as a sentence for a person, from
 // `jerome projects`; then the quota.
-function statusText() {
-  const r = spawnSync(process.execPath, [BIN, 'projects', '--json'], { encoding: 'utf8', timeout: 60_000 });
-  let p;
-  try {
-    p = JSON.parse(r.stdout);
-  } catch {
-    return t('status.noanswer');
-  }
+function statusText(p) {
+  if (!p) return t('status.noanswer');
   const windows = readAccount().windows ?? {};
   const live = (w) => (w && (w.resetsAt ?? 0) * 1000 > Date.now() ? w.used : null);
   const quota = live(windows.seven_day) !== null ? `\n\n${t('status.quota', { seven: live(windows.seven_day), five: live(windows.five_hour) })}` : '';

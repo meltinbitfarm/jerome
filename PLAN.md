@@ -304,6 +304,8 @@ Then (0.8.2, D158, D160): the watchdog settles every minute what an older Jérô
 
 Then (0.8.3, D170): a heartbeat may read anywhere but credentials (Read, Glob, Grep allowed, the credential folders refused by --disallowedTools, tried with real claude) and use Monitor; a process's start time is read in one locale and zone, so a heartbeat started from a terminal in Italian is no longer taken by the watchdog for a run whose runner died.
 
+Then (0.9.0, D166-D168): unblocking from Telegram (docs/specs/unblock.md, src/unblock.js). A lasting block comes with its buttons, chosen by its kind: commit or set aside your changes, twice the budget for one run or skip the work, done or skip for what only Fabio does, back to the main branch, try again now; also under each block of /status. A button carries the alert's id and an action from a closed list; the project checks the alert is open and offers it, refuses while a heartbeat runs, never discards, pushes or deploys, and records who closed the alert (alerts.resolved_by, schema v10). Next: the same buttons on the Director's dashboard (D169).
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
