@@ -17,6 +17,7 @@ import { governorSettings } from './governor.js';
 import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { openAlerts } from './alerts.js';
 import { scrub } from './scrub.js';
+import { lang } from './i18n.js';
 import { projectStatus, projectOver } from './budget.js';
 import { lockHolder, cacheDir } from './runstate.js';
 
@@ -197,8 +198,9 @@ function projectBeat(s, filled, cursors, now) {
       fill: filled.has(real(dir)),
       running: Boolean(lockHolder(dir)),
       slots: config.slots.slice(0, 20).map((x) => ({ name: cut(x.name, 40), at: cut(describeSlot(x), 200) })),
-      alerts: openAlerts(db).slice(0, 50).map((a) => ({ id: a.id, reason: cut(a.reason, 200) })),
-      requests: db.prepare("SELECT id, question FROM requests WHERE status = 'open' ORDER BY id LIMIT 50").all().map((r) => ({ id: r.id, question: cut(r.question, 200) })),
+      alerts: openAlerts(db).slice(0, 50).map((a) => ({ id: a.id, reason: cut(a.reason, 200), count: a.count, openedAt: a.openedAt })),
+      requests: db.prepare("SELECT id, question, options, recommendation FROM requests WHERE status = 'open' ORDER BY id LIMIT 50").all()
+        .map((r) => ({ id: r.id, question: cut(r.question, 200), options: r.options ? cut(r.options, 200) : null, recommendation: r.recommendation ? cut(r.recommendation, 200) : null })),
       overLimit: Boolean(projectOver(status)),
       lastHeartbeat: last ? { at: last.started_at, status: cut(last.status, 20), reason: cut(last.reason, 200) } : null,
       usage: { today: { tokens: status.daily.tokens, usd: status.daily.usd }, week: { tokens: status.weekly.tokens, usd: status.weekly.usd } },
@@ -249,7 +251,7 @@ export async function directorBeat({ env = process.env, now = new Date(), log = 
     }
   }
   const sendQuota = quota && quota.readAt !== state.quotaReadAt;
-  const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50) });
+  const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), language: lang(env), quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50) });
   const problem = r.error ?? (r.status >= 400 ? r.data.error : null);
   if (problem) {
     if (problem !== state.lastError) log(`director: ${problem}`);

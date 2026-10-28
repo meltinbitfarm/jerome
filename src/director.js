@@ -109,6 +109,8 @@ export function openDirectorDb(env = process.env) {
     CREATE TABLE IF NOT EXISTS runs (machine TEXT NOT NULL, project TEXT NOT NULL, run_id INTEGER NOT NULL, ended_at TEXT,
       data TEXT NOT NULL, PRIMARY KEY (machine, project, run_id));
     CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL);`);
+  // Added with the dashboard in the user's language (D163).
+  if (!db.prepare('PRAGMA table_info(machines)').all().some((c) => c.name === 'language')) db.exec('ALTER TABLE machines ADD COLUMN language TEXT');
   return db;
 }
 
@@ -122,6 +124,8 @@ const SHAPES = {
   beat: {
     version: 'string:20',
     at: 'string:40',
+    // The user's language on that Mac (D162), for the dashboard.
+    'language?': 'string:5',
     'quota?': {
       readAt: 'string:40',
       windows: { 'five_hour?': WINDOW, 'seven_day?': WINDOW },
@@ -131,8 +135,8 @@ const SHAPES = {
     projects: [{
       key: 'string:120', name: 'string:100', fill: 'boolean', running: 'boolean',
       slots: [{ name: 'string:40', at: 'string:200' }, 20],
-      alerts: [{ id: 'number', reason: 'string:300' }, 50],
-      requests: [{ id: 'number', question: 'string:300' }, 50],
+      alerts: [{ id: 'number', reason: 'string:300', 'count?': 'number', 'openedAt?': 'string:40' }, 50],
+      requests: [{ id: 'number', question: 'string:300', 'options?': 'string:300', 'recommendation?': 'string:300' }, 50],
       overLimit: 'boolean',
       'lastHeartbeat?': { at: 'string:40', status: 'string:20', reason: 'string:300' },
       usage: { today: USAGE, week: USAGE },
@@ -260,7 +264,7 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
     const at = new Date(now()).toISOString();
     db.exec('BEGIN');
     try {
-      db.prepare('UPDATE machines SET last_beat = ?, version = ? WHERE id = ?').run(at, body.version, id);
+      db.prepare('UPDATE machines SET last_beat = ?, version = ?, language = coalesce(?, language) WHERE id = ?').run(at, body.version, body.language ?? null, id);
       db.prepare('DELETE FROM projects WHERE machine = ?').run(id);
       for (const p of body.projects) db.prepare('INSERT OR REPLACE INTO projects (machine, key, name, data, updated_at) VALUES (?, ?, ?, ?, ?)').run(id, p.key, p.name, JSON.stringify(p), at);
       if (body.quota && !db.prepare('SELECT 1 FROM readings WHERE machine = ? AND read_at = ?').get(id, body.quota.readAt)) {

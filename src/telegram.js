@@ -14,7 +14,7 @@ import { stores } from './store.js';
 import { addNote } from './notes.js';
 import { t } from './i18n.js';
 import { readAccount } from './account.js';
-import { blockMessage, howLong } from './announce.js';
+import { blockMessage, howLong } from './blocks.js';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'jerome.js');
 // Telegram refuses longer messages.

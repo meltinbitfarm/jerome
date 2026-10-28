@@ -296,6 +296,8 @@ Then (0.7.0, D162, D164, D165): autonomy step 5. Jérôme writes to the user in 
 
 Then (0.7.1, D158): `jerome update` commits the template files it writes and project.json, by their paths: left uncommitted, they stopped the next heartbeat as someone's changes.
 
+Then (0.8.0, D163): autonomy step 6, the last. The Director's dashboard is redone in the user's language, the one each Mac now sends in its beat: one sentence on top (everything goes on by itself, or how many things wait), then what Fabio must do (open requests with their options, blocks that lasted, as the same sentences the notifications use, from src/blocks.js; a silent Mac), one line per project with its state in words, the quota in one line and its curve, and the Macs, runs and past weeks closed under details. The beat now carries each alert's count and start and each request's options, and the Director stores the Mac's language.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

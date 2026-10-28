@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { pace, GOVERNOR_DEFAULTS } from './pacing.js';
 import { VERSION } from './template.js';
 import { scrub } from './scrub.js';
+import { blockMessage, howLong, lasting } from './blocks.js';
+import { LANGUAGES } from './i18n.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'director.html');
 const STYLE = join(import.meta.dirname, '..', 'viewer', 'style.css');
@@ -80,7 +82,9 @@ const parse = (text) => {
 // Everything the page shows, from the Director's database: the quota and its week, the Macs, their projects, the
 // runs, and the past weeks.
 export function overview(db, now = new Date()) {
-  const machines = db.prepare("SELECT id, name, status, last_beat, version FROM machines WHERE status != 'revoked' ORDER BY name").all();
+  const machines = db.prepare("SELECT id, name, status, last_beat, version, language FROM machines WHERE status != 'revoked' ORDER BY name").all();
+  // The user's language (D163): the one of the Mac that beat last, as it says it.
+  const spoken = machines.filter((m) => m.status === 'approved' && LANGUAGES[m.language]).sort((a, b) => String(b.last_beat).localeCompare(String(a.last_beat)))[0]?.language ?? 'en';
   const names = new Map(machines.map((m) => [m.id, m.name]));
   const readings = db.prepare('SELECT machine, read_at, data FROM readings ORDER BY read_at').all().map((r) => ({ machine: r.machine, at: r.read_at, ...parse(r.data) }));
   const latest = readings.at(-1) ?? null;
@@ -116,8 +120,17 @@ export function overview(db, now = new Date()) {
     const data = parse(p.data);
     const mine = db.prepare('SELECT data FROM runs WHERE machine = ? AND project = ? AND ended_at >= ?').all(p.machine, p.key, since).map((r) => parse(r.data));
     const costs = mine.map((r) => r.quota?.after?.seven_day - r.quota?.before?.seven_day).filter((d) => Number.isFinite(d) && d >= 0);
+    // Each block as the user reads it (D160, D161): a sentence, how long, and whether it has lasted enough to need them.
+    const blocks = (data.alerts ?? []).map((a) => {
+      const alert = { count: a.count ?? 1, openedAt: a.openedAt ?? now.toISOString() };
+      return { id: a.id, text: blockMessage(a.reason, spoken), since: howLong(alert, now, spoken), lasting: lasting(alert, now) };
+    });
+    const state = data.running ? 'running' : blocks.some((b) => b.lasting) ? 'stuck' : blocks.length ? 'retrying'
+      : (data.requests ?? []).length ? 'asking' : data.overLimit ? 'paused' : 'idle';
     return {
       ...data,
+      blocks,
+      state,
       machine: names.get(p.machine),
       runs7d: mine.length,
       fill7d: mine.filter((r) => r.kind === 'fill').length,
@@ -128,6 +141,12 @@ export function overview(db, now = new Date()) {
     schema: 'jerome.director.overview/v1',
     at: now.toISOString(),
     version: VERSION,
+    language: spoken,
+    // What waits for the user, first: the open decision requests, then the blocks that have lasted.
+    attention: [
+      ...projects.flatMap((p) => (p.requests ?? []).map((r) => ({ kind: 'request', project: p.name, machine: p.machine, id: r.id, question: r.question, options: r.options ?? null, recommendation: r.recommendation ?? null }))),
+      ...projects.flatMap((p) => p.blocks.filter((b) => b.lasting).map((b) => ({ kind: 'block', project: p.name, machine: p.machine, id: b.id, text: b.text, since: b.since }))),
+    ],
     quota,
     machines: machines.map((m) => ({
       name: m.name,

@@ -151,7 +151,7 @@ const TEXTS = {
     'block.other': 'Le sue run continuano a fermarsi. Apri una sessione e chiedi a Jérôme cosa non va.',
     'block.since': ({ time, runs }) => `Fermo da ${time}, ${runs} ${runs === 1 ? 'run persa' : 'run perse'}.`,
     'time.days': ({ n }) => `${n} giorni`,
-    'time.hours': ({ n }) => `${n} ore`,
+    'time.hours': ({ n }) => (n === 1 ? 'un\'ora' : `${n} ore`),
     'time.short': 'meno di un\'ora',
     'request.notice': ({ id, question }) => `Domanda R${id}: ${question}`,
     'request.options': 'Opzioni',

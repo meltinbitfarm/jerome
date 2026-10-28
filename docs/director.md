@@ -7,7 +7,7 @@ It is built in five steps:
 | Step | What it does | |
 |---|---|---|
 | 1 | **Sees:** Macs connect and are approved; every minute each one sends what it knows | in place, 0.5.0 |
-| 2 | **Shows:** a read-only dashboard, also on the iPhone | in place, 0.5.1 |
+| 2 | **Shows:** a read-only dashboard, also on the iPhone, in your language | in place, 0.5.1; simpler in 0.8.0 |
 | 3 | **Decides:** permits for fill runs, slots that queue, a fallback when it cannot be reached | to do |
 | 4 | Setup on your server, step by step | to do |
 | 5 | Telegram on the Director, one bot for every Mac | to do |
@@ -61,7 +61,7 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
    - The [watchdog](commands/watchdog.md) sends the first beat within a minute. `jerome connect status` shows it.
 
 3. **The dashboard.** Run `jerome director dashboard` on the server: it prints the dashboard's address, with its token after the `#`. Open it from any device on your VPN, such as the iPhone, and keep it as a bookmark.
-   - It shows the quota on the week's curve (the pace to keep and the reserve's ceiling), the Macs and whether each one is reachable, what waits for you, the projects by Mac, the runs and the past weeks. Times are in the device's own time zone. It refreshes every 30 seconds.
+   - It speaks your language, the one of your Macs (`jerome language`), and says first, in one sentence, whether anything waits for you (D163). Then **what you need to do**: the open decision requests with their options, the blocks that have lasted (three runs or six hours) as one sentence each with how long, and a Mac not heard from for 15 minutes. Then **the projects**, one line each with its state in words (working, stopped and needing you, trying again by itself, waiting for your answer, waiting for its next turn), its last work and its turns. Then **the quota** of the week in one line, what Jérôme does with it, and its curve against the pace and the reserve. The Macs, the runs and the past weeks are under **details**, closed. Times are in the device's own time zone. It refreshes every 30 seconds.
    - It is read-only: nothing on it changes anything. Its data come only with the token, which the browser never sends in the address: the page passes it in a header.
    - **As an app:** on the iPhone, in Safari, Share → Add to Home Screen; on the Mac, in Safari, File → Add to Dock. It opens with its own icon, the token kept in the saved address.
    - Whoever has the address sees everything the Director knows. If it leaks, `jerome director dashboard --new-token` makes the old one stop working.

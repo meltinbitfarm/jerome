@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { t, userLanguage, leadLanguageLine } from '../src/i18n.js';
-import { blockMessage, howLong } from '../src/announce.js';
+import { blockMessage, howLong } from '../src/blocks.js';
 import { burnWarning } from '../src/quotawatch.js';
 import { readyProject } from './sandbox.js';
 

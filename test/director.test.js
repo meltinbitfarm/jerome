@@ -224,6 +224,10 @@ test('the dashboard is a page under a strict policy, its data only with the toke
   assert.equal(o.quota.pace.verdict, 'go');
   assert.deepEqual(o.machines.map((x) => [x.name, x.status, x.reachable, x.projects]), [['mini', 'approved', true, 1]]);
   assert.equal(o.projects[0].name, 'demo');
+  // In the language of the Mac that beat last (D163), with each project's state and what waits for the user.
+  assert.equal(o.language, 'en');
+  assert.equal(o.projects[0].state, 'idle');
+  assert.deepEqual(o.attention, []);
   assert.ok(!JSON.stringify(o).includes(m.root), 'no path reaches the dashboard');
 
   // Only GET is the dashboard's: anything else is the Macs' signed API, and refused unsigned.

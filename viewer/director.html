@@ -13,24 +13,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main>
+<main class="dash">
   <header>
     <div>
-      <h1><span class="muted">jerome director ·</span> <span id="count">…</span></h1>
-      <div class="muted" id="updated">loading…</div>
+      <h1 id="headline">Jérôme</h1>
+      <div class="muted" id="updated">…</div>
     </div>
     <div>
-      <label class="muted" for="theme">theme</label>
-      <select id="theme"><option value="auto">auto</option><option value="light">light</option><option value="dark">dark</option></select>
+      <select id="theme" aria-label="theme"><option value="auto">◐</option><option value="light">☀</option><option value="dark">☾</option></select>
     </div>
   </header>
   <div id="error" class="error" hidden></div>
-  <section id="quota"></section>
-  <section id="machines"></section>
-  <section id="attention" hidden></section>
+  <section id="todo" hidden></section>
   <section id="projects"></section>
-  <section id="runs"></section>
-  <section id="weeks"></section>
+  <section id="quota"></section>
+  <details id="details"><summary id="details-title"></summary><div id="details-body"></div></details>
   <footer id="footer"></footer>
 </main>
 <script>
@@ -38,8 +35,85 @@
 // The token is in the address's fragment, which the browser never sends: the page passes it in a header.
 const token = decodeURIComponent(location.hash.slice(1));
 const REFRESH_MS = 30_000;
+// A Mac that has not beaten for this long is worth telling: it beats every minute.
+const SILENT_MIN = 15;
 let data = null;
 const filters = { mac: '', project: '' };
+
+// The page's own words, in the user's language (D163); the server writes the blocks' sentences.
+const WORDS = {
+  en: {
+    calm: 'Everything goes on by itself.',
+    waiting: (n) => `${n} ${n === 1 ? 'thing waits' : 'things wait'} for you.`,
+    updated: (t) => `updated ${t} · every 30 s`,
+    todo: 'What you need to do',
+    question: 'Question',
+    options: 'Options',
+    recommended: 'Recommended',
+    answerHow: 'Answer on Telegram, or in a session in the project.',
+    silent: (mac, since) => `The Mac ${mac} has not been heard from since ${since}. Is it on and connected?`,
+    pending: (mac) => `The Mac ${mac} waits for your approval: \`jerome director approve\` on the server.`,
+    projects: 'Projects',
+    noProjects: 'No project yet: connect a Mac with `jerome connect`.',
+    state: { running: 'working now', stuck: 'stopped, needs you', retrying: 'hit a snag, trying again by itself', asking: 'waiting for your answer', paused: 'paused at its limit', idle: 'waiting for its next turn' },
+    next: (s) => `turns: ${s}`,
+    lastWork: (ago, what) => `last work ${ago}: ${what}`,
+    noWork: 'no run yet',
+    quota: 'Quota this week',
+    noQuota: 'No reading yet: it comes with the first beat of a Mac.',
+    used: (seven, five) => `Week ${seven}%${five !== null ? ` · 5 hours ${five}%` : ''}`,
+    pace: (target, reset) => `the pace for today is ${target}% · reset ${reset}`,
+    verdict: { behind: 'below the pace: Jérôme uses the spare quota', ahead: 'above the pace: Jérôme slows down', release: 'last day: what is left gets used', burst: 'the 5-hour window resets soon: a short burst', cap: 'the 5-hour window is full: waiting', reserve: 'at your reserve: Jérôme stops to leave it to you', stale: 'no fresh reading' },
+    chartPace: 'pace', chartReserve: 'reserve', readings: (n) => `readings this week (${n})`,
+    details: 'Details: Macs, runs, past weeks',
+    macs: 'Macs', mac: 'Mac', stateCol: 'State', lastBeat: 'Last beat', projectsCol: 'Projects', version: 'Version', code: 'Code',
+    connected: 'connected', unreachable: (s) => `silent since ${s}`, approval: 'waiting for approval',
+    runs: 'Runs', started: 'Started', project: 'Project', kind: 'Kind', status: 'Status', points: '7d',
+    every: { mac: 'every Mac', project: 'every project' },
+    weeks: 'Past weeks', noWeeks: 'None yet: the first shows after this week\'s reset.',
+    readOnly: 'read-only', never: 'never',
+    ago: { now: 'just now', m: (n) => `${n} min ago`, h: (n) => `${n} h ago`, d: (n) => `${n} days ago` },
+    noToken: 'This address has no token: open the one `jerome director dashboard` prints on the server.',
+    cannot: (e) => `Cannot read the Director: ${e}`,
+  },
+  it: {
+    calm: 'Tutto va avanti da solo.',
+    waiting: (n) => `${n} ${n === 1 ? 'cosa aspetta' : 'cose aspettano'} te.`,
+    updated: (t) => `aggiornato alle ${t} · ogni 30 s`,
+    todo: 'Cosa devi fare tu',
+    question: 'Domanda',
+    options: 'Opzioni',
+    recommended: 'Consiglio',
+    answerHow: 'Rispondi da Telegram, o in una sessione nel progetto.',
+    silent: (mac, since) => `Il Mac ${mac} non si sente da ${since}. È acceso e in rete?`,
+    pending: (mac) => `Il Mac ${mac} aspetta la tua approvazione: \`jerome director approve\` sul server.`,
+    projects: 'Progetti',
+    noProjects: 'Ancora nessun progetto: collega un Mac con `jerome connect`.',
+    state: { running: 'sta lavorando', stuck: 'fermo, serve te', retrying: 'ha trovato un intoppo, riprova da solo', asking: 'aspetta una tua risposta', paused: 'in pausa al suo limite', idle: 'aspetta il prossimo turno' },
+    next: (s) => `turni: ${s}`,
+    lastWork: (ago, what) => `ultimo lavoro ${ago}: ${what}`,
+    noWork: 'ancora nessuna run',
+    quota: 'Quota della settimana',
+    noQuota: 'Ancora nessuna lettura: arriva col primo battito di un Mac.',
+    used: (seven, five) => `Settimana ${seven}%${five !== null ? ` · 5 ore ${five}%` : ''}`,
+    pace: (target, reset) => `il passo di oggi è ${target}% · reset ${reset}`,
+    verdict: { behind: 'sotto il passo: Jérôme usa la quota avanzata', ahead: 'sopra il passo: Jérôme rallenta', release: 'ultimo giorno: si usa quello che resta', burst: 'la finestra di 5 ore si azzera a breve: un breve sprint', cap: 'la finestra di 5 ore è piena: attende', reserve: 'alla tua riserva: Jérôme si ferma per lasciarla a te', stale: 'nessuna lettura recente' },
+    chartPace: 'passo', chartReserve: 'riserva', readings: (n) => `letture della settimana (${n})`,
+    details: 'Dettagli: Mac, run, settimane passate',
+    macs: 'Mac', mac: 'Mac', stateCol: 'Stato', lastBeat: 'Ultimo battito', projectsCol: 'Progetti', version: 'Versione', code: 'Codice',
+    connected: 'collegato', unreachable: (s) => `muto dal ${s}`, approval: 'aspetta l\'approvazione',
+    runs: 'Run', started: 'Inizio', project: 'Progetto', kind: 'Tipo', status: 'Esito', points: '7g',
+    every: { mac: 'tutti i Mac', project: 'tutti i progetti' },
+    weeks: 'Settimane passate', noWeeks: 'Ancora nessuna: la prima compare dopo il reset di questa settimana.',
+    readOnly: 'sola lettura', never: 'mai',
+    ago: { now: 'adesso', m: (n) => `${n} min fa`, h: (n) => (n === 1 ? 'un\'ora fa' : `${n} ore fa`), d: (n) => `${n} giorni fa` },
+    noToken: 'Questo indirizzo non ha il token: apri quello che stampa `jerome director dashboard` sul server.',
+    cannot: (e) => `Non riesco a leggere il Director: ${e}`,
+  },
+};
+const browserLang = (navigator.language || 'en').slice(0, 2);
+let W = WORDS[browserLang] ?? WORDS.en;
+let LOCALE = navigator.language || 'en-GB';
 
 // Elements are built with textContent only: a reason or a question can hold anything, and none of it is read as HTML.
 function el(tag, attrs = {}, ...children) {
@@ -60,27 +134,20 @@ function svg(tag, attrs = {}, text = null) {
   return node;
 }
 const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat(Infinity));
-const prompt = (command, ...meta) => el('h2', {}, el('span', { class: 'ps' }, '$'), el('span', { class: 'cmd' }, command), ...meta);
-const meta = (...children) => el('span', { class: 'meta' }, ...children);
+const title = (text, ...meta) => el('h2', {}, el('span', { class: 'cmd' }, text), ...meta);
 
-// Times in this device's own time zone.
-const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
-const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+// Times in this device's own time zone, in the user's language.
+const when = (iso) => (iso ? new Date(iso).toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : W.never);
+const clock = (iso) => new Date(iso).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
 function ago(iso) {
   const ms = Math.max(0, Date.now() - Date.parse(iso));
-  const plural = (v, unit) => `${v} ${unit}${v === 1 ? '' : 's'} ago`;
-  if (ms < 60_000) return 'just now';
-  if (ms < 3_600_000) return plural(Math.floor(ms / 60_000), 'minute');
-  if (ms < 48 * 3_600_000) return plural(Math.floor(ms / 3_600_000), 'hour');
-  return plural(Math.floor(ms / 86_400_000), 'day');
+  if (ms < 60_000) return W.ago.now;
+  if (ms < 3_600_000) return W.ago.m(Math.floor(ms / 60_000));
+  if (ms < 48 * 3_600_000) return W.ago.h(Math.floor(ms / 3_600_000));
+  return W.ago.d(Math.floor(ms / 86_400_000));
 }
-function n(v) {
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
-  if (v >= 1e3) return `${Math.round(v / 1e3)}k`;
-  return String(v ?? 0);
-}
-const money = (v) => (v > 0 && v < 0.005 ? '<$0.01' : v === 0 ? '$0.00' : `≈$${v.toFixed(2)}`);
-const VERDICT = { go: 'ok', hold: 'warn', reduced: 'muted' };
+const STATE_CLASS = { running: 'running', stuck: 'high', retrying: 'warn', asking: 'warn', paused: 'muted', idle: 'muted' };
+const VERDICT_CLASS = { go: 'ok', hold: 'warn', reduced: 'muted' };
 
 // Theme: the system's, or the one picked here, remembered in this browser only.
 const themeSelect = document.getElementById('theme');
@@ -95,36 +162,71 @@ themeSelect.addEventListener('change', () => {
   try { localStorage.setItem('jerome-theme', themeSelect.value); } catch { /* not remembered */ }
 });
 
-function renderQuota() {
-  const q = data.quota;
-  if (!q) return fill('quota', prompt('jerome quota'), el('div', { class: 'muted' }, 'No reading yet: it comes with the first beat of a connected Mac.'));
-  const w = q.windows;
-  const window = (name, label) => {
-    const x = w[name];
-    if (!x) return `${label} no reading`;
-    if (x.resetsAt && x.resetsAt * 1000 <= Date.now()) return `${label} no reading since its reset`;
-    return `${label} ${x.used}%${x.resetsAt ? ` (resets ${when(new Date(x.resetsAt * 1000).toISOString())})` : ''}`;
-  };
-  const p = q.pace;
-  const lines = [
-    el('div', {}, `${window('five_hour', '5h')} · ${window('seven_day', '7d')}`),
-    q.scoped.length || q.breakdown.some((b) => b.percent) ? el('div', { class: 'muted' }, [
-      ...q.scoped.map((s) => `${s.model} ${s.used}% of its weekly limit`),
-      q.breakdown.some((b) => b.percent) ? `this week ${q.breakdown.filter((b) => b.percent).map((b) => `${b.name} ${b.percent}%`).join(', ')}` : null,
-    ].filter(Boolean).join(' · ')) : null,
-    el('div', {}, p.target === null ? el('span', { class: VERDICT[p.verdict] }, `${p.verdict}: ${p.why}`)
-      : [`pace: target now ${p.target}% · ceiling ${p.ceiling}% · `, el('span', { class: VERDICT[p.verdict] }, `${p.verdict}`), `: ${p.why}`]),
-  ];
-  fill('quota', prompt('jerome quota', meta(`read ${ago(q.readAt)} by ${q.by ?? 'a Mac'}`)), lines, chart(q), readingsTable(q));
+// What the user must do: the server's list, and the Macs that went silent or wait for approval.
+function todoItems() {
+  const items = data.attention.map((a) => ({ ...a }));
+  for (const m of data.machines) {
+    if (m.status === 'pending') items.push({ kind: 'mac', text: W.pending(m.name) });
+    else if (m.lastBeat && Date.now() - Date.parse(m.lastBeat) > SILENT_MIN * 60_000) items.push({ kind: 'mac', text: W.silent(m.name, when(m.lastBeat)) });
+  }
+  return items;
 }
 
-// The week as a line: the 7-day window at each reading against the pace it should keep (target, dashed) and the
-// ceiling the reserve leaves (dotted), from the week's start to its reset.
+function renderTodo(items) {
+  const section = document.getElementById('todo');
+  section.hidden = !items.length;
+  if (!items.length) return;
+  fill('todo', title(W.todo), items.map((a) => {
+    if (a.kind === 'request') {
+      return el('div', { class: 'card ask' },
+        el('div', { class: 'card-head' }, el('span', { class: 'warn' }, `❓ ${W.question} R${a.id}`), el('span', { class: 'muted' }, ` · ${a.project}`)),
+        el('div', { class: 'card-text' }, a.question),
+        a.options ? el('div', { class: 'muted' }, `${W.options}: ${a.options}`) : null,
+        a.recommendation ? el('div', { class: 'muted' }, `${W.recommended}: ${a.recommendation}`) : null,
+        el('div', { class: 'muted small' }, W.answerHow));
+    }
+    return el('div', { class: 'card stop' },
+      a.project ? el('div', { class: 'card-head' }, el('span', { class: 'high' }, '⚠ '), a.project) : null,
+      el('div', { class: 'card-text' }, a.text),
+      a.since ? el('div', { class: 'muted small' }, a.since) : null);
+  }));
+}
+
+function renderProjects() {
+  if (!data.projects.length) return fill('projects', title(W.projects), el('div', { class: 'muted' }, W.noProjects));
+  const order = { stuck: 0, asking: 1, retrying: 2, running: 3, paused: 4, idle: 5 };
+  const rows = [...data.projects].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name)).map((p) => {
+    const h = p.lastHeartbeat;
+    const last = h ? W.lastWork(ago(h.at), h.reason) : W.noWork;
+    return el('div', { class: 'row-card' },
+      el('div', { class: 'row-head' },
+        el('span', { class: 'name' }, p.name),
+        el('span', { class: STATE_CLASS[p.state] }, W.state[p.state]),
+        data.machines.length > 1 ? el('span', { class: 'muted small' }, p.machine) : null),
+      el('div', { class: 'muted small clip' }, last),
+      p.slots.length ? el('div', { class: 'muted small' }, W.next(p.slots.map((s) => s.at).join(' · '))) : null);
+  });
+  fill('projects', title(W.projects), rows);
+}
+
+function renderQuota() {
+  const q = data.quota;
+  if (!q) return fill('quota', title(W.quota), el('div', { class: 'muted' }, W.noQuota));
+  const live = (x) => (x && (!x.resetsAt || x.resetsAt * 1000 > Date.now()) ? x.used : null);
+  const p = q.pace;
+  const line = el('div', {}, el('strong', {}, W.used(live(q.windows.seven_day) ?? '—', live(q.windows.five_hour))),
+    p.target !== null ? el('span', { class: 'muted' }, ` · ${W.pace(p.target, when(q.resetsAt))}`) : null);
+  const verdict = el('div', { class: VERDICT_CLASS[p.verdict] }, W.verdict[p.kind] ?? p.why);
+  fill('quota', title(W.quota), line, verdict, chart(q), readingsTable(q));
+}
+
+// The week as a line: the 7-day window at each reading against the pace it should keep (dashed) and the ceiling
+// the reserve leaves (dotted), from the week's start to its reset.
 function chart(q) {
   if (!q.weekStart || !q.series.length) return null;
   const box = el('div', { class: 'chart' });
   const width = Math.max(280, document.getElementById('quota').clientWidth || 600);
-  const height = 200;
+  const height = 180;
   const m = { top: 12, right: 64, bottom: 22, left: 34 };
   const t0 = Date.parse(q.weekStart);
   const t1 = Date.parse(q.resetsAt);
@@ -133,30 +235,28 @@ function chart(q) {
   const target = q.settings.target;
   const reserve = q.settings.reserve;
   const paceAt = (t) => target * Math.min(1, Math.max(0, (t - t0) / (t1 - t0)));
-  const ceilingAt = (t) => 100 - reserve * Math.min(1, (t1 - t) / 86_400_000);
-  const root = svg('svg', { viewBox: `0 0 ${width} ${height}`, height, role: 'img', 'aria-label': `7-day window this week: ${q.series.at(-1).seven}% now, pace ${q.pace.target ?? '—'}%` });
+  const root = svg('svg', { viewBox: `0 0 ${width} ${height}`, height, role: 'img', 'aria-label': `${q.series.at(-1).seven}% / ${q.pace.target ?? '—'}%` });
   for (const v of [0, 25, 50, 75, 100]) {
     root.append(svg('line', { class: 'gridline', x1: m.left, x2: width - m.right, y1: y(v), y2: y(v) }));
     root.append(svg('text', { class: 'axis', x: m.left - 6, y: y(v) + 4, 'text-anchor': 'end' }, `${v}%`));
   }
-  // A tick at each local midnight, named by its day.
   for (let d = new Date(t0); d.getTime() <= t1; d.setDate(d.getDate() + 1)) {
     const mid = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
     if (mid >= t1) break;
-    root.append(svg('text', { class: 'axis', x: x(mid), y: height - 6, 'text-anchor': 'middle' }, new Date(mid).toLocaleDateString(undefined, { weekday: 'short' })));
+    root.append(svg('text', { class: 'axis', x: x(mid), y: height - 6, 'text-anchor': 'middle' }, new Date(mid).toLocaleDateString(LOCALE, { weekday: 'short' })));
   }
   const now = Math.min(Date.now(), t1);
   root.append(svg('line', { class: 'now', x1: x(now), x2: x(now), y1: m.top, y2: height - m.bottom }));
   root.append(svg('line', { class: 'ref', x1: x(t0), y1: y(0), x2: x(t1), y2: y(target) }));
-  root.append(svg('text', { class: 'label', x: x(t1) + 6, y: y(target) + 4 }, `pace ${target}%`));
+  root.append(svg('text', { class: 'label', x: x(t1) + 6, y: y(target) + 4 }, `${W.chartPace} ${target}%`));
   const release = t1 - 86_400_000;
   root.append(svg('polyline', { class: 'ref reserve', points: `${x(t0)},${y(100 - reserve)} ${x(release)},${y(100 - reserve)} ${x(t1)},${y(100)}` }));
-  root.append(svg('text', { class: 'label', x: x(t1) + 6, y: y(100) + 4 }, 'reserve'));
+  root.append(svg('text', { class: 'label', x: x(t1) + 6, y: y(100) + 4 }, W.chartReserve));
   const points = q.series.map((s) => [x(Date.parse(s.at)), y(s.seven)]);
   root.append(svg('polyline', { class: 'series', points: points.map((p) => p.join(',')).join(' ') }));
   const last = q.series.at(-1);
   root.append(svg('circle', { class: 'dot', cx: points.at(-1)[0], cy: points.at(-1)[1], r: 4 }));
-  root.append(svg('text', { class: 'label value', x: points.at(-1)[0] + 8, y: points.at(-1)[1] - 6 }, `7d ${last.seven}%`));
+  root.append(svg('text', { class: 'label value', x: points.at(-1)[0] + 8, y: points.at(-1)[1] - 6 }, `${last.seven}%`));
 
   // The crosshair: the reading nearest the pointer, with its time, its value and the pace then.
   const cross = svg('line', { class: 'cross', y1: m.top, y2: height - m.bottom, visibility: 'hidden' });
@@ -173,8 +273,7 @@ function chart(q) {
     const [cx, cy] = points[best];
     cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.setAttribute('visibility', 'visible');
     dot.setAttribute('cx', cx); dot.setAttribute('cy', cy); dot.setAttribute('visibility', 'visible');
-    const t = Date.parse(s.at);
-    tip.textContent = `${when(s.at)} · 7d ${s.seven}%${s.five !== null ? ` · 5h ${s.five}%` : ''} · pace ${Math.round(paceAt(t) * 10) / 10}% · ceiling ${Math.round(ceilingAt(t))}%`;
+    tip.textContent = `${when(s.at)} · ${s.seven}% · ${W.chartPace} ${Math.round(paceAt(Date.parse(s.at)) * 10) / 10}%`;
     tip.hidden = false;
     const left = (cx / width) * r.width;
     tip.style.left = `${Math.max(0, Math.min(left + 10, r.width - tip.offsetWidth))}px`;
@@ -195,117 +294,80 @@ function chart(q) {
 function readingsTable(q) {
   if (!q.series.length) return null;
   const rows = [...q.series].reverse().map((s) => el('tr', {}, el('td', {}, when(s.at)), el('td', { class: 'num' }, `${s.seven}%`), el('td', { class: 'num' }, s.five === null ? '—' : `${s.five}%`)));
-  return el('details', {}, el('summary', {}, `readings this week (${q.series.length})`),
-    el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, 'read'), el('th', { class: 'num' }, '7d'), el('th', { class: 'num' }, '5h'))), el('tbody', {}, rows))));
+  return el('details', {}, el('summary', {}, W.readings(q.series.length)),
+    el('div', { class: 'scroll' }, el('table', {}, el('tbody', {}, rows))));
 }
 
-function renderMachines() {
-  const rows = data.machines.map((m) => el('tr', {},
-    el('td', {}, m.name),
-    el('td', { class: m.status === 'pending' ? 'warn' : m.reachable ? 'ok' : 'high' }, m.status === 'pending' ? 'waiting for approval' : m.reachable ? 'connected' : `unreachable since ${when(m.lastBeat)}`),
-    el('td', {}, m.lastBeat ? ago(m.lastBeat) : 'never'),
-    el('td', { class: 'num' }, String(m.projects)),
-    el('td', { class: m.running ? 'running num' : 'muted num' }, String(m.running)),
-    el('td', { class: 'muted' }, m.version ?? ''),
-    el('td', { class: 'muted' }, m.code)));
-  const head = el('tr', {}, ['MAC', 'STATE', 'LAST BEAT', 'PROJECTS', 'RUNNING', 'VERSION', 'CODE'].map((h, i) => el('th', { class: i === 3 || i === 4 ? 'num' : null }, h)));
-  fill('machines', prompt('jerome director machines'), data.machines.length
-    ? el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), el('tbody', {}, rows)))
-    : el('div', { class: 'muted' }, 'No Mac yet: `jerome connect <address>` on each Mac.'));
-}
+// Everything else, closed until opened: the Macs, the runs, the past weeks.
+function renderDetails() {
+  document.getElementById('details-title').textContent = W.details;
+  const macs = el('div', { class: 'scroll' }, el('table', {},
+    el('thead', {}, el('tr', {}, [W.mac, W.stateCol, W.lastBeat, W.projectsCol, W.version, W.code].map((h, i) => el('th', { class: i === 3 ? 'num' : null }, h)))),
+    el('tbody', {}, data.machines.map((m) => el('tr', {},
+      el('td', {}, m.name),
+      el('td', { class: m.status === 'pending' ? 'warn' : m.reachable ? 'ok' : 'high' }, m.status === 'pending' ? W.approval : m.reachable ? W.connected : W.unreachable(when(m.lastBeat))),
+      el('td', {}, m.lastBeat ? ago(m.lastBeat) : W.never),
+      el('td', { class: 'num' }, String(m.projects)),
+      el('td', { class: 'muted' }, m.version ?? ''),
+      el('td', { class: 'muted' }, m.code))))));
 
-function renderAttention() {
-  const waiting = data.projects.filter((p) => p.alerts.length || p.requests.length);
-  const section = document.getElementById('attention');
-  section.hidden = !waiting.length;
-  if (!waiting.length) return;
-  fill('attention', prompt('what waits for you', meta(`${waiting.length} ${waiting.length === 1 ? 'project' : 'projects'}`)), waiting.map((p) => el('div', {},
-    el('div', {}, el('span', { class: 'high' }, '! '), p.name, el('span', { class: 'muted' }, ` · ${p.machine}`)),
-    p.alerts.map((a) => el('div', { class: 'request' }, el('span', { class: 'high' }, `A${a.id} `), a.reason)),
-    p.requests.map((r) => el('div', { class: 'request' }, el('span', { class: 'warn' }, `R${r.id} `), r.question)))));
-}
-
-function renderProjects() {
-  const head = el('tr', {}, ['PROJECT', 'STATE', 'LAST HEARTBEAT', 'ALERTS', 'REQ', 'TODAY', '7 DAYS', 'RUN COST', 'FILL 7D', 'SLOTS'].map((h, i) => el('th', { class: [3, 4, 5, 6, 7, 8].includes(i) ? 'num' : null }, h)));
-  const body = [];
-  for (const m of data.machines) {
-    const mine = data.projects.filter((p) => p.machine === m.name);
-    if (!mine.length) continue;
-    body.push(el('tr', {}, el('td', { class: 'mac', colspan: 10 }, `${m.name}`)));
-    for (const p of mine) {
-      const h = p.lastHeartbeat;
-      body.push(el('tr', {},
-        el('td', {}, `  ${p.name}`),
-        el('td', { class: p.running ? 'running' : p.overLimit ? 'warn' : 'muted' }, p.running ? 'running' : p.overLimit ? 'at its limit' : p.fill ? 'idle · fill' : 'idle'),
-        el('td', {}, h ? [`${ago(h.at)} `, el('span', { class: h.status }, h.status)] : el('span', { class: 'muted' }, 'none yet')),
-        el('td', { class: p.alerts.length ? 'high num' : 'muted num' }, String(p.alerts.length)),
-        el('td', { class: p.requests.length ? 'warn num' : 'muted num' }, String(p.requests.length)),
-        el('td', { class: 'num' }, money(p.usage.today.usd)),
-        el('td', { class: 'num' }, `${n(p.usage.week.tokens)} ${money(p.usage.week.usd)}`),
-        el('td', { class: 'num' }, p.cost ? `${p.cost.points} pt` : '—'),
-        el('td', { class: 'num' }, String(p.fill7d)),
-        el('td', { class: 'muted' }, p.slots.map((s) => `${s.name} ${s.at}`).join(' · ') || '—')));
-      if (h?.reason) body.push(el('tr', { class: 'sub' }, el('td', {}), el('td', { class: 'wrap muted', colspan: 9 }, h.reason)));
-    }
-  }
-  fill('projects', prompt('jerome projects', meta('API-equivalent dollars · run cost in points of the 7-day window')), data.projects.length
-    ? el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), el('tbody', {}, body)))
-    : el('div', { class: 'muted' }, 'No project yet.'));
-}
-
-function renderRuns() {
-  const macs = [...new Set(data.runs.map((r) => r.machine).filter(Boolean))].sort();
-  const projects = [...new Set(data.runs.map((r) => data.projects.find((p) => p.key === r.project)?.name ?? r.project))].sort();
-  const select = (key, label, values) => {
-    const s = el('select', { 'aria-label': label }, el('option', { value: '' }, `every ${label}`), values.map((v) => el('option', { value: v }, v)));
+  const nameOf = (r) => data.projects.find((p) => p.key === r.project)?.name ?? r.project;
+  const macList = [...new Set(data.runs.map((r) => r.machine).filter(Boolean))].sort();
+  const projectList = [...new Set(data.runs.map(nameOf))].sort();
+  const runsBox = el('div', {});
+  const select = (key, values) => {
+    const s = el('select', { 'aria-label': W.every[key] }, el('option', { value: '' }, W.every[key]), values.map((v) => el('option', { value: v }, v)));
     s.value = values.includes(filters[key]) ? filters[key] : '';
-    s.addEventListener('change', () => { filters[key] = s.value; renderRuns(); });
+    s.addEventListener('change', () => { filters[key] = s.value; drawRuns(); });
     return s;
   };
-  const shown = data.runs.filter((r) => (!filters.mac || r.machine === filters.mac) && (!filters.project || (data.projects.find((p) => p.key === r.project)?.name ?? r.project) === filters.project));
-  const rows = shown.slice(0, 100).flatMap((r) => {
-    const name = data.projects.find((p) => p.key === r.project)?.name ?? r.project;
-    const d = r.quota ? r.quota.after?.seven_day - r.quota.before?.seven_day : null;
-    return [el('tr', {},
-      el('td', {}, when(r.startedAt)),
-      el('td', {}, r.machine ?? ''),
-      el('td', {}, name),
-      el('td', {}, r.kind),
-      el('td', { class: 'muted' }, r.model ?? ''),
-      el('td', { class: r.status }, r.status),
-      el('td', { class: 'num' }, Number.isFinite(d) ? `${d >= 0 ? '+' : ''}${d} pt` : '—')),
-    el('tr', { class: 'sub' }, el('td', {}), el('td', { class: 'wrap muted', colspan: 6 }, r.reason))];
-  });
-  const head = el('tr', {}, ['STARTED', 'MAC', 'PROJECT', 'KIND', 'MODEL', 'STATUS', '7D'].map((h, i) => el('th', { class: i === 6 ? 'num' : null }, h)));
-  fill('runs', prompt('jerome digest', meta(`${shown.length} of the last ${data.runs.length} runs`)),
-    el('div', { class: 'filters' }, select('mac', 'Mac', macs), select('project', 'project', projects)),
-    shown.length ? el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), el('tbody', {}, rows))) : el('div', { class: 'muted' }, 'No run yet.'));
-}
-
-function renderWeeks() {
-  fill('weeks', prompt('past weeks', meta(`target ${data.quota?.settings.target ?? 90}% at each reset`)), data.weeks.length
+  const drawRuns = () => {
+    const shown = data.runs.filter((r) => (!filters.mac || r.machine === filters.mac) && (!filters.project || nameOf(r) === filters.project));
+    runsBox.replaceChildren(el('div', { class: 'scroll' }, el('table', {},
+      el('thead', {}, el('tr', {}, [W.started, W.project, W.kind, W.status, W.points].map((h, i) => el('th', { class: i === 4 ? 'num' : null }, h)))),
+      el('tbody', {}, shown.slice(0, 100).flatMap((r) => {
+        const d = r.quota ? r.quota.after?.seven_day - r.quota.before?.seven_day : null;
+        return [el('tr', {},
+          el('td', {}, when(r.startedAt)),
+          el('td', {}, nameOf(r)),
+          el('td', {}, r.kind),
+          el('td', { class: r.status }, r.status),
+          el('td', { class: 'num' }, Number.isFinite(d) ? `${d >= 0 ? '+' : ''}${d}` : '—')),
+        el('tr', { class: 'sub' }, el('td', { class: 'wrap muted', colspan: 5 }, r.reason))];
+      })))));
+  };
+  drawRuns();
+  const weeks = data.weeks.length
     ? data.weeks.map((w) => el('div', {}, `${when(w.resetAt)}  `, el('span', { class: w.used >= (data.quota?.settings.target ?? 90) ? 'ok' : 'warn' }, `${w.used}%`)))
-    : el('div', { class: 'muted' }, 'None yet: the first shows after this week\'s reset.'));
+    : el('div', { class: 'muted' }, W.noWeeks);
+  fill('details-body',
+    el('h3', {}, W.macs), macs,
+    el('h3', {}, W.runs), el('div', { class: 'filters' }, select('mac', macList), select('project', projectList)), runsBox,
+    el('h3', {}, W.weeks), weeks);
 }
 
 function render() {
-  const reachable = data.machines.filter((m) => m.reachable).length;
-  document.getElementById('count').textContent = `${data.machines.length} ${data.machines.length === 1 ? 'Mac' : 'Macs'}${data.machines.length ? `, ${reachable} connected` : ''}`;
-  document.getElementById('updated').textContent = `updated ${clock(data.at)} · refreshes every 30 s`;
-  renderQuota();
-  renderMachines();
-  renderAttention();
+  W = WORDS[data.language] ?? W;
+  LOCALE = data.language === 'it' ? 'it-IT' : LOCALE;
+  document.documentElement.lang = data.language;
+  const items = todoItems();
+  const headline = document.getElementById('headline');
+  headline.textContent = items.length ? W.waiting(items.length) : W.calm;
+  headline.className = items.length ? 'warn' : 'ok';
+  document.getElementById('updated').textContent = `Jérôme · ${W.updated(clock(data.at))}`;
+  renderTodo(items);
   renderProjects();
-  renderRuns();
-  renderWeeks();
-  fill('footer', `Jérôme Director ${data.version} · read-only`);
+  renderQuota();
+  // The details keep their state, open or closed, across refreshes.
+  renderDetails();
+  fill('footer', `Jérôme Director ${data.version} · ${W.readOnly}`);
 }
 
 async function load() {
   const error = document.getElementById('error');
   if (!token) {
     error.hidden = false;
-    error.textContent = 'This address has no token: open the one `jerome director dashboard` prints on the server.';
+    error.textContent = W.noToken;
     return;
   }
   try {
@@ -317,7 +379,7 @@ async function load() {
     render();
   } catch (err) {
     error.hidden = false;
-    error.textContent = `Cannot read the Director: ${err.message}`;
+    error.textContent = W.cannot(err.message);
   }
 }
 
