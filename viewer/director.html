@@ -58,6 +58,7 @@ const WORDS = {
     state: { running: 'working now', stuck: 'stopped, needs you', retrying: 'hit a snag, trying again by itself', asking: 'waiting for your answer', paused: 'paused at its limit', idle: 'waiting for its next turn' },
     next: (s) => `turns: ${s}`,
     lastWork: (ago, what) => `last work ${ago}: ${what}`,
+    resumed: 'it went on with the work it had left half done',
     noWork: 'no work done yet',
     quota: 'Quota this week',
     noQuota: 'No reading yet: it comes with the first beat of a Mac.',
@@ -92,6 +93,7 @@ const WORDS = {
     state: { running: 'sta lavorando', stuck: 'fermo, serve te', retrying: 'ha trovato un intoppo, riprova da solo', asking: 'aspetta una tua risposta', paused: 'in pausa al suo limite', idle: 'aspetta il prossimo turno' },
     next: (s) => `turni: ${s}`,
     lastWork: (ago, what) => `ultimo lavoro ${ago}: ${what}`,
+    resumed: 'ha ripreso il lavoro lasciato a metà',
     noWork: 'nessun lavoro finito ancora',
     quota: 'Quota della settimana',
     noQuota: 'Ancora nessuna lettura: arriva col primo battito di un Mac.',
@@ -197,7 +199,8 @@ function renderProjects() {
   const order = { stuck: 0, asking: 1, retrying: 2, running: 3, paused: 4, idle: 5 };
   const rows = [...data.projects].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name)).map((p) => {
     const h = p.lastDone;
-    const last = h ? W.lastWork(ago(h.at), h.reason) : W.noWork;
+    // A run that resumed has the runner's why for a reason, not a task.
+    const last = h ? W.lastWork(ago(h.at), /^resume:/.test(h.reason ?? '') ? W.resumed : h.reason) : W.noWork;
     // A snag it is retrying: the sentence for a person, not the runner's reason.
     const snag = p.state === 'retrying' && p.blocks.length ? el('div', { class: 'warn small' }, p.blocks[0].text) : null;
     return el('div', { class: 'row-card' },
