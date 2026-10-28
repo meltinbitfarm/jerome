@@ -1,0 +1,31 @@
+# Jérôme Director (D153). On the server, put this file in a folder with a .env file holding the server's address on
+# your VPN (Tailscale, WireGuard or any other):
+#
+#   DIRECTOR_ADDRESS=100.101.102.103
+#
+# then `docker compose up -d`, and `docker compose exec director jerome director init` for the address and the
+# fingerprint to compare on each Mac. The port is published on that address only, never on all interfaces: Docker's
+# published ports go around ufw, and the Director refuses to start when the address is missing or public (D145).
+services:
+  director:
+    build:
+      context: https://github.com/meltinbitfarm/jerome.git#main
+      dockerfile: director/Dockerfile
+    image: jerome-director
+    restart: unless-stopped
+    environment:
+      DIRECTOR_ADDRESS: ${DIRECTOR_ADDRESS:?set DIRECTOR_ADDRESS in .env to the server's VPN address}
+    ports:
+      - "${DIRECTOR_ADDRESS:?set DIRECTOR_ADDRESS in .env to the server's VPN address}:7788:7788"
+    volumes:
+      - director-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  director-data:

@@ -21,6 +21,8 @@ import { note } from './notes.js';
 import { setup as telegramSetup, off as telegramOff, telegramStatus, telegramTest } from './telegram.js';
 import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
 import { governor, governorStatus, quota } from './governor.js';
+import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke } from './director.js';
+import { connect, connectStatus, disconnect } from './directorlink.js';
 
 const USAGE = `Usage:
   jerome new <name>       create a project from the template in the folder <name>
@@ -90,6 +92,10 @@ const USAGE = `Usage:
     --reserve <n>         % of the week kept for your own use, released over its last 24 hours (default 20)
     --five-hour-cap <n>   no run starts with the 5-hour window at or over this % (default 90)
   jerome quota [--json]   the subscription's windows as Claude Code's usage endpoint gives them, and the pace
+  jerome connect <address> [--name <name>] | connect status | disconnect
+                          connect this Mac to Jérôme Director, the coordinator of your Macs, over your VPN
+  jerome director init --listen <address> | serve | status | machines | approve <code> | revoke <mac>
+                          Jérôme Director, on the server: it listens only on a VPN or private address
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
   jerome limits [dir]     show the usage limits, global and of the project, with the current usage
@@ -138,11 +144,13 @@ const OPTIONS = {
   target: { type: 'string' },
   reserve: { type: 'string' },
   'five-hour-cap': { type: 'string' },
+  listen: { type: 'string' },
+  name: { type: 'string' },
 };
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], director: ['listen'], connect: ['name'], disconnect: [] };
 
 export async function main(argv) {
   let parsed;
@@ -289,6 +297,26 @@ export async function main(argv) {
       if (action === 'status') return governorStatus();
       return governor(action, args[0], { target: v.target, reserve: v.reserve, fiveHourCap: v['five-hour-cap'] });
     }
+    case 'director': {
+      const [action, ...args] = rest;
+      const usage = 'jerome director takes init, serve, status, machines, approve <code> or revoke <mac>.';
+      if (parsed.values.listen !== undefined && !['init', 'serve'].includes(action)) return usageError('--listen goes with jerome director init or serve.');
+      if (action === 'init' && !args.length) return directorInit({ listen: parsed.values.listen ?? null });
+      if (action === 'serve' && !args.length) return directorServe({ listen: parsed.values.listen ?? null });
+      if (action === 'status' && !args.length) return directorStatus();
+      if (action === 'machines' && !args.length) return directorMachines();
+      if (action === 'approve' && args.length === 1) return directorApprove(args[0]);
+      if (action === 'revoke' && args.length === 1) return directorRevoke(args[0]);
+      return usageError(usage);
+    }
+    case 'connect': {
+      if (rest.length !== 1) return usageError('jerome connect takes the Director\'s address, such as http://100.101.102.103:7788, or status.');
+      if (rest[0] === 'status') return connectStatus();
+      return connect(rest[0], parsed.values.name !== undefined ? { name: parsed.values.name } : {});
+    }
+    case 'disconnect':
+      if (rest.length) return usageError('jerome disconnect takes nothing.');
+      return disconnect();
     case 'quota':
       if (rest.length) return usageError('jerome quota takes no folder: the quota is the account\'s.');
       return quota({ json: parsed.values.json === true });

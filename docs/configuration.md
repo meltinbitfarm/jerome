@@ -8,6 +8,8 @@ Where each setting of a Jérôme project lives, and how to change it. Each secti
 | The project's spending limits | `.jerome/project.json`, `limits` | `jerome limits --daily 5 --weekly 20` |
 | How often heartbeats run, and their caps | `.jerome/project.json`, `heartbeat`, and the launchd job | `jerome schedule daily --at 09:00 --max-tokens 300000` |
 | The quota governor: on or off, target, reserve, 5-hour cap, the projects it fills | `~/.config/jerome/account.json`, `governor`, on this machine only | [`jerome governor on --target 90`](commands/governor.md), `jerome governor add` |
+| This Mac's link to Jérôme Director: its key, the Director's pinned key | `~/.config/jerome/director.json`, readable by you only | [`jerome connect`](commands/connect.md), `jerome disconnect` |
+| Jérôme Director, on the server: its address, its keys | `$XDG_DATA_HOME/jerome-director/` (the `director-data` volume in Docker), and `.env` next to `compose.yaml` | [`jerome director init`](commands/director.md) |
 | Telegram bridge: bot token and your chat | `~/.config/jerome/telegram.json`, readable by you only, never in a project | [`jerome telegram setup`](commands/telegram.md) |
 | Slots, branches, max duration, test command, allowed tools, quota and alert channel of the runs | `.jerome/project.json`, `heartbeat` (`slots`, `mainBranch`, `workBranch`, `maxMinutes`, `test`, `allow`, `quota`, `alerts`) | edit it, or ask the lead agent, then `jerome heartbeat install` |
 | Lift the limits on one project's runs for today | `~/.cache/jerome/heartbeat/` | `jerome heartbeat override --today` |

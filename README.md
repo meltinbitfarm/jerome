@@ -88,6 +88,7 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
 | [`jerome telegram setup`](docs/commands/telegram.md) | Connects a Telegram bot: what waits for you from every project, answers to requests, notes, `/status`; no model, zero tokens |
 | [`jerome watchdog install`](docs/commands/watchdog.md) | The machine's job, every minute: closes lost runs, reports heartbeats that did not start, runs the Telegram bridge and the quota governor |
+| [`jerome connect`](docs/commands/connect.md), [`jerome director`](docs/commands/director.md) | [Jérôme Director](docs/director.md): one coordinator for all your Macs, on your server with Docker, reached over any VPN, with signed requests and answers |
 | [`jerome governor on`](docs/commands/governor.md), [`jerome quota`](docs/commands/quota.md) | The quota governor: reads the subscription's real quota and starts fill runs while the week is behind its pace, to reach the weekly reset at about 90% |
 | [`jerome note`](docs/commands/note.md) | Lists and closes the notes you sent a project from Telegram |
 | [`jerome digest [dir]`](docs/commands/digest.md) | What happened recently, at zero tokens |
@@ -151,7 +152,7 @@ Every project starts from a brief in the `brief/v3` format, with the areas to st
 8. ✓ Scheduled headless runs, with a lock and a cap per run (`jerome schedule`, `jerome heartbeat`, `jerome request`); since 0.2.0 with slots, RESUME runs, an end check, a max duration, alerts and marathons
 9. ✓ Daily and weekly limits with automatic pause (`jerome limits`)
 10. ✓ Telegram bridge and watchdog (`jerome telegram`, `jerome watchdog`), since 0.3.0
-11. ✓ Quota governor on one Mac (`jerome governor`, `jerome quota`), since 0.4.0; next, Jérôme Director, a coordinator for several Macs ([spec](docs/specs/quota-governor.md))
+11. ✓ Quota governor on one Mac (`jerome governor`, `jerome quota`), since 0.4.0. Jérôme Director, the coordinator of several Macs ([docs/director.md](docs/director.md)), is in progress: the Macs connect and report since 0.5.0; the dashboard, the permits and Telegram on the Director come next
 12. Areas and milestones, with the area briefing (`.jerome/areas.md`): in place and tested, not yet tried on a real project
 
 Along the way: `jerome deps` lists what Jérôme depends on in Claude Code, and `jerome forget` removes the database of a project that is gone.

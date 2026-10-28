@@ -1,6 +1,6 @@
 # Jérôme Director: spec (phase 2)
 
-Status: proposed, 2026-10-28, to be approved by Fabio before any code. It follows [quota-governor.md](quota-governor.md), the brief of the quota governor, whose phase 1 (the governor on one Mac, D140-D144) is in place. The decision numbers below (S1, S2…) are this spec's own; they become project decisions (D145 on) once approved.
+Status: approved by Fabio on 2026-10-28, with Telegram moved onto the Director (step 5). It follows [quota-governor.md](quota-governor.md), the brief of the quota governor, whose phase 1 (the governor on one Mac, D140-D144) is in place. The sections S1-S10 are recorded as decisions D145-D154, and Telegram on the Director as D155.
 
 ## Goal
 
@@ -9,7 +9,8 @@ One coordinator for every Mac that runs Jérôme with the same Claude account. I
 ## Scope
 
 - **In phase 2:** the coordinator, the Macs' connection to it, permits for fill runs and scheduled slots, the fallback when it cannot be reached, and a **read-only dashboard**. The dashboard was phase 3 in the brief; it moves here because a coordinator nobody can see into is a black box.
-- **Left to phase 3:** the Telegram bot on the Director, approving a Mac from Telegram, and any action taken from the dashboard. Until then, Telegram stays per Mac, as in 0.3.0. One bot can be polled by one Mac only, so keep the bridge on one Mac, or give each Mac its own bot.
+- **Also in phase 2, as its last step:** the Telegram bot, moved onto the Director (D155). It is one bot for every project of every Mac. Answers and notes reach the Macs as data in the beat's response, and the bot's token lives on the server (600). Until that step the bridge stays on the Mac Mini only: one bot can be polled by one machine only.
+- **Left to phase 3:** approving a Mac from Telegram, and any action taken from the dashboard.
 - **Out of scope**, as in the brief: several Claude accounts, and API billing.
 
 ## Constraints
@@ -18,7 +19,7 @@ One coordinator for every Mac that runs Jérôme with the same Claude account. I
 - **C2:** D139 in full. The subscription's token never leaves a Mac. The Director never reaches a Mac. What it sends is data, never a command, a prompt or a path. Each Mac is approved by Fabio, and each can be revoked.
 - **C3:** Jérôme stays usable alone (brief V3, D15). Without `jerome connect`, a Mac works as in phase 1.
 - **C4:** same package, no new dependency. The Director is `jerome director …` in the CLI already installed, on Node ≥ 24 with `node:http`, `node:crypto` and `node:sqlite`.
-- **C5:** the server is Fabio's Ubuntu VPS.
+- **C5:** the server is Fabio's Ubuntu VPS, and the Director runs there with Docker Compose. The `Dockerfile` and `compose.yaml` are written by hand in the repository, on the official Node 24 image; no Nixpacks or any other build generator.
 
 ## Network (S1)
 
@@ -145,7 +146,6 @@ On the server:
 ```sh
 jerome director init --listen <address>[:port]   # data folder, Director key, dashboard URL
 jerome director serve                              # the service itself
-jerome director install                            # a systemd user service, kept running after logout
 jerome director status                             # running, Macs, the pace
 jerome director machines                           # Macs, pending ones with their code
 jerome director approve <code> | revoke <mac>
@@ -165,16 +165,24 @@ Once connected, the local governor settings are not used. The projects offered f
 
 ## Setting it up (S9)
 
-1. **On the VPS** (Ubuntu, Node 24, on the VPN):
+1. **On the VPS** (Ubuntu, Docker, on the VPN). Only `compose.yaml` and a `.env` file are needed: the image is built from the repository on GitHub.
    ```sh
-   npm i -g github:meltinbitfarm/jerome
-   jerome director init --listen <VPN address>
-   jerome director install
+   # .env
+   DIRECTOR_ADDRESS=<the VPS's VPN address>
    ```
-   Note the Director's fingerprint and the dashboard URL that `init` prints.
+   ```sh
+   docker compose up -d
+   docker compose exec director jerome director init
+   ```
+   - **How the address rule (S1) holds in Docker:**
+     - Inside the container the Director listens on the container's own interface.
+     - Compose publishes it only on `DIRECTOR_ADDRESS`, never on all interfaces. That matters because Docker's published ports go around ufw.
+     - The Director refuses to start when `DIRECTOR_ADDRESS` is missing or public.
+   - **Where the data lives:** in a volume, its keys included.
+   - **Note** the Director's fingerprint and the dashboard URL that `init` prints. Every other command runs the same way: `docker compose exec director jerome director approve <code>`.
 2. **On each Mac:**
    - Run `jerome connect http://<VPN address>:7788` and confirm the fingerprint.
-   - On the VPS, run `jerome director approve <code>`.
+   - On the VPS, run `docker compose exec director jerome director approve <code>`.
    - Turn off the local governor (`jerome governor off`): connecting does it by itself.
 3. **On the iPhone:** open the dashboard URL with the VPN on.
 
@@ -199,9 +207,10 @@ Each step can be used on its own and is committed apart:
 1. **The Director sees.** `init`, `serve`, keys, hello, approval and revocation, the signed beat with quota and projects, the database. On the Mac: `connect`, `connect status`, `disconnect`, and the beat in the watchdog. Nothing is decided yet, and each Mac keeps phase 1.
 2. **The dashboard**, read-only, on the data of step 1.
 3. **The Director decides.** Permits for fill runs, slots that ask and queue, the local fallback, settings on the Director.
-4. **On the VPS for real.** `install` with systemd, the docs, and Fabio's server set up step by step.
+4. **On the VPS for real.** The `Dockerfile` and `compose.yaml`, the docs, and Fabio's server set up step by step.
+5. **Telegram on the Director.** One bot for every Mac's projects; answers and notes go to the Macs in the beat's response, as data. The Macs' own bridges are turned off.
 
-## Open questions
+## Answered
 
-- **Queued slots.** Is a queued slot dropped after 6 hours, or kept until its next time comes?
-- **The Telegram bridge.** The bridge with two Macs, until phase 3: one Mac only (simplest) or one bot per Mac?
+- **Queued slots:** dropped after 6 hours.
+- **The Telegram bridge:** on the Mac Mini only until step 5, which moves it onto the Director.

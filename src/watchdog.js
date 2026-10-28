@@ -20,6 +20,7 @@ import { notify } from './notify.js';
 import { announceLost } from './heartbeat.js';
 import { bridgeTick, readConfig } from './telegram.js';
 import { governorTick } from './governor.js';
+import { directorBeat } from './directorlink.js';
 
 export { WATCHDOG_LABEL } from './schedule.js';
 import { WATCHDOG_LABEL } from './schedule.js';
@@ -86,6 +87,12 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
     await governorTick({ env, now, log });
   } catch (err) {
     log(`governor error: ${err.message}`);
+  }
+  // The beat to Jérôme Director (D148), when this Mac is connected.
+  try {
+    await directorBeat({ env, now, log });
+  } catch (err) {
+    log(`director error: ${err.message}`);
   }
   const bridge = await bridgeTick({ env, now });
   if (bridge.configured && (bridge.received || bridge.sent || bridge.ignored || bridge.errors.length)) {
