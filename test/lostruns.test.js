@@ -49,9 +49,12 @@ test('a heartbeat whose runner died is closed by the next one, with an alert, an
   assert.ok(r.ended_at);
   await new Promise((done) => setTimeout(done, 200));
   assert.ok(!alive(lead), 'the lead agent outliving its runner is stopped');
-  const { readFileSync } = await import('node:fs');
-  assert.match(readFileSync(log, 'utf8'), /^demo: Alert A1: heartbeat lost: the runner died/m);
-  // The heartbeat that found it ran on and ended well.
+  // An alert, recorded; the heartbeat that found it ran on and ended well, which closes it, so nobody was called (D160).
+  const { existsSync } = await import('node:fs');
+  const d = p.db();
+  assert.equal(d.prepare("SELECT status FROM alerts WHERE key = 'lost'").get().status, 'resolved');
+  d.close();
+  assert.ok(!existsSync(log));
   assert.equal(p.lastRun().status, 'done');
 });
 

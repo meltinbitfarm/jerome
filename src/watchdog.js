@@ -15,8 +15,8 @@ import { cacheDir } from './runstate.js';
 import { heartbeatConfig } from './heartbeatconfig.js';
 import { sweepLostRuns } from './lostruns.js';
 import { missedStarts, missedText } from './missed.js';
-import { raiseAlert, pushAlert } from './alerts.js';
-import { notify } from './notify.js';
+import { raiseAlert } from './alerts.js';
+import { announceAlerts } from './announce.js';
 import { announceLost } from './heartbeat.js';
 import { bridgeTick, readConfig } from './telegram.js';
 import { governorTick } from './governor.js';
@@ -67,14 +67,12 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
           const text = missedText(m);
           const a = raiseAlert(db, { reason: text, key: 'missed start', now });
           say(`alert A${a.id}: ${text}`);
-          const unseen = notify(env, dir, `Alert A${a.id}: ${text}`);
-          if (unseen) say(`alert notification failed: ${unseen}`);
-          const failed = pushAlert(config.alerts.command, { project: basename(dir), dir, message: `Jérôme · A${a.id}: ${text}`, env });
-          if (failed) say(`alert push failed: ${failed}`);
         }
       } finally {
         db.close();
       }
+      // Every minute, the blocks that have lasted reach the user (D160), even with no heartbeat running.
+      announceAlerts(dir, { env, config, now, log: say });
     } catch (err) {
       log(`${s.key} watchdog error: ${err.message}`);
     }

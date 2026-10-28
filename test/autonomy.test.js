@@ -102,42 +102,38 @@ test('3. past the max duration the whole process tree is stopped, an alert is wr
   assert.deepEqual(p.alerts(), [], 'a run that ends well closes the alerts');
 });
 
-test('4. two skips in a row for the same reason open an alert, shown in jerome state, at session start and in jerome projects', () => {
+test('4. a pause for a limit is neither an alert nor a notification; a block is an alert, shown in jerome state, at session start and in jerome projects (D160, D161)', () => {
   const p = project({ JEROME_NOTIFY_LOG: '' });
   const log = join(p.root, 'notified.log');
   const later = Math.floor(Date.now() / 1000) + 86_400;
   p.account({ windows: { seven_day: { used: 60, resetsAt: later, readAt: new Date().toISOString(), source: 'statusline' } }, limits: { seven_day: 75 } });
   // The project's own threshold on the 7-day window (D124) pauses it below the global limit.
   p.settings({ quota: { sevenDay: 50 } });
-  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  for (let i = 0; i < 3; i += 1) p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
   assert.equal(p.lastRun().reason, 'global limit: 7d 60% ≥ 50%');
-  assert.equal(p.alerts().length, 0, 'one skip is not an alert');
-  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
-  assert.deepEqual(p.alerts().map((a) => a.reason), ['global limit: 7d 60% ≥ 50%']);
-  // The pause had its one notification (D85); the alert does not add another.
-  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1);
+  assert.deepEqual(p.alerts(), [], 'a pause ends by itself');
+  assert.ok(!existsSync(log), 'and nobody is called for it');
 
-  const state = p.run('state', 'demo').stdout.split('\n');
-  assert.match(state[1], /^ALERTS {2}A1 global limit: 7d 60% ≥ 50% \(/);
-  const start = JSON.parse(p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'talk', source: 'startup' }), 'hook', 'session-start').stdout);
-  assert.match(start.hookSpecificOutput.additionalContext, /^Heartbeat alerts: .*Tell the user about them first[\s\S]*A1: global limit: 7d 60% ≥ 50% \(2 runs lost since /);
-  assert.match(start.systemMessage, /^Jérôme: 1 heartbeat alert: A1 global limit/);
-  const overview = JSON.parse(p.run('projects', '--json').stdout).projects[0];
-  assert.match(overview.attention[0], /^1 heartbeat alert: A1 global limit/);
-
-  // The override lifts the pause for the day, and the run that then ends well closes the alert.
+  // The override lifts the pause for the day.
   assert.equal(p.run('heartbeat', 'override', 'demo', '--today').status, 0);
   p.run('heartbeat', 'demo');
   assert.equal(p.lastRun().status, 'done');
   assert.match(p.lastRun().reason, /\(quota override for today\)$/);
-  assert.deepEqual(p.alerts(), []);
 
   // A branch that is not a heartbeat's: skipped with an alert at once, never touched.
   p.git('switch', '-q', '-c', 'feature/mine');
-  p.run('heartbeat', 'demo');
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
   assert.match(p.lastRun().reason, /^on branch feature\/mine, neither main nor a work branch \(agent\/\*\)/);
   assert.equal(p.alerts().length, 1);
   assert.equal(p.branch(), 'feature/mine');
+  assert.ok(!existsSync(log), 'told to the user only when it lasts');
+  const id = p.alerts()[0].id;
+  const state = p.run('state', 'demo').stdout.split('\n');
+  assert.match(state[1], new RegExp(`^ALERTS {2}A${id} on branch feature/mine`));
+  const start = JSON.parse(p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'talk', source: 'startup' }), 'hook', 'session-start').stdout);
+  assert.match(start.hookSpecificOutput.additionalContext, /^Heartbeat alerts: .*Tell the user about them first/);
+  const overview = JSON.parse(p.run('projects', '--json').stdout).projects[0];
+  assert.match(overview.attention[0], /^1 heartbeat alert: A\d+ on branch feature\/mine/);
 });
 
 test('5. a marathon until 24:00 started at 21:00 stops at midnight and never runs the next day', async () => {
@@ -334,7 +330,7 @@ test('Jérôme commits its own settings.json, and a doctor warning does not stop
   assert.match(execFileSync('git', ['log', '--format=%s', '-5'], { cwd: p.dir, encoding: 'utf8' }), /State: carried over|Jérôme: its own files/);
 });
 
-test('an alert still open is notified and pushed again every few hours, with the runs it has cost (D128)', () => {
+test('a block reaches the user only when it lasts, as one plain sentence, then once a day (D160, D161)', () => {
   const p = project();
   const log = join(p.root, 'notified.log');
   p.settings({ alerts: { command: 'cat >> "$HOME/pushed.log"' } });
@@ -344,20 +340,22 @@ test('an alert still open is notified and pushed again every few hours, with the
   writeFileSync(join(p.dir, 'README.md'), 'mine, changed\n');
   p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
   p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
-  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1, 'no reminder within the hours');
-  // Three hours later, the next run reminds.
-  const sent = join(p.root, '.cache', 'jerome', 'notified', `${jobLabel(p.dir)}.alerts.json`);
-  writeFileSync(sent, JSON.stringify({ 1: new Date(Date.now() - 3.5 * 3_600_000).toISOString() }));
+  assert.ok(!existsSync(log), 'two runs: not yet');
   p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
-  const notified = readFileSync(log, 'utf8').trim().split('\n');
-  assert.equal(notified.length, 2);
-  assert.match(notified[1], /^demo: Alert A1 still open, 3 runs lost since \d{4}-\d\d-\d\d \d\d:\d\d: uncommitted changes \(README\.md\)/);
-  assert.match(readFileSync(p.home('pushed.log'), 'utf8'), /A1: uncommitted[\s\S]*A1 still open, 3 runs lost/);
+  const told = readFileSync(log, 'utf8').trim().split('\n');
+  assert.deepEqual(told, ['demo: There are changes of yours not committed (README.md). Commit or discard them, and it starts by itself. Stuck for less than an hour, 3 runs lost.']);
+  assert.match(readFileSync(p.home('pushed.log'), 'utf8'), /^Jérôme · demo · There are changes of yours not committed/);
+  // No path, no runner's wording.
+  assert.doesNotMatch(told[0], /not left by a heartbeat|\//);
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1, 'no reminder within the day');
+  const sent = join(p.root, '.cache', 'jerome', 'notified', `${jobLabel(p.dir)}.alerts.json`);
+  writeFileSync(sent, JSON.stringify({ 1: new Date(Date.now() - 25 * 3_600_000).toISOString() }));
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  assert.match(readFileSync(log, 'utf8').trim().split('\n')[1], /^demo: There are changes of yours not committed .* 5 runs lost\.$/);
 
   const status = p.run('heartbeat', 'status', 'demo').stdout;
-  assert.match(status, /^alerts {3}1 open, 3 runs lost: tell the user$/m);
-  assert.match(status, /^ {2}A1 uncommitted changes .* · 3 runs lost since /m);
-  assert.match(JSON.parse(p.run('projects', '--json').stdout).projects[0].attention[0], /^1 heartbeat alert: A1 uncommitted changes .*\(3 runs lost since /);
+  assert.match(status, /^alerts {3}1 open, 5 runs lost: tell the user$/m);
 });
 
 test('a run is given the test command and the allowed tools, and one refused a tool ends blocked with an alert (D129)', () => {

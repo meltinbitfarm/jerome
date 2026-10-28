@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readyProject } from './sandbox.js';
+import { DatabaseSync } from 'node:sqlite';
+import { readyProject, sandboxDb } from './sandbox.js';
 
 const CHAT = { id: 42, type: 'private', first_name: 'Fabio' };
 
@@ -43,13 +44,14 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   p.git('add', 'README.md');
   p.git('commit', '-q', '-m', 'readme');
   writeFileSync(join(p.dir, 'README.md'), 'changed\n');
-  p.run('heartbeat', 'demo');
+  // Told only when it lasts: three runs in a row (D160).
+  for (let i = 0; i < 3; i += 1) p.run('heartbeat', 'demo');
   execFileSync('git', ['checkout', 'README.md'], { cwd: p.dir });
   assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Merge the report?', '--options', 'merge / fix first', '--recommendation', 'fix first').status, 0);
   assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Which name?').status, 0);
   p.tick();
   const [alert, buttons, plain] = p.sent();
-  assert.match(alert.params.text, /^Jérôme · demo\nAlert A1: uncommitted changes \(README\.md\) on main/);
+  assert.match(alert.params.text, /^Jérôme · demo\nThere are changes of yours not committed \(README\.md\)\. Commit or discard them, and it starts by itself\. Stuck for less than an hour, 3 runs lost\.$/);
   assert.equal(alert.params.chat_id, 42);
   assert.match(buttons.params.text, /^Jérôme · demo\n❓ R1 Merge the report\?\nOptions: merge \/ fix first\nRecommended: fix first/);
   assert.deepEqual(buttons.params.reply_markup.inline_keyboard, [[{ text: 'merge', callback_data: 'a:1:0' }], [{ text: 'fix first', callback_data: 'a:1:1' }]]);
@@ -143,10 +145,16 @@ test('the watchdog tells the user once about a slot that did not start, and jero
   utimesSync(plist, old, old);
   p.runWith({ JEROME_NOTIFY_LOG: log }, 'watchdog', 'run');
   p.runWith({ JEROME_NOTIFY_LOG: log }, 'watchdog', 'run');
+  assert.ok(!existsSync(log), 'one missed start is recorded, not told');
+  // Still open six hours later: the watchdog tells the user, once, in plain words (D160, D161).
+  const d = new DatabaseSync(sandboxDb(p.root, p.dir));
+  d.prepare('UPDATE alerts SET opened_at = ?').run(new Date(Date.now() - 7 * 3_600_000).toISOString());
+  d.close();
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'watchdog', 'run');
+  p.runWith({ JEROME_NOTIFY_LOG: log }, 'watchdog', 'run');
   const notified = readFileSync(log, 'utf8').trim().split('\n');
-  assert.equal(notified.length, 1);
-  assert.match(notified[0], /^demo: Alert A1: the heartbeat of slot evening due at \d{4}-\d\d-\d\d \d\d:\d\d did not start: /);
-  assert.match(p.sent()[0].params.text, /did not start/);
+  assert.deepEqual(notified, ['demo: Its scheduled runs do not start, as when the Mac is off or asleep. Check that the Mac stays on. Stuck for 7 h, 1 run lost.']);
+  assert.match(p.sent()[0].params.text, /Its scheduled runs do not start/);
   const row = JSON.parse(p.run('projects', '--json').stdout).projects[0];
   assert.ok(row.attention.some((a) => /the heartbeat of slot evening due at .* did not start/.test(a)));
   // A run of that slot since then: nothing is missed any more.

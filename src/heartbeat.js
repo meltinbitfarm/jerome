@@ -34,16 +34,14 @@ import { checkPages, saveHashes, watchedPages } from './watch.js';
 import { n } from './state.js';
 import { heartbeatConfig, runAllowed } from './heartbeatconfig.js';
 import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
-import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, pushAlert, lostRuns } from './alerts.js';
+import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, lostRuns } from './alerts.js';
+import { announceAlerts } from './announce.js';
 import { notify } from './notify.js';
 import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 import { sweepLostRuns, processStart, INTERACTIVE_HOURS } from './lostruns.js';
 import { governorSettings, currentPace } from './governor.js';
 import { refreshQuota } from './quota.js';
 import { modelFor } from './pacing.js';
-
-// An alert still open is notified again, and pushed again, at most this often (D128).
-const REMIND_HOURS = 3;
 
 export async function heartbeat(dirArg, { env = process.env, now = new Date(), maxTokens = null, maxTurns = null, slot: slotName = null, fill = false } = {}) {
   const dir = resolve(dirArg);
@@ -72,36 +70,27 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
   // Saved with the run (D115): the live view shows the run's tokens against them, `jerome projects` knows a trial.
   const run = startRun(dir, now, caps, slotName, fill);
   const record = { mode: null, exitCode: null, outcome: null };
-  const finish = (status, reason, { request = null, alert = false, alertKey = undefined, notified = false } = {}) => {
+  const finish = (status, reason, { request = null, alert = false, alertKey = undefined, pause = false } = {}) => {
     const ended = endRun(dir, run, status, reason, request, record);
     const flags = [record.mode, slotName ? `slot ${slotName}` : null, fill ? 'fill' : null, `${Math.round((Date.now() - now.getTime()) / 60_000)} min`,
       record.exitCode !== null ? `exit ${record.exitCode}` : null, record.outcome ? `end check ${record.outcome.ok ? 'ok' : 'failed'}` : null].filter(Boolean);
     log(`${status} [${flags.join(', ')}]: ${reason}${ended.request ? ` (decision request R${ended.request})` : ''}`);
     if (ended.request) notify(env, dir, `Decision request R${ended.request}: ${request.question}`, { outbox: false });
-    else if (status === 'failed' && !alert) notify(env, dir, `Heartbeat failed: ${reason}`);
-    // No silent skips (D121): a broken state is an alert at once, any other block or failure on its second time.
+    // No silent skips (D121): a broken state is an alert at once, any other block or failure on its second time. The
+    // user hears of it only when it lasts (D160), from announceAlerts.
     const db = openDb(dir);
     try {
-      // A lock, or a governor that changed its mind before a fill run started (D142), is nothing to call the user for.
-      const raise = alert || (['blocked', 'stopped', 'failed'].includes(status) && !/^(locked|governor:)/.test(reason) && (capStop(reason) ? capsBefore(db, run.id) : sameAsBefore(db, run.id, reason)));
+      // A lock, a pause for a limit, which ends by itself, or a governor that changed its mind before a fill run started
+      // (D142) is nothing to call the user for.
+      const raise = !pause && (alert || (['blocked', 'stopped', 'failed'].includes(status) && !/^(locked|governor:)/.test(reason) && (capStop(reason) ? capsBefore(db, run.id) : sameAsBefore(db, run.id, reason))));
       if (raise) {
         const a = raiseAlert(db, { reason, key: alertKey, runId: run.id, count: alert ? 1 : 2 });
-        // A new alert is notified at once; one still open, again every few hours with the runs it has cost (D128).
-        // A limit pause has had its one notification (D85) and ends by itself: it only goes to the push channel, once.
-        const remind = !a.isNew && !notified && remindDue(dir, a.id);
-        if (a.isNew || remind) {
-          const text = a.isNew ? `A${a.id}: ${reason}` : `A${a.id} still open, ${lostRuns(a)}: ${reason}`;
-          log(`alert ${text}`);
-          if (a.isNew) remindDue(dir, a.id);
-          const unseen = notified ? null : notify(env, dir, `Alert ${text}`);
-          if (unseen) log(`alert notification failed: ${unseen}`);
-          const failed = pushAlert(config.alerts.command, { project: basename(dir), dir, message: `Jérôme · ${basename(dir)} · ${text}`, env });
-          if (failed) log(`alert push failed: ${failed}`);
-        }
+        log(`alert A${a.id}${a.isNew ? '' : `, ${lostRuns(a)}`}: ${reason}`);
       } else if (status === 'done') resolveAlerts(db);
     } finally {
       db.close();
     }
+    announceAlerts(dir, { env, config, now: new Date(), log });
     return 0;
   };
 
@@ -140,8 +129,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
       const p = currentPace(readAccount(), now);
       if (fill && p.verdict !== 'go') return finish('blocked', `governor: ${p.why}`);
       if (!fill && ['cap', 'reserve'].includes(p.kind) && !overrideToday(dir, now)) {
-        notifyOnce(dir, env, `governor:${p.kind}:${p.resetsAt}`, `Heartbeats paused: governor: ${p.why}`);
-        return finish('blocked', `governor: ${p.why}`, { notified: true });
+        return finish('blocked', `governor: ${p.why}`, { pause: true });
       }
       const other = modelFor(model, p.avoid);
       if (other) {
@@ -155,9 +143,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
       const quota = { ...(config.quota.fiveHour ? { five_hour: config.quota.fiveHour } : {}), ...(config.quota.sevenDay ? { seven_day: config.quota.sevenDay } : {}) };
       const limits = globalLimits(now, { ...account, limits: { ...account.limits, ...quota } });
       if (limits.over) {
-        const w = Object.entries(limits.windows).find(([, x]) => x.level === 'over');
-        notifyOnce(dir, env, `global:${w?.[0]}:${w?.[1].resetsAt}`, `Heartbeats paused: ${limits.over}`);
-        return finish('blocked', limits.over, { notified: true });
+        return finish('blocked', limits.over, { pause: true });
       }
       const db = openDb(dir);
       let project;
@@ -167,8 +153,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
         db.close();
       }
       if (project) {
-        notifyOnce(dir, env, project.key, `Heartbeats paused: ${project.reason}`);
-        return finish('blocked', project.reason, { notified: true });
+        return finish('blocked', project.reason, { pause: true });
       }
       if (limits.note) note += ` (${limits.note})`;
     }
@@ -356,15 +341,10 @@ function setLead(dir, run, pid) {
   }
 }
 
-// A lost heartbeat (D136) is an alert at once, notified and pushed like the others.
+// A lost heartbeat (D136) is an alert at once; the user hears of it when it lasts, like the others (D160).
 export function announceLost(dir, env, config, log, lost) {
   log(`run ${lost.id} closed, ${lost.reason}`);
-  if (!lost.alert?.isNew) return;
-  const text = `A${lost.alert.id}: heartbeat ${lost.reason}`;
-  const unseen = notify(env, dir, `Alert ${text}`);
-  if (unseen) log(`alert notification failed: ${unseen}`);
-  const failed = pushAlert(config.alerts.command, { project: basename(dir), dir, message: `Jérôme · ${basename(dir)} · ${text}`, env });
-  if (failed) log(`alert push failed: ${failed}`);
+  announceAlerts(dir, { env, config, log });
 }
 
 // The 5-hour and 7-day points of a reading, as saved with a run.
@@ -445,22 +425,30 @@ export const oneRunCap = (reason) => /^(token|turn) cap: .*\(this run[;)]/.test(
 // The doctor checks without which a heartbeat cannot work (D158).
 const DOCTOR_BLOCKING = ['project', 'db', 'limits', 'hooks'];
 
-// The checks that cost nothing, in order. Each failure has a reason and, when the user must act, a decision request
-// or an alert; when all pass, the start state they found (D119). An interactive session no longer stops a heartbeat
-// (D122): the PreToolUse hook keeps it off the repository while the heartbeat runs.
+// The questions the runner itself opened before D160, about a setup to fix rather than a choice to make: dropped,
+// since such a block is now an alert told to the user only when it lasts.
+const RUNNER_QUESTIONS = ['Run `jerome doctor` in %', 'Open `claude` in % once and accept the trust dialog%', 'PROJECT.md is still provisional%'];
+function dropRunnerRequests(dir) {
+  const db = openDb(dir);
+  try {
+    const where = RUNNER_QUESTIONS.map(() => 'question LIKE ?').join(' OR ');
+    db.prepare(`UPDATE requests SET status = 'dropped', answered_at = ? WHERE status = 'open' AND (${where})`).run(new Date().toISOString(), ...RUNNER_QUESTIONS);
+  } finally {
+    db.close();
+  }
+}
+
+// The checks that cost nothing, in order. Each failure has a reason and, when the user must act, an alert, never a
+// decision request (D160); when all pass, the start state they found (D119). An interactive session no longer stops
+// a heartbeat (D122): the PreToolUse hook keeps it off the repository while the heartbeat runs.
 async function checks(dir, config) {
+  dropRunnerRequests(dir);
   if (isTrusted(dir) !== true) {
-    return {
-      reason: 'the folder is not trusted in Claude Code, so the project\'s allow rules would be ignored',
-      request: { question: `Open \`claude\` in ${dir} once and accept the trust dialog, so heartbeats can run.`, recommendation: 'Do it now; the next heartbeat starts by itself.' },
-    };
+    return { reason: 'the folder is not trusted in Claude Code, so the project\'s allow rules would be ignored', alert: true };
   }
   const project = join(dir, STATE.project);
   if (existsSync(project) && isProvisional(readFileSync(project, 'utf8'))) {
-    return {
-      reason: 'PROJECT.md is provisional',
-      request: { question: 'PROJECT.md is still provisional: open a session so the lead agent converts brief.md with your confirmation.', recommendation: 'Open a session with `claude`.' },
-    };
+    return { reason: 'PROJECT.md is provisional', alert: true };
   }
   // The interactive lead agent's bookkeeping left on main is committed, not mistaken for someone's work (D127).
   const carry = carryState(dir, config);
@@ -647,10 +635,10 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
 ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Delegate reading and work to the agents in .claude/agents/, in the foreground: wait for every result before going on, never start one in the background, and never end while one is still working. Keep your own turns few.
-- Never ask the user, and never push, deploy, publish or send mail. For an important decision (see jerome.md), run \`jerome request open --question "…" --options "…" --recommendation "…"\`, then go on with the parts of the task that do not depend on it. Make minor, reversible choices yourself, as assumptions in open.md.${asked}
+- Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "…" --recommendation "…"\`, then go on with the parts of the task that do not depend on it. A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${asked}
 - Verify with ${tests}, and with whatever PROJECT.md asks for, such as screenshots of visual changes. When it passes with no conflicts, merge the branch into ${main} and report it; if it fails or there is a conflict, open a decision request instead.
 - Run each command that changes the repository on its own, and stage explicit paths: never \`git add -A\`, \`git add .\` or \`git commit -a\`.
-- A command you are not allowed to run is refused, and the runner reports it to the user: do not work around it with another command; say which one in your last lines.
+- You may run any command the machine has (python3, node, the project's scripts) but a few: pushing, publishing, deploying, mail, sudo, deleting outside the project, credentials. A refused command tells you why: do not retry it in another form, do the task another way.
 - Work that would help and needs nobody, such as tests, refactors or research, that you notice but is not this task: add one line for it under \`## Backlog\` in open.md, for the runs that fill unused quota.
 - Before ending, append one line to .jerome/digest.md: \`- YYYY-MM-DD HH:MM · ${area ? `${area.name} · ` : ''}what you did · branches merged · requests opened\`, and update open.md. Commit them with your work, and END ON ${main.toUpperCase()} WITH A CLEAN WORKING TREE: the runner checks it, and anything else is an alert for the user.${config?.prompt ? `\n- ${config.prompt}` : ''}
 - End with at most 3 lines.${notes.length ? `
@@ -798,33 +786,4 @@ function recordRateLimit(info, source) {
   }
 }
 
-// A notification for a pause, once per limit and window: the key names both, and the last one sent is kept.
-function notifyOnce(dir, env, key, message) {
-  const path = cacheDir('notified', `${jobLabel(dir)}.json`);
-  let last = null;
-  try {
-    last = JSON.parse(readFileSync(path, 'utf8')).key;
-  } catch {
-    // Never notified.
-  }
-  if (last === key) return;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify({ key, at: new Date().toISOString() })}\n`);
-  notify(env, dir, message);
-}
 
-// Whether an open alert is due a reminder (D128): true when it has had none for REMIND_HOURS, and then it counts as
-// reminded now. The first notification of an alert counts as one.
-function remindDue(dir, id, now = Date.now()) {
-  const path = cacheDir('notified', `${jobLabel(dir)}.alerts.json`);
-  let sent = {};
-  try {
-    sent = JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    // None sent yet.
-  }
-  if (sent[id] && now - Date.parse(sent[id]) < REMIND_HOURS * 3_600_000) return false;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify({ ...sent, [id]: new Date(now).toISOString() })}\n`);
-  return true;
-}

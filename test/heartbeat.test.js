@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readyProject as project, sandbox, sandboxDb } from './sandbox.js';
 import { globalLimits, leadPrompt } from '../src/heartbeat.js';
 
-test('an untrusted project is skipped with one decision request, not one per heartbeat', () => {
+test('an untrusted project is skipped with an alert, never a decision request (D160)', () => {
   const p = project();
   p.trust(false);
   assert.equal(p.run('heartbeat', 'demo').status, 0);
@@ -17,10 +17,14 @@ test('an untrusted project is skipped with one decision request, not one per hea
   assert.equal(run.kind, 'heartbeat');
   assert.equal(run.status, 'blocked');
   assert.match(run.reason, /not trusted/);
-  assert.equal(p.requests().length, 1);
-  assert.equal(p.requests()[0].run_id, run.id);
+  assert.equal(p.requests().length, 0);
+  // A question the runner opened before D160, about a setup to fix: dropped by the next run.
+  assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Run `jerome doctor` in /somewhere and fix what it reports: x.').status, 0);
   p.run('heartbeat', 'demo');
-  assert.equal(p.requests().length, 1);
+  assert.equal(p.requests().length, 0);
+  const d = p.db();
+  assert.deepEqual(d.prepare("SELECT count, status FROM alerts").all().map((a) => ({ ...a })), [{ count: 2, status: 'open' }]);
+  d.close();
   assert.doesNotMatch(p.calls(), /--max-turns|--model haiku/);
 });
 
@@ -236,7 +240,7 @@ test('calendar windows start at local midnight and on Monday, and a project limi
   d.close();
 });
 
-test('a project over its limit pauses heartbeats with one notification, and they start again under the limit', () => {
+test('a project over its limit pauses heartbeats with no notification, and they start again under the limit (D161)', () => {
   const p = project({ JEROME_NOTIFY: '', FAKE_TRIAGE: '{"work": false, "reason": "nothing"}' });
   const log = join(p.root, 'notifications.log');
   const d = new DatabaseSync(sandboxDb(p.root, p.dir));
@@ -246,7 +250,7 @@ test('a project over its limit pauses heartbeats with one notification, and they
   for (let i = 0; i < 3; i += 1) p.runWith({ JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
   assert.equal(p.lastRun().status, 'blocked');
   assert.match(p.lastRun().reason, /^project limit: today ≈\$0\.03 \/ \$0\.01 API/);
-  assert.equal(readFileSync(log, 'utf8').trim().split('\n').length, 1, 'one notification for the pause');
+  assert.ok(!existsSync(log), 'a pause ends by itself: nobody is called for it');
   assert.match(p.run('state', 'demo').stdout, /^paused  heartbeats: project limit: today/m);
 
   // An interactive session is not blocked, but the user is warned at its start.

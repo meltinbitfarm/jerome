@@ -290,6 +290,8 @@ Then (0.6.0, D158-D163): autonomy (docs/specs/autonomy.md), after the first look
 
 Then (0.6.1, D159): autonomy step 2. Heartbeats are given `Bash` whole, so the lead agent and its agents run what the machine has (python3 for climbdaily's news) without a request; the deny rules of D46 still hold, and the PreToolUse hook refuses in heartbeats only sudo/su, deletions outside the project and the temporary folders, credentials (Keychain, ~/.ssh, ~/.aws, gh, .env outside the project) and a download piped into a shell, failing closed when its check breaks. Next: only real decisions reach Fabio, in plain words (steps 3 and 4).
 
+Then (0.6.2, D160, D161): autonomy steps 3 and 4. The runner never opens a decision request: an untrusted folder or a provisional PROJECT.md is an alert, and the questions it opened before are dropped by the next run; the lead agent is told that a request is only for a product or implementation choice, never a technical obstacle. An alert is recorded at once but reaches Fabio only when it lasts (three runs in a row or six hours, then once a day), checked after each heartbeat and by the watchdog every minute (src/announce.js), as one sentence for a person with the one thing to do; pauses for limits and the governor's are no longer alerts or notifications, nor is a failed run on its own. Next: the user's language (step 5).
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
