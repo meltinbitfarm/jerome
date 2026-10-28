@@ -37,17 +37,16 @@ The Director is built so that nobody can intercept the subscription's tokens or 
 
 You need a server with Docker that is on your VPN, and the server's VPN address.
 
-1. **On the server,** in a folder of its own:
-   - Copy `director/compose.yaml` from the repository.
-   - Write a `.env` file next to it holding the server's VPN address:
-     ```sh
-     DIRECTOR_ADDRESS=100.101.102.103
-     ```
-   - Start it:
-     ```sh
-     docker compose up -d
-     docker compose exec director jerome director init
-     ```
+1. **On the server.**
+   - **With Coolify:**
+     - Add the repository as a resource, with the **Docker Compose** build pack and the compose file `/director/compose.yaml`.
+     - Set the variable `DIRECTOR_ADDRESS` to the server's VPN address.
+     - Give the service **no domain**: a domain would publish it on the internet through Coolify's proxy.
+     - Deploy, then run `jerome director init` in the container's terminal.
+   - **By hand:**
+     - Clone the repository.
+     - Write `director/.env` holding `DIRECTOR_ADDRESS=100.101.102.103`.
+     - In `director/`, run `docker compose up -d && docker compose exec director jerome director init`.
    - `init` prints the address the Macs connect to and the Director's fingerprint. Keep both at hand.
 2. **On each Mac:**
    - Connect it:
@@ -61,7 +60,7 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
      ```
    - The [watchdog](commands/watchdog.md) sends the first beat within a minute. `jerome connect status` shows it.
 
-The image is built from the repository on GitHub. After an update, `docker compose build --pull && docker compose up -d`. The Director's data, its keys included, live in the `director-data` volume.
+The image is built from the repository. After an update: in Coolify, a deploy; by hand, `git pull && docker compose up -d --build`. The Director's data, its keys included, live in the `director-data` volume.
 
 ## Commands
 
