@@ -10,6 +10,7 @@ jerome heartbeat uninstall [dir]             # remove them, keep the settings
 jerome heartbeat status [dir] [--runs <n>]   # jobs, the run going on, alerts, the latest runs
 jerome heartbeat marathon --until <HH:MM> [dir]
 jerome heartbeat override --today [dir]
+jerome heartbeat wait [dir]                  # until the run going on ends, for a fix made in a worktree meanwhile
 ```
 
 `dir` defaults to the current folder. A folder named like a subcommand is given as `./status`.

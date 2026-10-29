@@ -79,7 +79,7 @@ function besideHeartbeat(dir, command, env) {
   const pid = lockHolder(dir);
   if (!pid) return null;
   return {
-    reason: `A heartbeat of this project is running in this working tree (pid ${pid}), so git commands that change the repository are refused here until it ends (Jérôme D122): \`jerome heartbeat status\` shows it. Reading and editing files is fine, but commit nothing meanwhile. To work on the repository now, use a separate worktree: \`git worktree add ../<folder> -b <branch>\`, and a session there.`,
+    reason: `A heartbeat of this project is running in this working tree (pid ${pid}), so git commands that change the repository are refused here until it ends (Jérôme D122): \`jerome heartbeat status\` shows it. Do not ask the user to stop it (D187): for a change that cannot wait, work in a worktree of your own, \`git worktree add ../<folder>-fix -b fix/<name>\`, edit and commit there, then run \`jerome heartbeat wait\` in the background and, when it ends, merge the branch into main here, verify, and remove the worktree. Tell the user in one line that the fix goes in as soon as the run ends.`,
     subcommands: changing,
     segments: segments.length,
     heartbeat: pid,
@@ -168,7 +168,10 @@ function sessionStart(db, payload, env, dir) {
   const alerts = openAlerts(db);
   // Notes the user sent from Telegram (D133), as quoted data, after the requests.
   const notes = openNotes(db);
-  const context = [alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
+  // A heartbeat working in the project as the session opens (D187): how to change code meanwhile without stopping it.
+  const running = lockHolder(dir);
+  const beside = running ? `A heartbeat of this project is running now (pid ${running}) in this working tree: git commands that change the repository are refused here until it ends. For a change that cannot wait, work in a worktree of your own and merge it once \`jerome heartbeat wait\` returns; never ask the user to stop the run. While this session is in use, no other heartbeat starts here.` : null;
+  const context = [beside, alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
   const alertLine = alerts.length ? `Jérôme: ${alerts.length} heartbeat ${alerts.length === 1 ? 'alert' : 'alerts'}: ${alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}` : null;
   const message = [alertLine, limitsWarning(db, dir)].filter(Boolean).join('\n');
   return { context: context || null, message: message || null };

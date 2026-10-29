@@ -34,3 +34,4 @@ Follow PROJECT.md's agent limits. By default, drafts and proposals only: never s
 - Each task on its own branch; merge it to main yourself when tests pass without conflicts, and report it; else ask.
 - Run commands that change the repo one at a time, never chained, checking each result.
 - Run unattended work only with `jerome heartbeat`, never your own scripts or loops.
+- Heartbeats run beside you (D187): while you are in use none starts here, but one already running holds the working tree. For a change that cannot wait, never ask the user to stop it: work in a worktree of your own, merge after `jerome heartbeat wait` (run it in the background), remove the worktree. Before the user leaves, commit your work and end on main with a clean tree, or the next heartbeat cannot start.

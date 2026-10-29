@@ -175,3 +175,25 @@ function fail(message, code) {
   console.error(message);
   return code;
 }
+
+// `jerome heartbeat wait [dir]` (D187): until the heartbeat running in the project ends, for a session that fixed
+// something in a worktree meanwhile and merges it once the working tree is free. It holds nothing and changes nothing.
+export async function wait(dirArg, { pollMs = Number(process.env.JEROME_WAIT_POLL_MS) || 5000, maxMs = 120 * 60_000 } = {}) {
+  const dir = resolve(dirArg);
+  const end = Date.now() + maxMs;
+  const pid = lockHolder(dir);
+  if (!pid) {
+    console.log('No heartbeat is running here: the working tree is free.');
+    return 0;
+  }
+  console.log(`Waiting for the heartbeat running here (pid ${pid}) to end…`);
+  while (lockHolder(dir)) {
+    if (Date.now() > end) {
+      console.error(`The heartbeat is still running after ${Math.round(maxMs / 60_000)} min: \`jerome heartbeat status\` shows it.`);
+      return 1;
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  console.log('The heartbeat has ended: the working tree is free. Merge what waits, then go on.');
+  return 0;
+}

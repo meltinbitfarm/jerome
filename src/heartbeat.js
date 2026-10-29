@@ -38,6 +38,7 @@ import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, lostRuns 
 import { announceAlerts } from './announce.js';
 import { t, lang, leadLanguageLine } from './i18n.js';
 import { plainNow } from './plain.js';
+import { activeSession, ACTIVE_MINUTES } from './activity.js';
 import { notify } from './notify.js';
 import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 import { sweepLostRuns, processStart, INTERACTIVE_HOURS } from './lostruns.js';
@@ -100,6 +101,17 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     return finish('blocked', `no slot "${slotName}" in .jerome/project.json: run \`jerome heartbeat install\` again`, { alert: true });
   }
   const slot = config.slots.find((s) => s.name === slotName) ?? null;
+  // A session the user is working in comes first (D187): no heartbeat starts beside it. A slot's run, which has its
+  // time, waits for the session to rest, at most SESSION_WAIT_MIN, holding no lock meanwhile, then starts anyway; the
+  // run's start is moved to then, so its duration counts from there.
+  if (activeSession(dir, { now })) {
+    if (!slot) return finish('blocked', `session in use: an interactive session of this project was active in the last ${ACTIVE_MINUTES} min, and has the project to itself (D187)`, { pause: true });
+    const until = Date.now() + (Number(env.JEROME_SESSION_WAIT_MS) || SESSION_WAIT_MIN * 60_000);
+    log(`slot ${slot.name}: waiting for the interactive session in use to rest (D187)`);
+    while (Date.now() < until && activeSession(dir)) await new Promise((r) => setTimeout(r, Number(env.JEROME_SESSION_POLL_MS) || 60_000));
+    now = new Date();
+    moveRunStart(dir, run, now);
+  }
   const lock = acquireLock(dir);
   if (!lock) return finish('blocked', 'locked: another heartbeat of this project is running');
   // With the lock held, any other heartbeat of the project still marked running died without closing its run (D136).
@@ -310,6 +322,15 @@ function projectLog(dir) {
 
 // One row per heartbeat (D13). Its session id is given to Claude Code, so the hooks of the lead agent's session
 // update this same row instead of adding one.
+function moveRunStart(dir, run, at) {
+  const db = openDb(dir);
+  try {
+    db.prepare('UPDATE runs SET started_at = ? WHERE id = ?').run(at.toISOString(), run.id);
+  } finally {
+    db.close();
+  }
+}
+
 function startRun(dir, now, caps, slot, fill = false) {
   const db = openDb(dir);
   try {
@@ -698,6 +719,8 @@ ${notesBlock(notes)}` : ''}`;
 // It may use, beyond the project's allow rules, the tools the run allows (D129), and any command but the blacklist
 // (D159): the deny rules of settings.json, which hold whatever is allowed, and the PreToolUse hook; a tool it is
 // refused anyway, by the permission mode with nobody to ask, is reported. A hook's refusal is not: the agent is told why and goes on.
+// How long a slot's run waits for an interactive session in use to rest before it starts anyway (D187).
+const SESSION_WAIT_MIN = 60;
 const METER_MS = Number(process.env.JEROME_METER_MS) || 3000;
 // What the lead agent may use anywhere on the machine (D159, D170, D171): any command, reading any file, watching
 // what it started, searching and reading the web. Reading credentials stays refused, by --disallowedTools, which

@@ -10,7 +10,7 @@ import { statusline } from './statusline.js';
 import { view } from './view.js';
 import { schedule, EVERY } from './schedule.js';
 import { heartbeat } from './heartbeat.js';
-import { install, uninstall, status as heartbeatStatus, override, marathon } from './heartbeatcmd.js';
+import { install, uninstall, status as heartbeatStatus, override, marathon, wait as heartbeatWait } from './heartbeatcmd.js';
 import { request } from './request.js';
 import { digest } from './digest.js';
 import { deps } from './deps.js';
@@ -71,6 +71,8 @@ const USAGE = `Usage:
                           load or remove the project's jobs, one per slot of .jerome/project.json (macOS, launchd)
   jerome heartbeat status [dir]
                           jobs, the run going on, open alerts and the latest runs (--runs <n>, default 8)
+  jerome heartbeat wait [dir]
+                          until the heartbeat running in the project ends (for a fix made in a worktree meanwhile)
   jerome heartbeat run <slot> [dir]
                           one run of that slot, as its job starts it (--max-tokens, --max-turns)
   jerome heartbeat fill [dir]
@@ -229,14 +231,15 @@ export async function main(argv) {
       // Subcommands (D118); any other word is the project's folder, as launchd's jobs from before give it. A folder
       // named like a subcommand is given as ./status.
       const only = (...allowed) => Object.keys(v).filter((o) => !allowed.includes(o));
-      if (['install', 'uninstall', 'status', 'marathon', 'override'].includes(sub)) {
+      if (['install', 'uninstall', 'status', 'marathon', 'override', 'wait'].includes(sub)) {
         if (args.length > 1) return usageError(`jerome heartbeat ${sub} takes at most one folder.`);
-        const allowed = { install: [], uninstall: [], status: ['runs'], marathon: ['until'], override: ['today'] }[sub];
+        const allowed = { install: [], uninstall: [], status: ['runs'], marathon: ['until'], override: ['today'], wait: [] }[sub];
         if (only(...allowed).length) return usageError(`${only(...allowed).map((o) => `--${o}`).join(', ')} not available for jerome heartbeat ${sub}.`);
         const dir = args[0] ?? '.';
         if (sub === 'install') return install(dir);
         if (sub === 'uninstall') return uninstall(dir);
         if (sub === 'override') return override(dir, { today: v.today === true });
+        if (sub === 'wait') return heartbeatWait(dir);
         if (sub === 'marathon') {
           if (!v.until) return usageError('jerome heartbeat marathon needs --until, such as --until 23:30 or --until 24:00.');
           return marathon(dir, { until: v.until });

@@ -14,6 +14,7 @@ import { lockHolder, cacheDir } from './runstate.js';
 import { jobLabel, logPath } from './schedule.js';
 import { heartbeatConfig, slotWithin } from './heartbeatconfig.js';
 import { projectStatus, projectOver, projectLimitSettings, limitText } from './budget.js';
+import { activeSession } from './activity.js';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 // A project whose last heartbeat started this recently is left alone: it has just looked for work.
@@ -82,6 +83,8 @@ export function pickProject(projects, now = new Date()) {
     if (!existsSync(join(dir, MARKER)) || !existsSync(dbPath(dir)) || lockHolder(dir)) continue;
     const { slots, maxMinutes } = heartbeatConfig(dir).config;
     if (slotWithin(slots, maxMinutes, now)) continue;
+    // A project the user is working in, in a session, is left to them (D187): the fill run goes elsewhere.
+    if (activeSession(dir, { now })) continue;
     const db = openDb(dir, { readOnly: true, migrate: false });
     if (!db) continue;
     try {

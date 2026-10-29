@@ -160,3 +160,24 @@ test('a fill run leaves alone a project whose slot comes before it would end (D1
   const prompt = triagePrompt({ plan: { due: [{ name: 'main', goal: null, criteria: null }], implicit: true } });
   assert.match(prompt, /An area with no goal or criteria .* never answer no work for want of criteria/);
 });
+
+test('a project with a session in use gets no fill run: the governor leaves it to the user (D187)', () => {
+  const p = governed({ FAKE_TRIAGE: '{"work": true, "task": "Add tests for the parser"}' });
+  assert.equal(p.gov('governor', 'on').status, 0);
+  assert.equal(p.runIn(p.dir, 'governor', 'add').status, 0);
+  p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'live' }), 'hook', 'session-start');
+  const heartbeats = () => {
+    const d = p.db();
+    const n = d.prepare("SELECT count(*) n FROM runs WHERE kind = 'heartbeat'").get().n;
+    d.close();
+    return n;
+  };
+  assert.equal(p.gov('watchdog', 'run').status, 0);
+  assert.equal(heartbeats(), 0);
+  // The session rests: the next minute's fill run goes there.
+  const d = p.writableDb();
+  d.prepare("UPDATE runs SET started_at = ? WHERE kind = 'interactive'").run(new Date(Date.now() - 25 * 60_000).toISOString());
+  d.close();
+  assert.equal(p.gov('watchdog', 'run').status, 0);
+  assert.equal(heartbeats(), 1);
+});

@@ -51,7 +51,11 @@ test('uncommitted changes and a provisional PROJECT.md skip the heartbeat; an op
   p.git('rm', '-q', '.jerome/PROJECT.md');
   p.git('commit', '-q', '-m', 'drop');
 
+  // An open session the user has left for 20 minutes holds nothing; one in use does (D187).
   p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'live' }), 'hook', 'session-start');
+  const d = p.writableDb();
+  d.prepare("UPDATE runs SET started_at = ? WHERE kind = 'interactive'").run(new Date(Date.now() - 25 * 60_000).toISOString());
+  d.close();
   p.run('heartbeat', 'demo');
   assert.equal(p.lastRun().status, 'done');
   assert.equal(p.lastRun().reason, 'no work: nothing to do');

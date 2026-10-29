@@ -413,3 +413,52 @@ test('the watchdog settles what an older Jérôme left open: its own questions, 
   assert.deepEqual(after.prepare("SELECT reason FROM alerts WHERE status = 'open'").all().map((r) => r.reason.slice(0, 30)), ['uncommitted changes (README.md']);
   after.close();
 });
+
+test('a session in use has the project to itself: no heartbeat starts beside it, and a slot\'s run waits for it to rest (D187)', () => {
+  const p = project({ FAKE_TRIAGE: WORK });
+  p.settings({ slots: [{ name: 'news', at: ['07:30'] }] });
+  p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'live' }), 'hook', 'session-start');
+  const rest = (min) => {
+    const d = p.writableDb();
+    d.prepare("UPDATE runs SET started_at = ? WHERE kind = 'interactive'").run(new Date(Date.now() - min * 60_000).toISOString());
+    d.close();
+  };
+  // In use: the heartbeat leaves the project to the session, quietly, with no alert.
+  p.run('heartbeat', 'demo');
+  assert.equal(p.lastRun().status, 'blocked');
+  assert.match(p.lastRun().reason, /^session in use: an interactive session of this project was active in the last 20 min/);
+  assert.deepEqual(p.alerts(), []);
+  // A slot's run waits, at most its while, then starts anyway, its start moved to then.
+  const before = Date.now();
+  p.runWith({ JEROME_SESSION_WAIT_MS: '1500', JEROME_SESSION_POLL_MS: '200' }, 'heartbeat', 'run', 'news', 'demo');
+  const waited = p.lastRun();
+  assert.equal(waited.slot, 'news');
+  assert.notEqual(waited.status, 'blocked');
+  assert.ok(Date.parse(waited.started_at) >= before + 1400, 'its start is when it started, not when it began waiting');
+  assert.match(readFileSync(p.home(`.cache/jerome/logs/${jobLabel(p.dir).replace(/^com\.jerome\.heartbeat\./, '')}.log`), 'utf8'), /slot news: waiting for the interactive session in use to rest/);
+  // An open session nobody has used for 20 minutes holds nothing (D122 still).
+  rest(25);
+  p.run('heartbeat', 'demo');
+  assert.doesNotMatch(p.lastRun().reason, /session in use/);
+});
+
+test('a session changing code while a heartbeat runs is told to fix it in a worktree and merge once `jerome heartbeat wait` returns (D187)', async () => {
+  const p = project();
+  mkdirSync(join(p.lock, '..'), { recursive: true });
+  writeFileSync(p.lock, String(process.pid));
+  const start = p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'fix' }), 'hook', 'session-start');
+  assert.match(JSON.parse(start.stdout).hookSpecificOutput.additionalContext, /A heartbeat of this project is running now[\s\S]*worktree of your own[\s\S]*jerome heartbeat wait[\s\S]*never ask the user to stop the run/);
+  const refused = p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'fix', tool_name: 'Bash', tool_input: { command: 'git commit -m fix' } }), 'hook', 'pre-tool-use');
+  assert.match(JSON.parse(refused.stdout).hookSpecificOutput.permissionDecisionReason, /Do not ask the user to stop it \(D187\)[\s\S]*git worktree add[\s\S]*jerome heartbeat wait/);
+  // The wait returns once the heartbeat's lock goes.
+  const { spawn } = await import('node:child_process');
+  const waiting = spawn(process.execPath, [join(import.meta.dirname, '..', 'bin', 'jerome.js'), 'heartbeat', 'wait', p.dir], { env: { ...process.env, HOME: p.root, XDG_CACHE_HOME: join(p.root, '.cache'), XDG_DATA_HOME: join(p.root, '.local', 'share'), XDG_CONFIG_HOME: join(p.root, '.config'), JEROME_WAIT_POLL_MS: '100' } });
+  let out = '';
+  waiting.stdout.on('data', (b) => { out += b; });
+  const ended = new Promise((r) => waiting.on('exit', r));
+  await new Promise((r) => setTimeout(r, 600));
+  assert.match(out, /Waiting for the heartbeat running here/);
+  rmSync(p.lock);
+  assert.equal(await ended, 0);
+  assert.match(out, /The heartbeat has ended: the working tree is free/);
+});
