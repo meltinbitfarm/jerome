@@ -111,7 +111,8 @@ export function telegramApi(token, env = process.env) {
   }
   return async (method, params = {}) => {
     const r = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params), signal: AbortSignal.timeout(30_000),
+      // A long poll's own wait, plus a margin: a connection that hangs is given up soon, and the next call tries again.
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params), signal: AbortSignal.timeout(((params.timeout ?? 0) + 10) * 1000),
     });
     const body = await r.json().catch(() => ({}));
     // The error says what Telegram answered, never the URL, which holds the token.
@@ -600,8 +601,10 @@ export async function listen({ env = process.env, maxMs = LISTENER_MS } = {}) {
       if (done.received || done.sent || done.ignored || done.errors.length) {
         console.log(`${new Date().toISOString()} telegram: ${done.received} received, ${done.sent} sent${done.ignored ? `, ${done.ignored} from other chats ignored` : ''}${done.errors.length ? `; errors: ${done.errors.join('; ')}` : ''}`);
       }
-      // Telegram unreachable: a pause, not a loop of failing calls; else a breath between two passes.
-      await new Promise((r) => setTimeout(r, done.errors.length ? 10_000 : 10));
+      // Telegram refusing or unreachable: a pause, not a loop of failing calls. A call that only hung was given up
+      // already: the next one goes at once. Else a breath between two passes.
+      const failed = done.errors.some((e) => !/aborted due to timeout/.test(e));
+      await new Promise((r) => setTimeout(r, failed ? 10_000 : 10));
     }
     return 0;
   } finally {

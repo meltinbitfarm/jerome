@@ -344,6 +344,8 @@ Then (0.11.12, D186): Telegram messages laid out for the phone, options one per 
 
 Then (0.12.0, D187): a session in use has the project to itself; an urgent fix beside a running heartbeat goes through a worktree, merged when it ends.
 
+Then (0.12.1): a Telegram call that hangs is given up after its own wait plus 10 seconds, and the listener tries again at once.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
