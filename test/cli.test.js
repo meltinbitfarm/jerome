@@ -344,3 +344,13 @@ test('doctor reports the real first call of the latest session and checks the to
   const w = report.warnings.find((x) => x.id === 'context-tools');
   assert.deepEqual([w.deniedSent, w.deniedAgents, w.unexpected.map((t) => t.name)], [['Artifact'], ['Plan'], ['ArtifactPublisher']]);
 });
+
+test('version prints the installed version, also as --version and -v', () => {
+  const { run } = sandbox();
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const args of [['version'], ['--version'], ['-v']]) {
+    const r = run(...args);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, `jerome ${version}\n`);
+  }
+});

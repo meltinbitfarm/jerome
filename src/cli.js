@@ -25,8 +25,10 @@ import { governor, governorStatus, quota } from './governor.js';
 import { language } from './i18n.js';
 import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke, dashboard as directorDashboard } from './director.js';
 import { connect, connectStatus, disconnect } from './directorlink.js';
+import { VERSION } from './template.js';
 
 const USAGE = `Usage:
+  jerome version          the installed version (also --version, -v)
   jerome new <name>       create a project from the template in the folder <name>
     --from-file <path>    import a brief from a file, or from standard input with -
   jerome init [dir]       bring Jérôme into an existing project, overwriting nothing (default: current folder)
@@ -116,6 +118,7 @@ const USAGE = `Usage:
 
 const OPTIONS = {
   help: { type: 'boolean', short: 'h' },
+  version: { type: 'boolean', short: 'v' },
   json: { type: 'boolean' },
   check: { type: 'boolean' },
   yes: { type: 'boolean' },
@@ -168,6 +171,10 @@ export async function main(argv) {
     return 2;
   }
   const [command, ...rest] = parsed.positionals;
+  if (parsed.values.version || (command === 'version' && !parsed.values.help)) {
+    console.log(`jerome ${VERSION}`);
+    return 0;
+  }
   if (parsed.values.help || !command) {
     console.log(USAGE);
     return command || parsed.values.help ? 0 : 2;

@@ -346,6 +346,8 @@ Then (0.12.0, D187): a session in use has the project to itself; an urgent fix b
 
 Then (0.12.1): a Telegram call that hangs is given up after its own wait plus 10 seconds, and the listener tries again at once.
 
+Then (0.12.2): `jerome version` (also `--version`, `-v`) prints the installed version, and the install command ends with it, since npm 11 hides what a package prints while it installs.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

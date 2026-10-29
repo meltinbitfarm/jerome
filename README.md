@@ -49,8 +49,10 @@ Heartbeats deal with this: when you run `jerome schedule`, Jérôme records the 
 ## Install
 
 ```sh
-npm install -g github:meltinbitfarm/jerome
+npm install -g github:meltinbitfarm/jerome && jerome version
 ```
+
+The same command updates Jérôme, and its last line, such as `jerome 0.12.2`, tells you the version now installed.
 
 ## Quick start
 
@@ -74,6 +76,7 @@ pbpaste | jerome new my-project --from-file -
 
 | Command | What it does |
 |---|---|
+| [`jerome version`](docs/commands/version.md) | Prints the installed version; also `jerome --version` and `jerome -v` |
 | [`jerome new <name> [--from-file <path\|->]`](docs/commands/new.md) | Creates a project from the template, with git and the lean profile, optionally from a brief |
 | [`jerome init [dir]`](docs/commands/init.md) | Brings Jérôme into an existing project, overwriting nothing |
 | [`jerome prompt`](docs/commands/prompt.md) | Prints the briefing instructions, to paste into any chat |

@@ -3,8 +3,8 @@
 Brings the template files of an existing project up to the installed Jérôme version. `jerome new` copies the template only once, so this is how fixes to the lead agent's instructions or to the briefing skill reach projects created earlier.
 
 ```sh
-npm install -g github:meltinbitfarm/jerome   # update Jérôme first
-jerome update                                # in the project folder
+npm install -g github:meltinbitfarm/jerome && jerome version   # update Jérôme first, and see the version installed
+jerome update                                                  # in the project folder
 ```
 
 ## What it commits
