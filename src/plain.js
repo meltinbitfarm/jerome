@@ -103,6 +103,42 @@ Items:
 ${JSON.stringify(items)}`;
 }
 
+// One call to Haiku, with no tool, for a batch of items: their plain texts by key.
+async function rewrite(items, code) {
+  mkdirSync(cacheDir('plain'), { recursive: true });
+  const out = await runClaudeAsync(['-p', plainPrompt(items, code), '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json'],
+    { cwd: cacheDir('plain'), timeout: 180_000, env: { JEROME_HOOKS: 'off' } });
+  const result = JSON.parse(out).result ?? '';
+  return JSON.parse(String(result).match(/\{[\s\S]*\}/)?.[0] ?? '');
+}
+
+// Keeps the plain texts of a batch; a text with no answer keeps its own words, so it is not asked again.
+function save(batch, answer, code) {
+  const at = new Date().toISOString();
+  const next = { ...readCache(code) };
+  for (const [i, t] of batch.entries()) {
+    const text = answer[`k${i}`];
+    next[hash(t)] = { text: typeof text === 'string' && text.trim() ? text.trim().slice(0, 600) : t, at };
+  }
+  const kept = Object.entries(next).sort((a, b) => String(b[1].at).localeCompare(String(a[1].at))).slice(0, KEEP);
+  writeJson(cachePath(code), Object.fromEntries(kept));
+}
+
+// The plain text of one text now, for a message that cannot wait for the worker (D182): from the cache, else from
+// one call of its own; null when that fails, and the caller keeps the text's own words.
+export async function plainNow(text, code = lang()) {
+  if (!text) return null;
+  const cached = plainText(text, code);
+  if (cached) return cached;
+  try {
+    const answer = await rewrite({ k0: text }, code);
+    save([text], answer, code);
+    return plainText(text, code);
+  } catch {
+    return null;
+  }
+}
+
 // The worker: empties the queue a batch at a time. One worker at a time, by its pid file.
 export async function runPlain(code = lang(), { env = process.env } = {}) {
   if (workerRunning()) return 0;
@@ -123,23 +159,12 @@ export async function runPlain(code = lang(), { env = process.env } = {}) {
       const items = Object.fromEntries(batch.map((t, i) => [`k${i}`, t]));
       let answer;
       try {
-        const out = await runClaudeAsync(['-p', plainPrompt(items, code), '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json'],
-          { cwd: cacheDir('plain'), timeout: 180_000, env: { JEROME_HOOKS: 'off' } });
-        const result = JSON.parse(out).result ?? '';
-        answer = JSON.parse(String(result).match(/\{[\s\S]*\}/)?.[0] ?? '');
+        answer = await rewrite(items, code);
       } catch (err) {
         console.log(`${new Date().toISOString()} plain: ${err.message.split('\n')[0]}`);
         return 1;
       }
-      const at = new Date().toISOString();
-      const next = { ...readCache(code) };
-      for (const [i, t] of batch.entries()) {
-        const text = answer[`k${i}`];
-        // A text with no answer keeps its own words, so it is not asked again.
-        next[hash(t)] = { text: typeof text === 'string' && text.trim() ? text.trim().slice(0, 600) : t, at };
-      }
-      const kept = Object.entries(next).sort((a, b) => String(b[1].at).localeCompare(String(a[1].at))).slice(0, KEEP);
-      writeJson(cachePath(code), Object.fromEntries(kept));
+      save(batch, answer, code);
       writeJson(queuePath(code), queue.slice(BATCH));
     }
     return 0;

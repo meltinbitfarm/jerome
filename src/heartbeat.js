@@ -37,6 +37,7 @@ import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE
 import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, lostRuns } from './alerts.js';
 import { announceAlerts } from './announce.js';
 import { t, lang, leadLanguageLine } from './i18n.js';
+import { plainNow } from './plain.js';
 import { notify } from './notify.js';
 import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 import { sweepLostRuns, processStart, INTERACTIVE_HOURS } from './lostruns.js';
@@ -206,7 +207,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     // A task stopped by its caps is not tried again by itself (D182): the user is asked at once, and while the request
     // is open the triage leaves the task, which depends on it. Caps given for one run only are a trial, not asked.
     const capped = lead.status === 'stopped' && capStop(lead.reason) && !caps.once;
-    const request = capped ? cappedRequest(triage.task, lead.reason, lang(env)) : null;
+    const request = capped ? await cappedRequest(triage.task, lead.reason, lang(env)) : null;
     return finish(lead.status, `${lead.status === 'done' ? `${plan.implicit ? '' : `${area.name}: `}${triage.task}` : lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules, request });
   } finally {
     process.removeListener('SIGINT', onSignal);
@@ -259,8 +260,9 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   return result('done', `done${notes}`);
 }
 
-// The request for a task stopped by its caps (D182): what stopped, and the ways on.
-function cappedRequest(task, reason, code) {
+// The request for a task stopped by its caps (D182): what stopped, in plain words, and the ways on.
+async function cappedRequest(task, reason, code) {
+  task = (await plainNow(task, code)) ?? task;
   const cap = reason.match(/^(token|turn) cap: ([\d,]+ tokens over [\d,]+|\d+ turns)/);
   return {
     question: t('capped.question', { task: String(task).slice(0, 300), cap: cap?.[1] === 'turn' ? t('capped.turns', { n: cap[2].split(' ')[0] }, code) : t('capped.tokens', { n: cap?.[2].split(' over ')[1] ?? '' }, code) }, code),

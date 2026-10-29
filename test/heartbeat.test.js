@@ -137,7 +137,7 @@ test('the token cap stops the lead agent, and so does the turn cap', () => {
     return r;
   };
   assert.equal(asked().length, 1);
-  assert.match(asked()[0].question, /^The work "Big task" stopped at the cap of 500,000 tokens before it was done/);
+  assert.match(asked()[0].question, /^The work "plain: Big task" stopped at the cap of 500,000 tokens before it was done/);
   assert.equal(asked()[0].recommendation, 'Split it into smaller steps and try again');
   // A normal end, which the next run resumes: an alert only when the same work stops three times in a row (D158).
   const alerts = () => {
@@ -489,7 +489,7 @@ test('a stopped run goes back to the branch it started from, and the next run re
   assert.equal(branch(), 'task/dirty');
   // An alert, and the next run takes the branch it left back up, in RESUME mode; the one request is the first run's,
   // stopped by its turn cap (D182): resumed runs open none of their own.
-  assert.deepEqual(p.requests().map((r) => r.question.slice(0, 50)), ['The work "Half a task" stopped at the cap of 40 tu']);
+  assert.deepEqual(p.requests().map((r) => r.question.slice(0, 48)), ['The work "plain: Half a task" stopped at the cap']);
   const d = p.db();
   assert.equal(d.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n, 1);
   d.close();
