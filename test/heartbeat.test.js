@@ -129,6 +129,16 @@ test('the token cap stops the lead agent, and so does the turn cap', () => {
   p.run('heartbeat', 'demo');
   assert.equal(p.lastRun().status, 'stopped');
   assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 500,000/);
+  // The user is asked at once, and the task is not tried again by itself while the request is open (D182).
+  const asked = () => {
+    const d = p.db();
+    const r = d.prepare("SELECT question, options, recommendation FROM requests WHERE status = 'open'").all();
+    d.close();
+    return r;
+  };
+  assert.equal(asked().length, 1);
+  assert.match(asked()[0].question, /^The work "Big task" stopped at the cap of 500,000 tokens before it was done/);
+  assert.equal(asked()[0].recommendation, 'Split it into smaller steps and try again');
   // A normal end, which the next run resumes: an alert only when the same work stops three times in a row (D158).
   const alerts = () => {
     const d = p.db();
@@ -477,8 +487,9 @@ test('a stopped run goes back to the branch it started from, and the next run re
   p.runWith({ FAKE_LEAD_BRANCH: 'task/dirty', FAKE_LEAD_DIRTY: '1' }, 'heartbeat', 'demo');
   assert.match(p.lastRun().reason, /ended on branch task\/dirty, not main; .*; changes left on task\/dirty; next run resumes$/);
   assert.equal(branch(), 'task/dirty');
-  // No decision request: an alert, and the next run takes the branch it left back up, in RESUME mode.
-  assert.equal(p.requests().length, 0);
+  // An alert, and the next run takes the branch it left back up, in RESUME mode; the one request is the first run's,
+  // stopped by its turn cap (D182): resumed runs open none of their own.
+  assert.deepEqual(p.requests().map((r) => r.question.slice(0, 50)), ['The work "Half a task" stopped at the cap of 40 tu']);
   const d = p.db();
   assert.equal(d.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n, 1);
   d.close();

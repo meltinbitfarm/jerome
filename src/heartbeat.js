@@ -203,7 +203,11 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     writeLast(dir, { fingerprint: projectFingerprint(dir, [], null, fill), verdict: 'work', at: new Date().toISOString() });
     // The pages' new hashes count only once the area's heartbeat has done its work (D111).
     if (lead.status === 'done' && area.watch) saveHashes(jobLabel(dir), area.name, area.watch.pending);
-    return finish(lead.status, `${lead.status === 'done' ? `${plan.implicit ? '' : `${area.name}: `}${triage.task}` : lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules });
+    // A task stopped by its caps is not tried again by itself (D182): the user is asked at once, and while the request
+    // is open the triage leaves the task, which depends on it. Caps given for one run only are a trial, not asked.
+    const capped = lead.status === 'stopped' && capStop(lead.reason) && !caps.once;
+    const request = capped ? cappedRequest(triage.task, lead.reason, lang(env)) : null;
+    return finish(lead.status, `${lead.status === 'done' ? `${plan.implicit ? '' : `${area.name}: `}${triage.task}` : lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules, request });
   } finally {
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
@@ -253,6 +257,16 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   }
   if (!check.ok) return result('failed', `end check: ${failed}${tidy}; next run resumes`);
   return result('done', `done${notes}`);
+}
+
+// The request for a task stopped by its caps (D182): what stopped, and the ways on.
+function cappedRequest(task, reason, code) {
+  const cap = reason.match(/^(token|turn) cap: ([\d,]+ tokens over [\d,]+|\d+ turns)/);
+  return {
+    question: t('capped.question', { task: String(task).slice(0, 300), cap: cap?.[1] === 'turn' ? t('capped.turns', { n: cap[2].split(' ')[0] }, code) : t('capped.tokens', { n: cap?.[2].split(' over ')[1] ?? '' }, code) }, code),
+    options: t('capped.options', {}, code),
+    recommendation: t('capped.recommendation', {}, code),
+  };
 }
 
 // Whether an interactive session of the project was open while this heartbeat ran (D122).
@@ -651,7 +665,7 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
   const spoken = language ? `\n- ${language}` : '';
   const what = resume
     ? `RESUME mode: an earlier run left work half done: ${resume}.
-- Finish that work or drop it, and nothing else in this run but asking the open questions (below). Read open.md, decisions.md and \`git log\` first. Finish: commit on its branch, verify, merge into ${main}. Drop: discard it and delete the branch, and note why in open.md. If it needs the user, open a decision request and leave the branch unmerged, back on ${main}.`
+- Finish that work or drop it, and nothing else in this run but asking the open questions (below). Read open.md, decisions.md and \`git log\` first. Finish: commit on its branch, verify, merge into ${main}. Drop: discard it and delete the branch, and note why in open.md. If it needs the user, open a decision request and leave the branch unmerged, back on ${main}; if a request already asked is about this work (a task stopped by its caps), do only that, without trying it again.`
     : `Task chosen by the triage: ${task}${where}
 - Do this task only. Work on a new branch named ${branch}.${fill ? `
 - This is a fill run, started because the subscription's weekly quota is behind its pace. If the task is an item of the Backlog section of open.md, remove it from there once done.` : ''}`;

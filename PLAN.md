@@ -330,6 +330,8 @@ Then (0.11.5, D180): the next heartbeat asks every open question not yet asked, 
 
 Then (0.11.6, D181): the open questions are asked first in every run, resume included, so a run stopped by its caps has asked them.
 
+Then (0.11.7, D182): a task stopped by its caps becomes a question to the user at once, never a silent retry.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
