@@ -336,6 +336,8 @@ Then (0.11.8): a request closed anywhere loses its buttons on Telegram, so no ta
 
 Then (0.11.9, D183): request options become buttons however they are written, and the buttons follow the request.
 
+Then (0.11.10, D184): the Telegram bridge always listens, so a tap is answered in a second or two; open questions the machine already answers are not asked.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

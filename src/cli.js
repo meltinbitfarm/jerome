@@ -18,7 +18,7 @@ import { limits } from './limitscmd.js';
 import { forget } from './forget.js';
 import { projects } from './projects.js';
 import { note } from './notes.js';
-import { setup as telegramSetup, off as telegramOff, telegramStatus, telegramTest } from './telegram.js';
+import { setup as telegramSetup, off as telegramOff, telegramStatus, telegramTest, listen as telegramListen } from './telegram.js';
 import { runPlain } from './plain.js';
 import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
 import { governor, governorStatus, quota } from './governor.js';
@@ -282,6 +282,8 @@ export async function main(argv) {
       if (action === 'status') return telegramStatus();
       if (action === 'test') return telegramTest();
       if (action === 'off') return telegramOff();
+      // The bridge's listener (D184), started by the watchdog: not for people, so not in the usage.
+      if (action === 'listen') return telegramListen();
       return usageError('jerome telegram takes setup, status, test or off.');
     }
     // The watchdog's worker for the boards' plain texts (D177): not for people, so not in the usage.

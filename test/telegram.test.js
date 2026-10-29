@@ -244,7 +244,7 @@ test('setup keeps the token readable by the user only, hears one chat, and insta
   const plist = readFileSync(join(p.root, 'Library', 'LaunchAgents', 'com.jerome.watchdog.plist'), 'utf8');
   assert.match(plist, /<key>StartInterval<\/key><integer>60<\/integer>/);
   assert.match(plist, /<string>watchdog<\/string>\s*<string>run<\/string>/);
-  assert.match(p.run('telegram', 'status').stdout, /^Telegram: @jerome_test_bot, heard only from Fabio · 0 messages waiting/);
+  assert.match(p.run('telegram', 'status').stdout, /^Telegram: @jerome_test_bot, heard only from Fabio · not listening: the watchdog starts the listener within a minute · 0 messages waiting/);
   assert.equal(p.run('telegram', 'off').status, 0);
   assert.ok(!existsSync(file));
 });
@@ -294,4 +294,28 @@ test('the options of a request become buttons however the agent separated them',
   assert.deepEqual(optionList('1) connect it (D19); 2) later; 3) never'), ['1) connect it (D19)', '2) later', '3) never']);
   assert.deepEqual(optionList('a/b paths only'), []);
   assert.deepEqual(optionList('Approve'), []);
+});
+
+test('the bridge has a listener of its own, always listening, one at a time, which the watchdog keeps alive (D184)', async () => {
+  const p = bridged();
+  assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Ship it?', '--options', 'A) yes / B) not yet').status, 0);
+  process.env.XDG_CONFIG_HOME = join(p.root, '.config');
+  process.env.XDG_DATA_HOME = join(p.root, '.local', 'share');
+  process.env.XDG_CACHE_HOME = join(p.root, '.cache');
+  const { listen, listenerRunning, startListener } = await import('../src/telegram.js');
+  const env = { ...process.env, JEROME_TELEGRAM_FAKE: p.fake };
+  assert.equal(listenerRunning(), false);
+  // While it listens, a second one does not start, and neither does the watchdog's.
+  const first = listen({ env, maxMs: 1500 });
+  assert.equal(listenerRunning(), true);
+  assert.equal(startListener(env), false);
+  assert.equal(await listen({ env, maxMs: 100 }), 0);
+  while (!p.sent().length) await new Promise((r) => setTimeout(r, 20));
+  p.receive({ callback_query: { id: 'q1', data: 'a:1:1', message: { message_id: p.idOf(/R1 Ship it/), chat: CHAT } } });
+  assert.equal(await first, 0);
+  assert.equal(listenerRunning(), false, 'its pid file goes with it');
+  assert.match(p.sent()[0].params.text, /R1 Ship it\?/);
+  assert.deepEqual({ ...requestRow(p, 1) }, { status: 'answered', answer: 'B) not yet' });
+  // A poll waits for Telegram at most 10 seconds, so what is queued goes out within that.
+  assert.ok(p.tg().filter((c) => c.method === 'getUpdates').every((c) => c.params.timeout <= 10));
 });

@@ -1,8 +1,8 @@
 // `jerome watchdog install | uninstall | status | run` (D134): one launchd job per machine, apart from the
 // heartbeats, every minute. Each pass, at zero tokens, for every project on the machine: closes the runs whose
 // process is gone (D136), tells the user about heartbeats that should have started and did not (D135), then, with the
-// quota governor on, reads the quota and may start a fill run (D142), and runs the Telegram bridge when it is set up
-// (D130).
+// quota governor on, reads the quota and may start a fill run (D142), and keeps the Telegram bridge's listener running
+// when it is set up (D130, D184).
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -18,7 +18,7 @@ import { missedStarts, missedText } from './missed.js';
 import { raiseAlert } from './alerts.js';
 import { announceAlerts } from './announce.js';
 import { announceLost, tidyStale } from './heartbeat.js';
-import { bridgeTick, readConfig } from './telegram.js';
+import { bridgeTick, readConfig, startListener } from './telegram.js';
 import { governorTick } from './governor.js';
 import { directorBeat } from './directorlink.js';
 import { boardTexts } from './board.js';
@@ -29,8 +29,6 @@ import { lang } from './i18n.js';
 export { WATCHDOG_LABEL } from './schedule.js';
 import { WATCHDOG_LABEL } from './schedule.js';
 export const WATCHDOG_SECONDS = 60;
-// How long, from the start of a pass, the Telegram bridge keeps listening: the pass ends before the next one starts.
-const LISTEN_MS = 50_000;
 const logFile = () => cacheDir('logs', 'watchdog.log');
 const seenPath = () => cacheDir('watchdog', 'missed.json');
 
@@ -114,8 +112,13 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
   } catch (err) {
     log(`quota watch error: ${err.message}`);
   }
-  // Last, and listening until shortly before the next minute's pass, so a tap is answered at once (D168).
-  const bridge = await bridgeTick({ env, now, until: env.JEROME_TELEGRAM_FAKE ? null : now.getTime() + LISTEN_MS });
+  // The Telegram bridge (D184): its listener, always listening, is started when none runs. With the tests' fake
+  // Telegram the pass is the bridge itself, once.
+  if (!env.JEROME_TELEGRAM_FAKE) {
+    if (startListener(env)) log('telegram: listener started');
+    return 0;
+  }
+  const bridge = await bridgeTick({ env, now });
   if (bridge.configured && (bridge.received || bridge.sent || bridge.ignored || bridge.errors.length)) {
     log(`telegram: ${bridge.received} received, ${bridge.sent} sent${bridge.ignored ? `, ${bridge.ignored} from other chats ignored` : ''}${bridge.errors.length ? `; errors: ${bridge.errors.join('; ')}` : ''}`);
   }

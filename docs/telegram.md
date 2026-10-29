@@ -11,9 +11,9 @@ Jérôme can reach you on Telegram, for every project on a machine, and you can 
    jerome telegram setup
    ```
 
-   Paste the token (it is not echoed), then send `/start` to your bot from your own Telegram account. Jérôme shows who the message came from and asks you to confirm: from then on, only that private chat is heard. It installs the [watchdog](commands/watchdog.md), the machine's job that runs the bridge every minute, and sends you a test message.
+   Paste the token (it is not echoed), then send `/start` to your bot from your own Telegram account. Jérôme shows who the message came from and asks you to confirm: from then on, only that private chat is heard. It installs the [watchdog](commands/watchdog.md), the machine's job that keeps the bridge running, and sends you a test message.
 
-The token is kept in `~/.config/jerome/telegram.json`, readable by you only (`600`, in a `700` folder), never in a project or a log; `jerome doctor` warns if others can read it. The bridge asks Telegram for new messages from the watchdog's pass each minute, and keeps asking for most of that minute (`getUpdates` with long polling), so a tap or a message is handled within a second or two: the Mac calls Telegram, and nothing on the machine listens on the internet.
+The token is kept in `~/.config/jerome/telegram.json`, readable by you only (`600`, in a `700` folder), never in a project or a log; `jerome doctor` warns if others can read it. The bridge is a listener of its own (D184), always asking Telegram for new messages (`getUpdates` with long polling, at most 10 seconds a call), so a tap or a message is handled within a second or two, and a message queued for you goes out within 10 seconds: the Mac calls Telegram, and nothing on the machine listens on the internet. The watchdog starts the listener when none runs; it ends by itself every 30 minutes, and at once after an update of Jérôme, so the next one runs the new code. `jerome telegram status` says whether it is listening; its lines go to the watchdog's log.
 
 ## What you get
 
@@ -70,4 +70,4 @@ A note goes to the project's database, never to a file in the repository, so it 
 
 ## Turning it off
 
-`jerome telegram off` deletes the token and the queue. The watchdog keeps watching for lost runs and missed starts; `jerome watchdog uninstall` removes it.
+`jerome telegram off` stops the listener and deletes the token and the queue. The watchdog keeps watching for lost runs and missed starts; `jerome watchdog uninstall` removes it.

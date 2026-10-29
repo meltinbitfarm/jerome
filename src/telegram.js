@@ -1,10 +1,10 @@
-// The Telegram bridge (D130-D133): one bot, one chat (the user's), for every project on this machine, run by the
-// watchdog job (D134) every minute. Out: what waits for the user, queued by notify() and by a request opened. In: an
+// The Telegram bridge (D130-D133): one bot, one chat (the user's), for every project on this machine, run by a
+// listener of its own that the watchdog job (D134) keeps alive (D184). Out: what waits for the user, queued by notify() and by a request opened. In: an
 // answer to a decision request (a button, or a reply to its message), a note for a project, /status and /help.
 // Nothing else: the bridge runs no shell, passes no text as arguments to anything but `jerome request answer`, and
 // calls no model. The token stays on this machine, in a file only the user can read, never in a project.
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -16,6 +16,8 @@ import { t } from './i18n.js';
 import { readAccount } from './account.js';
 import { blockMessage, howLong } from './blocks.js';
 import { ACTIONS, actionsFor, runAction } from './unblock.js';
+import { VERSION } from './template.js';
+import { cacheDir } from './runstate.js';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'jerome.js');
 // Telegram refuses longer messages.
@@ -24,6 +26,10 @@ const MAX_TEXT = 4000;
 const KEEP_SENT = 500;
 // A queued message Telegram keeps refusing is dropped after this long.
 const OUTBOX_DAYS = 2;
+// The longest a poll of Telegram waits for an update: what is queued to send waits at most this long too.
+const POLL_SECONDS = 10;
+// The listener ends after this long, and the watchdog starts a new one at its next pass.
+const LISTENER_MS = 30 * 60_000;
 
 export function configPath() {
   return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'jerome', 'telegram.json');
@@ -86,6 +92,8 @@ export function telegramApi(token, env = process.env) {
       const next = 1000 + (existsSync(join(folder, 'calls.jsonl')) ? readFileSync(join(folder, 'calls.jsonl'), 'utf8').split('\n').length : 0);
       appendFileSync(join(folder, 'calls.jsonl'), `${JSON.stringify({ method, params })}\n`);
       if (method === 'getUpdates') {
+        // Telegram's long polling waits for an update: a short wait here, so a listener gives way to the rest.
+        if (params.timeout) await new Promise((r) => setTimeout(r, 50));
         try {
           return JSON.parse(readFileSync(join(folder, 'updates.json'), 'utf8')).filter((u) => u.update_id >= (params.offset ?? 0));
         } catch {
@@ -188,7 +196,7 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
     const left = until ? Math.floor((until - Date.now()) / 1000) : 0;
     // A failed call is not retried in a loop: the next minute tries again.
     if (got < 0 || left < 2) break;
-    wait = Math.min(25, left - 1);
+    wait = Math.min(POLL_SECONDS, left - 1);
   }
   return done;
 }
@@ -488,6 +496,7 @@ export async function setup({ env = process.env, input = process.stdin, output =
 }
 
 export function off() {
+  stopListener();
   rmSync(configPath(), { force: true });
   rmSync(outboxPath(), { force: true });
   console.log('✓ The Telegram bridge is off: the token is deleted. The watchdog job keeps checking for missed heartbeats; `jerome watchdog uninstall` removes it.');
@@ -501,7 +510,7 @@ export function telegramStatus() {
     return 0;
   }
   const queued = existsSync(outboxPath()) ? readFileSync(outboxPath(), 'utf8').split('\n').filter(Boolean).length : 0;
-  console.log(`Telegram: @${c.bot}, heard only from ${c.chat} · ${queued} ${queued === 1 ? 'message' : 'messages'} waiting to be sent · token in ${configPath()}`);
+  console.log(`Telegram: @${c.bot}, heard only from ${c.chat} · ${listenerRunning() ? 'listening' : 'not listening: the watchdog starts the listener within a minute'} · ${queued} ${queued === 1 ? 'message' : 'messages'} waiting to be sent · token in ${configPath()}`);
   return 0;
 }
 
@@ -519,4 +528,75 @@ export async function telegramTest({ env = process.env } = {}) {
   }
   console.log('✓ Sent.');
   return 0;
+}
+
+// The listener (D184): the bridge always listening, so a tap or a reply is answered in a second or two rather than at
+// the watchdog's next pass, which first does everything else. One at a time, by its pid file; the watchdog starts it
+// when none runs. It ends after LISTENER_MS, or as soon as Jérôme was updated, so the next one runs the new code.
+const listenerPid = () => join(dataDir(), 'listener.pid');
+const PACKAGE_FILE = join(dirname(BIN), '..', 'package.json');
+
+export function listenerRunning() {
+  try {
+    process.kill(Number(readFileSync(listenerPid(), 'utf8')), 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Starts the listener apart, its lines in the watchdog's log, when the bridge is set up and none runs. True when
+// started.
+export function startListener(env = process.env) {
+  if (!readConfig() || listenerRunning()) return false;
+  const log = cacheDir('logs', 'watchdog.log');
+  mkdirSync(dirname(log), { recursive: true });
+  const fd = openSync(log, 'a');
+  const child = spawn(process.execPath, [BIN, 'telegram', 'listen'], { env, detached: true, stdio: ['ignore', fd, fd] });
+  child.unref();
+  closeSync(fd);
+  return true;
+}
+
+function installedVersion() {
+  try {
+    return JSON.parse(readFileSync(PACKAGE_FILE, 'utf8')).version;
+  } catch {
+    return null;
+  }
+}
+
+export async function listen({ env = process.env, maxMs = LISTENER_MS } = {}) {
+  if (listenerRunning()) return 0;
+  mkdirSync(dataDir(), { recursive: true });
+  writeFileSync(listenerPid(), String(process.pid));
+  const end = Date.now() + maxMs;
+  try {
+    while (Date.now() < end && installedVersion() === VERSION) {
+      const done = await bridgeTick({ env, now: new Date(), until: Math.min(end, Date.now() + 60_000) });
+      if (!done.configured) break;
+      if (done.received || done.sent || done.ignored || done.errors.length) {
+        console.log(`${new Date().toISOString()} telegram: ${done.received} received, ${done.sent} sent${done.ignored ? `, ${done.ignored} from other chats ignored` : ''}${done.errors.length ? `; errors: ${done.errors.join('; ')}` : ''}`);
+      }
+      // Telegram unreachable: a pause, not a loop of failing calls; else a breath between two passes.
+      await new Promise((r) => setTimeout(r, done.errors.length ? 10_000 : 10));
+    }
+    return 0;
+  } finally {
+    try {
+      if (readFileSync(listenerPid(), 'utf8') === String(process.pid)) rmSync(listenerPid(), { force: true });
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+// Stops the listener, for `jerome telegram off`.
+function stopListener() {
+  try {
+    process.kill(Number(readFileSync(listenerPid(), 'utf8')), 'SIGTERM');
+  } catch {
+    // None runs.
+  }
+  rmSync(listenerPid(), { force: true });
 }
