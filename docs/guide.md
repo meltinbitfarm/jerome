@@ -235,7 +235,7 @@ areas   development beta 7d 5.1M ≈$4.20 API · marketing pre-launch 7d 900k �
 ## Where to go next
 
 - [configuration.md](configuration.md): every setting, where it lives and how to change it
-- [Commands](../README.md#commands), each with its own page
+- [Commands](commands/README.md), each with its own page
 - [areas.md](areas.md): areas, milestones and the area briefing in detail
 - [heartbeat.md](heartbeat.md): what a heartbeat does, step by step
 - [agents.md](agents.md): the agent catalog and the team
