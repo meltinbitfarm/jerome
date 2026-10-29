@@ -80,3 +80,21 @@ test('the watchdog has the board\'s texts rewritten once in plain words, and the
   assert.deepEqual(board.done.map((x) => x.at), ['2026-10-29', '2026-10-28 20:00'], 'newest first');
   assert.deepEqual(board.parked.map((x) => x.id), ['P1']);
 });
+
+test('a question whose request was answered leaves the board, and the next run is told the answer to record (D192)', async () => {
+  const p = readyProject();
+  writeFileSync(join(p.dir, '.jerome', 'open.md'), '# Open\n\n## Open questions\n- Q1: Which host? (asked: R1)\n- Q2: Which domain? (asked: R2)\n- Q3: Which logo?\n');
+  for (const q of ['Which host?', 'Which domain?']) assert.equal(p.runIn(p.dir, 'request', 'open', '--question', q, '--options', 'A) one / B) two').status, 0);
+  assert.equal(p.runIn(p.dir, 'request', 'answer', '1', 'B) two').status, 0);
+  process.env.XDG_CACHE_HOME = join(p.root, '.cache');
+  process.env.XDG_DATA_HOME = join(p.root, '.local', 'share');
+  const { projectBoard } = await import('../src/board.js');
+  const { answersToRecord } = await import('../src/answers.js');
+  const board = projectBoard(p.dir, { code: 'en', plain: (t) => t });
+  assert.deepEqual(board.todo.map((x) => [x.id, x.kind]), [['Q2', 'asked'], ['Q3', 'ask']]);
+  const answers = answersToRecord(p.dir);
+  assert.deepEqual(answers, [{ id: 1, status: 'answered', question: 'Which host?', answer: 'B) two' }]);
+  const { leadPrompt } = await import('../src/heartbeat.js');
+  assert.match(leadPrompt('x', null, [], { answers }), /The user answered these questions of open\.md[^\n]*R1 "Which host\?" → "B\) two"[^\n]*record each answer as a decision/);
+  assert.doesNotMatch(leadPrompt('x'), /The user answered these questions/);
+});

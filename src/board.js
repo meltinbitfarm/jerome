@@ -2,6 +2,7 @@
 // from open.md, archive.md, digest.md and the database at zero tokens. The same board is shown by the project's own
 // viewer and, for every project, by the Director's dashboard. Each text is the plain one when it has been written
 // (plain.js), else the project's own, which the next minutes replace.
+import { answersToRecord } from './answers.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STATE } from './paths.js';
@@ -71,7 +72,10 @@ export function projectBoard(dir, { now = new Date(), code = lang(), plain = (te
   };
   const shown = (list) => list.filter((x) => x.text);
   const open = sections(read(dir, STATE.open));
-  const todo = shown(open.map((x) => ({ ...x, kind: kindOf(x.heading) })).filter((x) => ['todo', 'backlog', 'ask'].includes(x.kind)).slice(0, TODO)
+  // A question whose request was answered or dropped waits no more for the user, only to be recorded (D192).
+  const settled = new Set(answersToRecord(dir).map((r) => r.id));
+  const waiting = (x) => !(x.kind === 'ask' && settled.has(Number(x.text.match(/\(asked: R(\d+)\)/)?.[1])));
+  const todo = shown(open.map((x) => ({ ...x, kind: kindOf(x.heading) })).filter((x) => ['todo', 'backlog', 'ask'].includes(x.kind) && waiting(x)).slice(0, TODO)
     .map((x) => ({ id: x.id, text: say(x.text.replace(/\s*\(asked: R\d+\)/, '')), kind: owner(x.kind, x.text) })));
   const parked = shown(open.filter((x) => kindOf(x.heading) === 'parked').slice(0, PARKED).map((x) => ({ id: x.id, text: say(x.text) })));
   // The closed items, newest first by the date each one names.

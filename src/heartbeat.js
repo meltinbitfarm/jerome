@@ -45,6 +45,7 @@ import { sweepLostRuns, processStart, INTERACTIVE_HOURS } from './lostruns.js';
 import { governorSettings, currentPace } from './governor.js';
 import { refreshQuota } from './quota.js';
 import { modelFor } from './pacing.js';
+import { answersToRecord } from './answers.js';
 
 export async function heartbeat(dirArg, { env = process.env, now = new Date(), maxTokens = null, maxTurns = null, slot: slotName = null, fill = false } = {}) {
   const dir = resolve(dirArg);
@@ -174,7 +175,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
     // RESUME (D119): half-done work is finished or dropped before anything new, with no triage.
     if (start.mode === 'resume') {
-      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, openRequests(dir), { config, slot, resume: start.why, notes: projectNotes(dir) }) }, caps, given, model, env, config, stopper, record, slot, governed);
+      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, openRequests(dir), { config, slot, resume: start.why, notes: projectNotes(dir), answers: answersToRecord(dir) }) }, caps, given, model, env, config, stopper, record, slot, governed);
       return finish(lead.status, `resume: ${start.why} → ${lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules });
     }
 
@@ -211,7 +212,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     const area = plan.due.find((a) => a.name === triage.area);
     setRunArea(dir, run, area.name);
 
-    const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot, notes: projectNotes(dir), fill });
+    const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot, notes: projectNotes(dir), fill, answers: answersToRecord(dir) });
     const lead = await leadRun(dir, run, { label: `lead agent: ${triage.task}`, prompt }, caps, given, model, env, config, stopper, record, slot, governed);
     writeLast(dir, { fingerprint: projectFingerprint(dir, [], null, fill), verdict: 'work', at: new Date().toISOString() });
     // The pages' new hashes count only once the area's heartbeat has done its work (D111).
@@ -647,7 +648,7 @@ Goal: ${a.goal ?? 'none'}${a.milestone ? `\nMilestone: ${a.milestone}` : ''}
 ${a.milestone ? 'Criteria' : 'Success criteria'}: ${a.criteria ?? 'none'}`).join('\n\n');
   return `You decide whether a scheduled heartbeat of a project should start its lead agent, and on which area of work.
 Answer with one JSON object and nothing else: {"work": true|false, "area": "<area name>", "task": "<one task, one sentence>", "milestone": true|false, "reason": "<one sentence>"}.
-Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. An area with no goal or criteria (a project brought in without a brief) moves by the open items of open.md and the next step its recent history points to: take one of those, never answer no work for want of criteria. An open request holds up only what depends on it: choose another task of the same area. The assumptions of open.md hold nothing up. An item marked for an interactive session is work like any other: there is no session to wait for (the lead agent does it, or asks the user for what only they can do). Never choose one under a parked or ideas section${fill ? '' : ', nor one under Backlog'}. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. When the history shows an area's criteria all met, set "milestone": true and make checking them the task.
+Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. An area with no goal or criteria (a project brought in without a brief) moves by the open items of open.md and the next step its recent history points to: take one of those, never answer no work for want of criteria. An open request holds up only what depends on it: choose another task of the same area. The assumptions of open.md hold nothing up. An item marked for an interactive session is work like any other: there is no session to wait for (the lead agent does it, or asks the user for what only they can do). Never choose one under a parked or ideas section${fill ? '' : ', nor one under Backlog'}. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. A request answered or dropped whose question is still in open.md, marked \`(asked: R<n>)\`, is work too: when no area has another task, the task is to record those answers. When the history shows an area's criteria all met, set "milestone": true and make checking them the task.
 ${slot?.text ? `\n## This run's slot: ${slot.name}\nWhat the user wants of this run: when it names work, that work comes first and is the task.\n${slot.text}\n` : ''}${fill ? `
 ## This is a fill run
 The subscription's weekly quota is behind its pace, and what is left at its reset is lost. When no area has a task as above, take one item of the Backlog section of open.md (tests, refactors, research), in the area it names or the first area due. Answer no work only when the backlog has nothing that can be done without the user either.
@@ -675,7 +676,7 @@ ${notesBlock(notes)}` : ''}`;
 // The lead agent's prompt (D73, D125): project-agnostic, shipped with Jérôme, and the same invariants in both modes.
 // In RESUME mode (D119) the task is the half-done work; otherwise the triage's task, in its area. A slot's text and
 // the project's own `heartbeat.prompt` are appended.
-export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, notes = [], fill = false } = {}) {
+export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, notes = [], fill = false, answers = [] } = {}) {
   const main = config?.mainBranch ?? 'main';
   const branch = (config?.workBranch ?? 'agent/*').replace('*', '<short-name>');
   const where = area ? `
@@ -684,6 +685,11 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
 - Work in the area's folder, with its agents. If its milestone's criteria are met, open a decision request with \`jerome request open --milestone\` proposing the next milestone and its criteria (options: open it / continue / area briefing), and stop.` : '';
   const asked = requests.length ? `
 - Already asked, still open: ${requests.map((r) => `R${r.id} ${r.question}`).join(' · ')}. Do not ask again, nor do what depends on them.` : '';
+  // The user's answers to questions of open.md, not recorded yet (D192): the run is told which, with their words.
+  const answered = answers.length ? `
+- The user answered these questions of open.md, and their answers are not recorded yet: ${answers.map((r) => (r.status === 'answered'
+    ? `R${r.id} "${r.question}" → "${r.answer}"`
+    : `R${r.id} "${r.question}" (dropped)`)).join(' · ')}. Also first: record each answer as a decision in decisions.md, with the user's words as its reason, and remove its question from open.md; what an answer asks for is work for this or a later run, within the project's limits. For a dropped one, remove only its \`(asked: R<n>)\` mark, so the question is asked again if it still holds.` : '';
   const language = leadLanguageLine();
   const spoken = language ? `\n- ${language}` : '';
   const what = resume
@@ -695,7 +701,7 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
   const tests = config?.test ? `\`${config.test}\`` : 'the project\'s tests';
   // The open questions are asked first (D181): a run stopped by its caps halfway through the task has asked them.
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
-- FIRST, before the task: the open questions of open.md are the user's to answer, and nobody has asked them yet unless one is marked \`(asked: R<n>)\` or is among the requests already asked (below). First check whether what you can read already answers it (the project, the other projects on this machine, the web): then record that answer as an assumption, saying where it comes from, and remove the question instead of asking. Ask each one still open and not asked, each as its own decision request written as below, with options and your recommendation, and mark it \`(asked: R<n>)\` in open.md (a question already asked only gets its mark). Do it now, with your own commands and no agent: a run stopped by its caps halfway through the task has asked them all the same.
+- FIRST, before the task: the open questions of open.md are the user's to answer, and nobody has asked them yet unless one is marked \`(asked: R<n>)\` or is among the requests already asked (below). First check whether what you can read already answers it (the project, the other projects on this machine, the web): then record that answer as an assumption, saying where it comes from, and remove the question instead of asking. Ask each one still open and not asked, each as its own decision request written as below, with options and your recommendation, and mark it \`(asked: R<n>)\` in open.md (a question already asked only gets its mark). Do it now, with your own commands and no agent: a run stopped by its caps halfway through the task has asked them all the same.${answered}
 ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Delegate reading and work to the agents in .claude/agents/, in the foreground: wait for every result before going on, never start one in the background, and never end while one is still working. Keep your own turns few.
 - Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "A) … / B) …" --recommendation "…"\`. The user reads it on the phone, each option a button: write it in plain words, with no ticket or item IDs (MEL-151, O4), file names or paths, and no command unless it is one they must run. Then go on with the parts of the task that do not depend on it. When the work is ready and needs a push, a deploy or a release, which only the user does, open a request too, saying in plain words what and the exact command to run, and go on. A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${spoken}${asked}

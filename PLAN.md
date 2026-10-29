@@ -358,6 +358,8 @@ Then (0.13.0, D191): the Director's dashboard answers requests (a tap or the use
 
 Then (0.13.1): a Mac's beat carries `results` only when it has some, so a Director not yet updated keeps accepting it.
 
+Then (0.13.2, D192): the user's answers reach the next run with their words, to be recorded as decisions, and an answered question leaves the board at once.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
