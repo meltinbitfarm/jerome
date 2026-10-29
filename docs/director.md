@@ -7,7 +7,7 @@ It is built in five steps:
 | Step | What it does | |
 |---|---|---|
 | 1 | **Sees:** Macs connect and are approved; every minute each one sends what it knows | in place, 0.5.0 |
-| 2 | **Shows:** a read-only dashboard, also on the iPhone, in your language | in place, 0.5.1; simpler in 0.8.0 |
+| 2 | **Shows:** a read-only dashboard, also on the iPhone, in your language | in place, 0.5.1; simpler in 0.8.0; each project's [board](board.md) and a legend in 0.11.0 |
 | 3 | **Decides:** permits for fill runs, slots that queue, a fallback when it cannot be reached | to do |
 | 4 | Setup on your server, step by step | to do |
 | 5 | Telegram on the Director, one bot for every Mac | to do |

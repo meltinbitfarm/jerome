@@ -47,7 +47,8 @@ Control starts at once, not at the end of the week: the pace is worked out again
 **Which project.** It picks the project whose last heartbeat is oldest, skipping any project that:
 - has an open alert;
 - is at its own daily or weekly limit;
-- started a heartbeat in the last 30 minutes.
+- started a heartbeat in the last 30 minutes;
+- has a slot due before a run started now could end (its `maxMinutes`), so the slot's run never finds the project locked (D176).
 
 **How a fill run differs from a scheduled one.** It goes through the same checks, triage and end check. It is told the quota is behind, and:
 - an area's pace does not hold it back; a paused area, or one waiting for a milestone decision, still does;

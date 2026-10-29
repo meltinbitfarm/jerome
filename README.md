@@ -82,14 +82,14 @@ pbpaste | jerome new my-project --from-file -
 | [`jerome language [code]`](docs/commands/language.md) | The language Jérôme writes to you in: notifications, Telegram, decision requests (`en`, `it`) |
 | [`jerome update [dir] [--check] [--yes]`](docs/commands/update.md) | Brings a project's template files up to the installed version, without touching its state |
 | [`jerome state [dir] [--json]`](docs/commands/state.md) | Shows a project's usage, areas, runs and open decision requests in a few lines, with dollars as API equivalents |
-| [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser with the team, areas, runs, usage, subscription windows and the messages between agents |
+| [`jerome view [dir]`](docs/commands/view.md) | Opens a read-only page in the browser: at the top the project's [board](docs/board.md) (now, to do, done, in plain words in your language, with a legend of the IDs), then the team, areas, runs, usage, subscription windows and the messages between agents |
 | [`jerome projects [--json] [--view]`](docs/commands/projects.md) | Shows every project on this machine, from any folder, with what needs you first; `--view` as a page in the browser |
 | [`jerome schedule [dir] hourly\|daily\|weekly`](docs/commands/schedule.md) | Schedules heartbeats, runs of the lead agent without you, with a cap per run (macOS) |
 | [`jerome heartbeat [dir]`](docs/commands/heartbeat.md) | One scheduled run, as launchd starts it; `install`, `uninstall`, `status`, `run <slot>`, `marathon --until HH:MM` and `override --today` for a project's slots and their runs |
 | [`jerome request`](docs/commands/request.md) | Opens and closes decision requests |
-| [`jerome telegram setup`](docs/commands/telegram.md) | Connects a Telegram bot: what waits for you from every project, answers to requests, notes, `/status`; no model, zero tokens |
-| [`jerome watchdog install`](docs/commands/watchdog.md) | The machine's job, every minute: closes lost runs, reports heartbeats that did not start, runs the Telegram bridge and the quota governor |
-| [`jerome connect`](docs/commands/connect.md), [`jerome director`](docs/commands/director.md) | [Jérôme Director](docs/director.md): one coordinator for all your Macs, on your server with Docker, reached over any VPN, with signed requests and answers |
+| [`jerome telegram setup`](docs/commands/telegram.md) | Connects a Telegram bot: what waits for you from every project, answers to requests, notes, `/status`, and buttons that clear a block from afar (allow a tool, trust a folder, try again, skip); no model, zero tokens |
+| [`jerome watchdog install`](docs/commands/watchdog.md) | The machine's job, every minute: closes lost runs, reports heartbeats that did not start, has the boards' new texts put in plain words, runs the Telegram bridge, the quota governor and the beat to the Director |
+| [`jerome connect`](docs/commands/connect.md), [`jerome director`](docs/commands/director.md) | [Jérôme Director](docs/director.md): one coordinator for all your Macs, on your server with Docker, reached over any VPN, with signed requests and answers, and a dashboard for the phone with each project's board |
 | [`jerome governor on`](docs/commands/governor.md), [`jerome quota`](docs/commands/quota.md) | The quota governor: reads the subscription's real quota and starts fill runs while the week is behind its pace, to reach the weekly reset at about 90% |
 | [`jerome note`](docs/commands/note.md) | Lists and closes the notes you sent a project from Telegram |
 | [`jerome digest [dir]`](docs/commands/digest.md) | What happened recently, at zero tokens |
@@ -152,8 +152,8 @@ Every project starts from a brief in the `brief/v3` format, with the areas to st
 7. ✓ Read-only local viewer (`jerome view`), and every project at a glance (`jerome projects`)
 8. ✓ Scheduled headless runs, with a lock and a cap per run (`jerome schedule`, `jerome heartbeat`, `jerome request`); since 0.2.0 with slots, RESUME runs, an end check, a max duration, alerts and marathons
 9. ✓ Daily and weekly limits with automatic pause (`jerome limits`)
-10. ✓ Telegram bridge and watchdog (`jerome telegram`, `jerome watchdog`), since 0.3.0
-11. ✓ Quota governor on one Mac (`jerome governor`, `jerome quota`), since 0.4.0. Jérôme Director, the coordinator of several Macs ([docs/director.md](docs/director.md)), is in progress: the Macs connect and report since 0.5.0; the dashboard, the permits and Telegram on the Director come next
+10. ✓ Telegram bridge and watchdog (`jerome telegram`, `jerome watchdog`), since 0.3.0; blocks cleared with a button since 0.9.0
+11. ✓ Quota governor on one Mac (`jerome governor`, `jerome quota`), since 0.4.0. Jérôme Director, the coordinator of several Macs ([docs/director.md](docs/director.md)), is in progress: the Macs connect and report since 0.5.0, the dashboard since 0.5.1, each project's board since 0.11.0; the permits and Telegram on the Director come next
 12. Areas and milestones, with the area briefing (`.jerome/areas.md`): in place and tested, not yet tried on a real project
 
 Along the way: `jerome deps` lists what Jérôme depends on in Claude Code, and `jerome forget` removes the database of a project that is gone.
