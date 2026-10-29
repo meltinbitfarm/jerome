@@ -128,6 +128,8 @@ const BOARD = {
   'now?': { startedAt: 'string:40', 'task?': 'string:600', agents: [{ name: 'string:60', 'what?': 'string:600', status: 'string:20' }, 20] },
   'last?': { at: 'string:40', text: 'string:600' },
   todo: [ITEM, 60], done: [ITEM, 15], closed: [ITEM, 20], parked: [ITEM, 20],
+  // The texts not rewritten in plain words yet, left out until they are.
+  'pending?': 'number',
 };
 const SHAPES = {
   hello: { name: 'string:60', publicKey: 'string:400', version: 'string:20' },

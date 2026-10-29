@@ -4,10 +4,11 @@
 // short IDs the state files use. Every text is set with textContent.
 const BOARD_WORDS = {
   en: {
-    now: 'Now', since: (ago) => `working since ${ago}`, starting: 'starting', noAgents: 'the lead agent works on its own',
+    now: 'Now', since: (ago) => `working since ${ago}`, starting: 'starting',
     todo: (n) => `To do (${n})`, backlog: (n) => `When there is spare time (${n})`, done: 'Done lately',
     closed: (n) => `Items closed (${n})`, parked: (n) => `Ideas set aside, not to do now (${n})`,
     none: 'nothing', noBoard: 'The board comes with the Mac\'s next beat.',
+    more: (n) => `${n} more`, pending: (n) => `${n} ${n === 1 ? 'text is' : 'texts are'} being put in plain words: they show in a minute or two.`,
     legend: 'Legend: what D1, O1, A1, R1… mean',
     ids: {
       D: ['Decision', 'a choice you made or confirmed; it holds until you change it'],
@@ -28,10 +29,11 @@ const BOARD_WORDS = {
     ],
   },
   it: {
-    now: 'Adesso', since: (ago) => `al lavoro da ${ago}`, starting: 'sta partendo', noAgents: 'l\'agente principale lavora da solo',
+    now: 'Adesso', since: (ago) => `al lavoro da ${ago}`, starting: 'sta partendo',
     todo: (n) => `Da fare (${n})`, backlog: (n) => `Quando avanza tempo (${n})`, done: 'Fatto di recente',
     closed: (n) => `Voci chiuse (${n})`, parked: (n) => `Idee parcheggiate, da non fare ora (${n})`,
     none: 'niente', noBoard: 'Il quadro arriva col prossimo battito del Mac.',
+    more: (n) => `altre ${n}`, pending: (n) => `${n} ${n === 1 ? 'testo è' : 'testi sono'} in riscrittura: compaiono tra un paio di minuti.`,
     legend: 'Leggenda: cosa vogliono dire D1, O1, A1, R1…',
     ids: {
       D: ['Decisione', 'una scelta presa o confermata da te; vale finché non la cambi'],
@@ -68,11 +70,16 @@ function idTag(id, lang, el) {
   return el('span', { class: 'tag', title: meaning ? `${meaning[0]}: ${meaning[1]}` : null }, id);
 }
 
-function boardList(items, lang, el, dated = false) {
-  if (!items.length) return el('div', { class: 'muted small' }, boardWords(lang).none);
-  return el('ul', { class: 'board-list' }, items.map((x) => el('li', {},
-    dated && x.at ? el('span', { class: 'muted small' }, `${x.at.slice(5, 10).split('-').reverse().join('/')}${x.at.length > 10 ? ` ${x.at.slice(11, 16)}` : ''} `) : null,
-    idTag(x.id, lang, el), x.text)));
+// A list as a checklist: ☐ to do, ✓ done; the first `first` shown, the others under "and N more".
+function boardList(items, lang, el, { mark = '☐', dated = false, first = 8 } = {}) {
+  const w = boardWords(lang);
+  if (!items.length) return el('div', { class: 'muted small' }, w.none);
+  const line = (x) => el('li', {}, el('span', { class: mark === '✓' ? 'mark ok' : 'mark' }, mark),
+    el('span', {}, x.text, ' ', idTag(x.id, lang, el),
+      dated && x.at ? el('span', { class: 'muted small' }, ` ${x.at.slice(5, 10).split('-').reverse().join('/')}${x.at.length > 10 ? ` ${x.at.slice(11, 16)}` : ''}`) : null));
+  const list = el('ul', { class: 'board-list' }, items.slice(0, first).map(line));
+  if (items.length <= first) return list;
+  return el('div', {}, list, el('details', {}, el('summary', {}, w.more(items.length - first)), el('ul', { class: 'board-list' }, items.slice(first).map(line))));
 }
 
 // The board as an element.
@@ -83,18 +90,20 @@ function boardView(board, { lang, el }) {
   if (board.now) {
     parts.push(el('div', { class: 'board-now' },
       el('div', {}, el('span', { class: 'running' }, `▶ ${w.now}`), el('span', { class: 'muted small' }, ` · ${w.since(boardDuration(board.now.startedAt))}`)),
-      board.now.task ? el('div', { class: 'card-text' }, board.now.task) : null,
+      board.now.task ? el('div', {}, board.now.task) : null,
       board.now.agents.length
-        ? el('ul', { class: 'board-list' }, board.now.agents.map((a) => el('li', {}, el('strong', {}, a.name), a.what ? ` — ${a.what}` : '', a.status === 'starting' ? el('span', { class: 'muted small' }, ` (${w.starting})`) : null)))
-        : el('div', { class: 'muted small' }, w.noAgents)));
+        ? el('ul', { class: 'board-list agents-now' }, board.now.agents.map((a) => el('li', {}, el('span', { class: 'mark running' }, '●'),
+          el('span', {}, el('strong', {}, a.name), a.what ? ` · ${a.what}` : '', a.status === 'starting' ? el('span', { class: 'muted small' }, ` (${w.starting})`) : null))))
+        : null));
   }
   const todo = board.todo.filter((x) => x.kind !== 'backlog');
   const backlog = board.todo.filter((x) => x.kind === 'backlog');
   parts.push(el('h4', {}, w.todo(todo.length)), boardList(todo, lang, el));
-  if (backlog.length) parts.push(el('details', {}, el('summary', {}, w.backlog(backlog.length)), boardList(backlog, lang, el)));
-  parts.push(el('h4', {}, w.done), boardList(board.done, lang, el, true));
-  if (board.closed.length) parts.push(el('details', {}, el('summary', {}, w.closed(board.closed.length)), boardList(board.closed, lang, el, true)));
-  if (board.parked.length) parts.push(el('details', {}, el('summary', {}, w.parked(board.parked.length)), boardList(board.parked, lang, el)));
+  if (backlog.length) parts.push(el('details', {}, el('summary', {}, w.backlog(backlog.length)), boardList(backlog, lang, el, { first: 50 })));
+  parts.push(el('h4', {}, w.done), boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5 }));
+  if (board.closed.length) parts.push(el('details', {}, el('summary', {}, w.closed(board.closed.length)), boardList(board.closed, lang, el, { mark: '✓', dated: true, first: 50 })));
+  if (board.parked.length) parts.push(el('details', {}, el('summary', {}, w.parked(board.parked.length)), boardList(board.parked, lang, el, { mark: '·', first: 50 })));
+  if (board.pending) parts.push(el('div', { class: 'muted small' }, w.pending(board.pending)));
   return el('div', { class: 'board' }, parts);
 }
 

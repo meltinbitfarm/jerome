@@ -90,7 +90,7 @@ test('the viewer listens on 127.0.0.1 and refuses requests without the token, fr
   assert.doesNotMatch(page.body, /<script src=/);
   // The project's board, in the user's language; with no open.md, nothing to rewrite and nothing started.
   const b = JSON.parse((await get('/api/board')).body);
-  assert.deepEqual(b.board, { now: null, last: null, todo: [], done: [], closed: [], parked: [] });
+  assert.deepEqual(b.board, { now: null, last: null, todo: [], done: [], closed: [], parked: [], pending: 0 });
   assert.ok(['en', 'it'].includes(b.language));
 });
 
