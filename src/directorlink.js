@@ -2,7 +2,7 @@
 // and the beat the watchdog sends every minute. The Mac's private key never leaves it; the Director's key is pinned
 // at connect, once Fabio has compared its fingerprint, and any response not signed with it is ignored (D146). What
 // the beat carries is listed in D147: percentages, the projects' state and their finished runs, never a credential,
-// code, prompts, transcripts or paths.
+// code, prompts, transcripts or paths; and, since D177, each project's board: the texts of its work items and runs.
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -18,6 +18,8 @@ import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { openAlerts } from './alerts.js';
 import { scrub } from './scrub.js';
 import { lang } from './i18n.js';
+import { projectBoard } from './board.js';
+import { createHash } from 'node:crypto';
 import { projectStatus, projectOver } from './budget.js';
 import { lockHolder, cacheDir } from './runstate.js';
 
@@ -161,6 +163,9 @@ export async function disconnect({ env = process.env } = {}) {
 }
 
 const cut = (text, n) => scrub(text).slice(0, n);
+// A board is sent again after this, even unchanged; the boards of one beat stay under this many characters.
+const BOARD_RESEND_MS = 30 * 60_000;
+const BOARD_BYTES = 150_000;
 const real = (p) => {
   try {
     return realpathSync(p);
@@ -239,6 +244,11 @@ export async function directorBeat({ env = process.env, now = new Date(), log = 
   const filled = new Set(governorSettings(account).projects.map(real));
   const projects = [];
   const runs = [];
+  const code = lang(env);
+  // The boards (D177) go when they changed, or every half hour in case the Director lost one, the oldest sent first,
+  // as many as the beat's size allows.
+  state.boards ??= {};
+  const boards = [];
   for (const s of stores()) {
     if (s.orphan || !s.record?.path || !existsSync(join(s.record.path, MARKER))) continue;
     try {
@@ -246,12 +256,25 @@ export async function directorBeat({ env = process.env, now = new Date(), log = 
       if (!b) continue;
       projects.push(b.project);
       runs.push(...b.runs);
+      const board = { key: s.key, ...projectBoard(s.record.path, { now, code }) };
+      const sum = createHash('sha256').update(JSON.stringify(board)).digest('hex').slice(0, 16);
+      const sent = state.boards[s.key];
+      if (!sent || sent.hash !== sum || now.getTime() - Date.parse(sent.at) > BOARD_RESEND_MS) boards.push({ board, sum, at: sent?.at ?? '' });
     } catch (err) {
       log(`director: ${s.key} left out of the beat: ${err.message}`);
     }
   }
   const sendQuota = quota && quota.readAt !== state.quotaReadAt;
-  const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), language: lang(env), quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50) });
+  const sending = [];
+  let size = 0;
+  for (const b of boards.sort((x, y) => x.at.localeCompare(y.at))) {
+    const n = JSON.stringify(b.board).length;
+    if (size + n > BOARD_BYTES) continue;
+    size += n;
+    sending.push(b);
+  }
+  const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), language: code, quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50),
+    boards: sending.map((b) => b.board) });
   const problem = r.error ?? (r.status >= 400 ? r.data.error : null);
   if (problem) {
     if (problem !== state.lastError) log(`director: ${problem}`);
@@ -261,6 +284,7 @@ export async function directorBeat({ env = process.env, now = new Date(), log = 
   }
   if (state.lastError || state.status !== 'approved') log('director: beat answered');
   for (const run of runs.slice(0, 50)) state.cursors[run.project] = Math.max(state.cursors[run.project] ?? 0, run.id);
+  for (const b of sending) state.boards[b.board.key] = { hash: b.sum, at: now.toISOString() };
   writeState({ ...state, status: 'approved', lastOk: now.toISOString(), lastError: null, lastErrorAt: null, quotaReadAt: sendQuota ? quota.readAt : state.quotaReadAt });
   return r.data;
 }

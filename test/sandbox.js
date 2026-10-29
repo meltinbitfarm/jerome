@@ -29,6 +29,13 @@ case "$1" in
       while [ "$#" -gt 0 ]; do [ "$1" = "--add-dir" ] && : > "$2/.jerome/docs-queue.md"; shift; done
       echo '{"type": "result", "is_error": false, "result": "Integrated the entries."}'; exit 0;;
     esac
+    # The boards' plain texts (D177): each item given back as "plain: <text>", or FAKE_PLAIN_FAIL to fail.
+    case " $* " in *"You rewrite the work notes"*)
+      [ -n "$FAKE_PLAIN_FAIL" ] && { echo "plain failed" >&2; exit 1; }
+      echo x >> "$HOME/plain-calls.log"
+      "$FAKE_NODE" -e 'const p = process.argv.find((a) => a.includes("Items:\\n")); const items = JSON.parse(p.split("Items:\\n")[1]); console.log(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify(Object.fromEntries(Object.entries(items).map(([k, t]) => [k, "plain: " + t]))) }))' -- "$@"
+      exit 0;;
+    esac
     # A heartbeat's triage: no tools, on Haiku, streamed. FAKE_TRIAGE is the JSON verdict it gives; FAKE_TRIAGE_WINDOW,
     # a 5-hour utilization such as 0.33, adds a rate_limit_event before the result.
     case " $* " in *" --model haiku "*)

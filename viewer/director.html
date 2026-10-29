@@ -27,9 +27,11 @@
   <section id="todo" hidden></section>
   <section id="projects"></section>
   <section id="quota"></section>
+  <div id="legend"></div>
   <details id="details"><summary id="details-title"></summary><div id="details-body"></div></details>
   <footer id="footer"></footer>
 </main>
+<script src="board.js"></script>
 <script>
 'use strict';
 // The token is in the address's fragment, which the browser never sends: the page passes it in a header.
@@ -39,6 +41,8 @@ const REFRESH_MS = 30_000;
 const SILENT_MIN = 15;
 let data = null;
 const filters = { mac: '', project: '' };
+// The projects whose board is open, kept across refreshes.
+const opened = new Set();
 
 // The page's own words, in the user's language (D163); the server writes the blocks' sentences.
 const WORDS = {
@@ -54,6 +58,7 @@ const WORDS = {
     silent: (mac, since) => `The Mac ${mac} has not been heard from since ${since}. Is it on and connected?`,
     pending: (mac) => `The Mac ${mac} waits for your approval: \`jerome director approve\` on the server.`,
     projects: 'Projects',
+    board: 'work: now, to do, done',
     noProjects: 'No project yet: connect a Mac with `jerome connect`.',
     state: { running: 'working now', stuck: 'stopped, needs you', retrying: 'hit a snag, trying again by itself', asking: 'waiting for your answer', paused: 'paused at its limit', idle: 'waiting for its next turn' },
     next: (s) => `turns: ${s}`,
@@ -89,6 +94,7 @@ const WORDS = {
     silent: (mac, since) => `Il Mac ${mac} non si sente da ${since}. È acceso e in rete?`,
     pending: (mac) => `Il Mac ${mac} aspetta la tua approvazione: \`jerome director approve\` sul server.`,
     projects: 'Progetti',
+    board: 'lavoro: adesso, da fare, fatto',
     noProjects: 'Ancora nessun progetto: collega un Mac con `jerome connect`.',
     state: { running: 'sta lavorando', stuck: 'fermo, serve te', retrying: 'ha trovato un intoppo, riprova da solo', asking: 'aspetta una tua risposta', paused: 'in pausa al suo limite', idle: 'aspetta il prossimo turno' },
     next: (s) => `turni: ${s}`,
@@ -200,7 +206,7 @@ function renderProjects() {
   const rows = [...data.projects].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name)).map((p) => {
     const h = p.lastDone;
     // A run that resumed has the runner's why for a reason, not a task.
-    const last = h ? W.lastWork(ago(h.at), /^resume:/.test(h.reason ?? '') ? W.resumed : h.reason) : W.noWork;
+    const last = h ? W.lastWork(ago(h.at), !h.plain && /^resume:/.test(h.reason ?? '') ? W.resumed : h.reason) : W.noWork;
     // A snag it is retrying: the sentence for a person, not the runner's reason.
     const snag = p.state === 'retrying' && p.blocks.length ? el('div', { class: 'warn small' }, p.blocks[0].text) : null;
     return el('div', { class: 'row-card' },
@@ -210,9 +216,18 @@ function renderProjects() {
         data.machines.length > 1 ? el('span', { class: 'muted small' }, p.machine) : null),
       snag,
       el('div', { class: 'muted small clip' }, last),
-      p.slots.length ? el('div', { class: 'muted small' }, W.next(p.slots.map((s) => s.at).join(' · '))) : null);
+      p.slots.length ? el('div', { class: 'muted small' }, W.next(p.slots.map((s) => s.at).join(' · '))) : null,
+      board(p));
   });
   fill('projects', title(W.projects), rows);
+}
+
+// The project's board (D177), closed until opened: what it does now, what is left, what was done.
+function board(p) {
+  const id = `${p.machine}/${p.key}`;
+  const box = el('details', { class: 'project-board', open: opened.has(id) }, el('summary', {}, W.board), boardView(p.board, { lang: data.language, el }));
+  box.addEventListener('toggle', () => { if (box.open) opened.add(id); else opened.delete(id); });
+  return box;
 }
 
 function renderQuota() {
@@ -364,6 +379,7 @@ function render() {
   renderTodo(items);
   renderProjects();
   renderQuota();
+  fill('legend', legendView(data.language, el));
   // The details keep their state, open or closed, across refreshes.
   renderDetails();
   fill('footer', `Jérôme Director ${data.version} · ${W.readOnly}`);

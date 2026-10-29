@@ -316,6 +316,8 @@ Then (0.10.1, D172, D175): the bridge listens for most of each minute (long poll
 
 Then (0.10.2, D176): a fill run is not started in a project whose slot comes before it could end, so the slot's run never finds the project locked; a project with no goal or success criteria works on its open items instead of doing nothing; a slot's own work comes first.
 
+Then (0.11.0, D177): each project has a board — now, to do, done — at the top of `jerome view` and under each project on the Director's dashboard, its texts in plain words in the user's language (Haiku, once per text, kept on the Mac), with a legend of the IDs and the pages' words. See docs/board.md.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

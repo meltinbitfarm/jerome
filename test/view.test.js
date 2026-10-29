@@ -85,6 +85,13 @@ test('the viewer listens on 127.0.0.1 and refuses requests without the token, fr
   // The shared stylesheet is put inline: a <link> would not carry the token.
   assert.match(page.body, /<style>[\s\S]*prefers-color-scheme: dark[\s\S]*<\/style>/);
   assert.doesNotMatch(page.body, /<link rel="stylesheet"/);
+  // The board's script (D177) too.
+  assert.match(page.body, /<script>[\s\S]*function boardView[\s\S]*<\/script>/);
+  assert.doesNotMatch(page.body, /<script src=/);
+  // The project's board, in the user's language; with no open.md, nothing to rewrite and nothing started.
+  const b = JSON.parse((await get('/api/board')).body);
+  assert.deepEqual(b.board, { now: null, last: null, todo: [], done: [], closed: [], parked: [] });
+  assert.ok(['en', 'it'].includes(b.language));
 });
 
 test('/api/state serves the state with the team, the thresholds and room for project limits, and answers 304 when unchanged', async () => {

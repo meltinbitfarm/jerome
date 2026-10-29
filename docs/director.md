@@ -21,7 +21,8 @@ The Director is built so that nobody can intercept the subscription's tokens or 
 - **What a Mac sends:**
   - the quota as percentages and reset times;
   - its projects' state: name, slots, open alerts and requests as short texts, usage, last heartbeat;
-  - its finished runs.
+  - its finished runs;
+  - each project's board (D177): what it does now and with which agents, its open items, its recent work, its closed items and parked ideas, as short texts in plain words. It goes when it changes, and every half hour.
 
   Never the subscription's token or any credential, code, prompts, transcripts, file paths or file contents. Every text is scrubbed before it leaves: an absolute path becomes `…/` and its last name.
 - **The Director never contacts a Mac.** It only answers, and nothing listens on the Macs.
@@ -30,7 +31,7 @@ The Director is built so that nobody can intercept the subscription's tokens or 
 - **What it refuses:**
   - a request replayed, or more than 5 minutes off the Director's clock;
   - one from a Mac it does not know, one waiting for approval, or one revoked;
-  - a body with a field it does not know, or over 64 KB.
+  - a body with a field it does not know, or over 256 KB.
 - **You approve each Mac** on the server, by a code the Mac shows, and you can revoke it.
 
 ## Setting it up

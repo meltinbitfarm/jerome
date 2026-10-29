@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 export const LANGUAGES = { en: 'English', it: 'Italiano' };
 // The names the lead agent's prompt, in English, gives them.
 const ENGLISH_NAMES = { en: 'English', it: 'Italian' };
+export const englishName = (code) => ENGLISH_NAMES[code] ?? 'English';
 
 // The lead agent's line on the user's language, for its prompt: null in English.
 export function leadLanguageLine(code = lang()) {

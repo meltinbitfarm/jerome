@@ -17,10 +17,14 @@ import { notProjectHint, STATE } from './paths.js';
 import { stores } from './store.js';
 import { readProjects } from './projects.js';
 import { liveRun } from './live.js';
+import { projectBoard, boardTexts } from './board.js';
+import { queuePlain } from './plain.js';
+import { lang } from './i18n.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'index.html');
 const PROJECTS_PAGE = join(import.meta.dirname, '..', 'viewer', 'projects.html');
 const STYLE = join(import.meta.dirname, '..', 'viewer', 'style.css');
+const BOARD_SCRIPT = join(import.meta.dirname, '..', 'viewer', 'board.js');
 const RUNS = 50;
 
 export async function view(dirArg, { port = 0, open = true } = {}) {
@@ -145,6 +149,13 @@ function routeProject(dir, token, path, req, res) {
     const state = readState(dir, { runs: RUNS, readOnly: true });
     return send(res, 200, { ...state, pricesDate: PRICES_DATE }, { etag: tag });
   }
+  // The project's board (D177), in the user's language.
+  if (path === '/api/board') {
+    const code = lang();
+    // The texts not yet in plain words are rewritten apart, for the next refresh; without the watchdog too.
+    queuePlain(boardTexts(dir, { code }), { code });
+    return send(res, 200, { language: code, board: projectBoard(dir, { code }) });
+  }
   const run = path.match(/^\/api\/runs\/(\d+)$/);
   if (run) return send(res, 200, runDetail(dir, Number(run[1])));
   // The live view of a run (D115), asked every 2 seconds while it runs.
@@ -156,7 +167,8 @@ function routeProject(dir, token, path, req, res) {
 // The two pages share one stylesheet, put inline when served: every request needs the token, a <link> would not
 // carry it.
 function sendPage(res, page) {
-  const html = readFileSync(page, 'utf8').replace('<link rel="stylesheet" href="style.css">', () => `<style>\n${readFileSync(STYLE, 'utf8')}</style>`);
+  const html = readFileSync(page, 'utf8').replace('<link rel="stylesheet" href="style.css">', () => `<style>\n${readFileSync(STYLE, 'utf8')}</style>`)
+    .replace('<script src="board.js"></script>', () => `<script>\n${readFileSync(BOARD_SCRIPT, 'utf8')}</script>`);
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
   return res.end(html);
 }

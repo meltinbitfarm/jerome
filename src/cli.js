@@ -19,6 +19,7 @@ import { forget } from './forget.js';
 import { projects } from './projects.js';
 import { note } from './notes.js';
 import { setup as telegramSetup, off as telegramOff, telegramStatus, telegramTest } from './telegram.js';
+import { runPlain } from './plain.js';
 import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
 import { governor, governorStatus, quota } from './governor.js';
 import { language } from './i18n.js';
@@ -154,7 +155,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token'], connect: ['name'], disconnect: [] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token'], connect: ['name'], disconnect: [], plain: [] };
 
 export async function main(argv) {
   let parsed;
@@ -283,6 +284,10 @@ export async function main(argv) {
       if (action === 'off') return telegramOff();
       return usageError('jerome telegram takes setup, status, test or off.');
     }
+    // The watchdog's worker for the boards' plain texts (D177): not for people, so not in the usage.
+    case 'plain':
+      if (rest.length !== 1 || !/^[a-z]{2}$/.test(rest[0])) return usageError('jerome plain takes a language code.');
+      return runPlain(rest[0]);
     case 'watchdog': {
       const action = rest[0];
       if (rest.length !== 1) return usageError('jerome watchdog takes install, uninstall, status or run.');

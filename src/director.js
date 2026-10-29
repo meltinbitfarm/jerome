@@ -15,7 +15,8 @@ import { VERSION } from './template.js';
 import { serveDashboard } from './dashboard.js';
 
 export const DEFAULT_PORT = 7788;
-const MAX_BODY = 64 * 1024;
+// A beat with boards (D177) is larger than one without.
+const MAX_BODY = 256 * 1024;
 const RATE_PER_MIN = 20;
 const MAX_PENDING = 5;
 const KEEP_DAYS = 90;
@@ -108,7 +109,8 @@ export function openDirectorDb(env = process.env) {
     CREATE INDEX IF NOT EXISTS readings_at ON readings (read_at);
     CREATE TABLE IF NOT EXISTS runs (machine TEXT NOT NULL, project TEXT NOT NULL, run_id INTEGER NOT NULL, ended_at TEXT,
       data TEXT NOT NULL, PRIMARY KEY (machine, project, run_id));
-    CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS boards (machine TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (machine, key));`);
   // Added with the dashboard in the user's language (D163).
   if (!db.prepare('PRAGMA table_info(machines)').all().some((c) => c.name === 'language')) db.exec('ALTER TABLE machines ADD COLUMN language TEXT');
   return db;
@@ -119,6 +121,14 @@ export function openDirectorDb(env = process.env) {
 const WINDOW = { used: 'number', 'resetsAt?': 'number', 'readAt?': 'string:40', 'source?': 'string:20' };
 const POINTS = { 'five_hour?': 'number', 'seven_day?': 'number' };
 const USAGE = { tokens: 'number', usd: 'number' };
+// A project's board (D177): texts only, each cut on the Mac.
+const ITEM = { 'id?': 'string:12', text: 'string:600', 'kind?': 'string:12', 'at?': 'string:40' };
+const BOARD = {
+  key: 'string:120',
+  'now?': { startedAt: 'string:40', 'task?': 'string:600', agents: [{ name: 'string:60', 'what?': 'string:600', status: 'string:20' }, 20] },
+  'last?': { at: 'string:40', text: 'string:600' },
+  todo: [ITEM, 60], done: [ITEM, 15], closed: [ITEM, 20], parked: [ITEM, 20],
+};
 const SHAPES = {
   hello: { name: 'string:60', publicKey: 'string:400', version: 'string:20' },
   beat: {
@@ -145,6 +155,7 @@ const SHAPES = {
       project: 'string:120', id: 'number', kind: 'string:10', 'model?': 'string:60', startedAt: 'string:40', 'endedAt?': 'string:40',
       status: 'string:20', reason: 'string:300', 'quota?': { before: POINTS, after: POINTS },
     }, 50],
+    'boards?': [BOARD, 100],
   },
 };
 
@@ -270,6 +281,10 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
       if (body.quota && !db.prepare('SELECT 1 FROM readings WHERE machine = ? AND read_at = ?').get(id, body.quota.readAt)) {
         db.prepare('INSERT INTO readings (machine, read_at, data) VALUES (?, ?, ?)').run(id, body.quota.readAt, JSON.stringify(body.quota));
       }
+      for (const b of body.boards ?? []) db.prepare('INSERT OR REPLACE INTO boards (machine, key, data, updated_at) VALUES (?, ?, ?, ?)').run(id, b.key, JSON.stringify(b), at);
+      // A project the Mac no longer has takes its board with it.
+      const keys = body.projects.map((p) => p.key);
+      db.prepare(`DELETE FROM boards WHERE machine = ? AND key NOT IN (${keys.map(() => '?').join(', ') || "''"})`).run(id, ...keys);
       for (const r of body.runs) db.prepare('INSERT OR REPLACE INTO runs (machine, project, run_id, ended_at, data) VALUES (?, ?, ?, ?, ?)').run(id, r.project, r.id, r.endedAt ?? null, JSON.stringify(r));
       const old = new Date(now() - KEEP_DAYS * 86_400_000).toISOString();
       db.prepare('DELETE FROM readings WHERE read_at < ?').run(old);

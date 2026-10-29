@@ -23,6 +23,7 @@
   <div id="error" class="error" hidden></div>
   <div id="live" hidden></div>
   <div id="overview">
+  <section id="board"></section>
   <section id="windows"></section>
   <section id="cards"></section>
   <section id="areas" hidden></section>
@@ -34,6 +35,7 @@
   </div>
   <footer id="footer"></footer>
 </main>
+<script src="board.js"></script>
 <script>
 'use strict';
 const token = new URLSearchParams(location.search).get('t') || '';
@@ -363,8 +365,29 @@ function render(d) {
   fill('footer', `# Dollar amounts are API equivalents at the list prices of ${d.pricesDate}: a subscription is not billed per token. Read-only: the viewer never writes anything.`);
 }
 
+// The project's board (D177) at the top, in the user's language, with the legend.
+let lastBoard = '';
+async function refreshBoard() {
+  try {
+    const res = await fetch(api('/api/board'), { cache: 'no-store' });
+    const text = await res.text();
+    if (!res.ok || text === lastBoard) return;
+    lastBoard = text;
+    const { language, board } = JSON.parse(text);
+    const box = document.getElementById('board');
+    const open = [...box.querySelectorAll('details')].map((d) => d.open);
+    fill('board', el('h2', {}, el('span', { class: 'ps' }, '$'), el('span', { class: 'cmd' }, language === 'it' ? 'il lavoro' : 'the work')),
+      boardView(board, { lang: language, el }), legendView(language, el));
+    // Opened parts stay open across refreshes.
+    box.querySelectorAll('details').forEach((d, i) => { if (open[i]) d.open = true; });
+  } catch {
+    // The rest of the page still shows.
+  }
+}
+
 let last = '';
 async function refresh() {
+  refreshBoard();
   try {
     const res = await fetch(api('/api/state'), { cache: 'no-cache' });
     const text = await res.text();

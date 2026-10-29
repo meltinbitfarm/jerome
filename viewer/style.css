@@ -148,3 +148,22 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
 .dash > details > summary { cursor: pointer; color: var(--muted); }
 .dash h3 { font: inherit; font-weight: 700; margin: 14px 0 6px; }
 .dash header select { font: inherit; }
+
+/* A project's board (D177), on the dashboard and in the project's viewer: plain lines, the IDs as small tags. */
+.tag { display: inline-block; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; margin-right: 1ch; line-height: 1.4; cursor: help; }
+.board h4 { font: inherit; font-weight: 700; margin: 10px 0 2px; }
+.board-list { list-style: none; margin: 0; padding: 0; }
+.board-list li { padding: 3px 0; border-bottom: 1px dotted var(--line); overflow-wrap: anywhere; }
+.board-list li:last-child { border-bottom: 0; }
+.board-now { border-left: 3px solid var(--cyan); padding: 4px 0 4px 1.5ch; margin: 4px 0 6px; }
+.project-board { margin-top: 4px; }
+.project-board > .board { padding: 2px 0 6px 2ch; }
+.legend dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 2ch; margin: 6px 0; }
+.legend dt { font-weight: 700; }
+.legend dd { margin: 0; color: var(--muted); }
+@media (max-width: 600px) {
+  .legend dl { grid-template-columns: 1fr; }
+  .legend dd { margin-bottom: 6px; }
+  .project-board > .board { padding-left: 0; }
+}
+.dash #legend { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }

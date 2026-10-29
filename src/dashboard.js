@@ -14,6 +14,7 @@ import { LANGUAGES } from './i18n.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'director.html');
 const STYLE = join(import.meta.dirname, '..', 'viewer', 'style.css');
+const BOARD_SCRIPT = join(import.meta.dirname, '..', 'viewer', 'board.js');
 const ICON = join(import.meta.dirname, '..', 'viewer', 'director-icon.png');
 const WEEK_MS = 7 * 86_400_000;
 // A Mac whose last beat is older than this is shown as unreachable: it beats every minute.
@@ -36,7 +37,8 @@ export function serveDashboard(req, res, { db, token, now = new Date() }) {
     const nonce = randomBytes(16).toString('base64');
     const html = readFileSync(PAGE, 'utf8')
       .replace('<link rel="stylesheet" href="style.css">', () => `<style nonce="${nonce}">\n${readFileSync(STYLE, 'utf8')}</style>`)
-      .replace('<script>', `<script nonce="${nonce}">`);
+      .replace('<script>', `<script nonce="${nonce}">`)
+      .replace('<script src="board.js"></script>', () => `<script nonce="${nonce}">\n${readFileSync(BOARD_SCRIPT, 'utf8')}</script>`);
     res.writeHead(200, {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
@@ -128,13 +130,17 @@ export function overview(db, now = new Date()) {
       const alert = { reason: a.reason, count: a.count ?? 1, openedAt: a.openedAt ?? now.toISOString() };
       return { id: a.id, text: blockMessage(a.reason, spoken), since: howLong(alert, now, spoken), lasting: lasting(alert, now) };
     });
+    // The project's board (D177), as its Mac last sent it.
+    const board = parse(db.prepare('SELECT data FROM boards WHERE machine = ? AND key = ?').get(p.machine, p.key)?.data ?? 'null');
     const state = data.running ? 'running' : blocks.some((b) => b.lasting) ? 'stuck' : blocks.length ? 'retrying'
       : (data.requests ?? []).length ? 'asking' : data.overLimit ? 'paused' : 'idle';
     return {
       ...data,
       blocks,
       state,
-      lastDone: lastDone ? { at: lastDone.endedAt ?? lastDone.startedAt, reason: lastDone.reason } : null,
+      // The last work in plain words when the board has it (D177), else as the runner wrote it.
+      lastDone: lastDone ? { at: lastDone.endedAt ?? lastDone.startedAt, reason: board?.last?.at === lastDone.endedAt ? board.last.text : lastDone.reason, plain: board?.last?.at === lastDone.endedAt } : null,
+      board,
       machine: names.get(p.machine),
       runs7d: mine.length,
       fill7d: mine.filter((r) => r.kind === 'fill').length,

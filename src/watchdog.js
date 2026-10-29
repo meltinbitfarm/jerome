@@ -21,7 +21,10 @@ import { announceLost, tidyStale } from './heartbeat.js';
 import { bridgeTick, readConfig } from './telegram.js';
 import { governorTick } from './governor.js';
 import { directorBeat } from './directorlink.js';
+import { boardTexts } from './board.js';
+import { queuePlain } from './plain.js';
 import { quotaWatch } from './quotawatch.js';
+import { lang } from './i18n.js';
 
 export { WATCHDOG_LABEL } from './schedule.js';
 import { WATCHDOG_LABEL } from './schedule.js';
@@ -49,6 +52,8 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
     // Nothing seen yet.
   }
   const week = now.getTime() - 8 * 86_400_000;
+  const code = lang(env);
+  const boardWords = new Set();
   for (const s of stores()) {
     const dir = s.record?.path;
     if (s.orphan || !dir || !existsSync(join(dir, MARKER))) continue;
@@ -75,11 +80,18 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
         db.close();
       }
       tidyStale(dir, now);
+      // The board's texts the user has not had in plain words yet (D177).
+      for (const text of boardTexts(dir, { now, code })) boardWords.add(text);
       // Every minute, the blocks that have lasted reach the user (D160), even with no heartbeat running.
       announceAlerts(dir, { env, config, now, log: say });
     } catch (err) {
       log(`${s.key} watchdog error: ${err.message}`);
     }
+  }
+  try {
+    await queuePlain([...boardWords], { code, env });
+  } catch (err) {
+    log(`plain texts error: ${err.message}`);
   }
   seen = Object.fromEntries(Object.entries(seen).filter(([, at]) => Date.parse(at) > week));
   mkdirSync(dirname(seenPath()), { recursive: true });

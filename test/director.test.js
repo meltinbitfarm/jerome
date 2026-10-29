@@ -76,7 +76,7 @@ async function startDirector() {
 }
 
 function mac(name) {
-  const p = readyProject({ JEROME_NOTIFY: 'off' });
+  const p = readyProject({ JEROME_NOTIFY: 'off', JEROME_PLAIN_SYNC: '1' });
   const endpoint = join(p.root, 'usage.json');
   writeFileSync(endpoint, JSON.stringify({
     five_hour: { utilization: 14, resets_at: new Date(Date.now() + 2 * H).toISOString() },
@@ -144,6 +144,21 @@ test('a Mac connects after Fabio compares the fingerprint, waits for approval, t
   assert.equal(runs.length, 1);
   assert.equal(JSON.parse(runs[0].data).project, data.key);
 
+  // The project's board (D177) goes with the beat when it changes, its texts in plain words once rewritten.
+  writeFileSync(join(m.dir, '.jerome', 'open.md'), '# Open\n\n## To do\nO3: add the archive page (developer)\n');
+  m.beat();
+  m.beat();
+  const db3 = d.db();
+  const boards = db3.prepare('SELECT key, data FROM boards').all();
+  db3.close();
+  assert.equal(boards.length, 1);
+  assert.equal(boards[0].key, data.key);
+  const board = JSON.parse(boards[0].data);
+  assert.deepEqual(board.todo, [{ id: 'O3', text: 'plain: add the archive page (developer)', kind: 'todo' }]);
+  assert.ok(!boards[0].data.includes(m.root), 'no path leaves the Mac');
+  const state = JSON.parse(readFileSync(join(m.root, '.cache', 'jerome', 'director', 'state.json'), 'utf8'));
+  assert.ok(state.boards[data.key].hash);
+
   // Revoked: refused from then on, and the Mac knows it.
   assert.equal(d.cli('revoke', 'mini').status, 0);
   m.beat();
@@ -180,7 +195,7 @@ test('forged, replayed, late or unsigned requests are refused, and a Mac trusts 
   assert.deepEqual(await refusal(await post(tampered, body.replace('"0"', '"1"'))), [401, 'bad signature']);
   const extra = JSON.stringify({ ...JSON.parse(body), command: 'rm -rf ~' });
   assert.deepEqual(await refusal(await post(signed({ body: extra }), extra)), [400, 'body.command is not a field the Director knows']);
-  const big = 'x'.repeat(70 * 1024);
+  const big = 'x'.repeat(260 * 1024);
   assert.equal((await post(signed({ body: big }), big)).status, 413);
   assert.equal((await fetch(`${d.url}/v1/anything`)).status, 404);
   assert.match(d.log(), /refused \/v1\/beat from [0-9A-F-]+: request replayed/);
@@ -206,6 +221,9 @@ test('the dashboard is a page under a strict policy, its data only with the toke
   assert.ok(html.includes(`<script nonce="${nonce}">`) && html.includes(`<style nonce="${nonce}">`));
   assert.ok(!html.includes(token), 'the page holds no secret');
   assert.ok(!/innerHTML/.test(html), 'every text is set with textContent');
+  // The boards' script (D177) is inline under the same nonce: the policy loads nothing else.
+  assert.ok(html.includes('function boardView') && !html.includes('<script src='));
+  assert.equal(html.match(/<script nonce=/g).length, 2);
 
   const icon = await fetch(`${d.url}/apple-touch-icon.png`);
   assert.equal(icon.headers.get('content-type'), 'image/png');
