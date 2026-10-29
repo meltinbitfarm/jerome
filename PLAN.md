@@ -356,6 +356,8 @@ Then (0.12.5, D190): `jerome update` writes nothing while a heartbeat runs in th
 
 Then (0.13.0, D191): the Director's dashboard answers requests (a tap or the user's words), sends notes and clears blocks with their buttons, as orders the Mac takes in its beat, checks and runs, each told on Telegram.
 
+Then (0.13.1): a Mac's beat carries `results` only when it has some, so a Director not yet updated keeps accepting it.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

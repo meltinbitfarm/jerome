@@ -278,7 +278,8 @@ export async function directorBeat({ env = process.env, now = new Date(), log = 
   state.orders ??= { done: {}, unsent: [] };
   const unsent = state.orders.unsent.slice(0, 50);
   const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), language: code, quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50),
-    boards: sending.map((b) => b.board), results: unsent.length ? unsent : null });
+    // Only when there is one: a Director from before 0.13.0 refuses a field it does not know.
+    boards: sending.map((b) => b.board), ...(unsent.length ? { results: unsent } : {}) });
   const problem = r.error ?? (r.status >= 400 ? r.data.error : null);
   if (problem) {
     if (problem !== state.lastError) log(`director: ${problem}`);
