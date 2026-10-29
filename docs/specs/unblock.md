@@ -1,6 +1,6 @@
 # Unblocking from afar
 
-Status: approved by Fabio on 2026-10-28 (D166-D169). Steps 1-3 built in 0.9.0; pausing a project from afar left out, since Jérôme has no pause of its own yet (an area's pace can be `paused`).
+Status: approved by Fabio on 2026-10-28 (D166-D169). Steps 1-3 built in 0.9.0, step 4 in 0.13.0 with answers and notes too (D191); pausing a project from afar left out, since Jérôme has no pause of its own yet (an area's pace can be `paused`).
 
 ## Why
 

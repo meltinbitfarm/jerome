@@ -22,6 +22,7 @@ Only what needs you (D160, D161), from every project, with its name first, in [y
 - decision requests, opened by a heartbeat or in a session, with their options as buttons;
 - [blocks](heartbeat.md#alerts) that last (three runs in a row or six hours), as one sentence with the one thing to do, then once a day while they stay open; this includes [missed starts](heartbeat.md#missed-starts) and [lost runs](heartbeat.md#lost-runs) that go on;
 - the weekly quota running fast: when it rose in the last 24 hours by more than twice the pace that ends the week at its target, once a day at most, with when it would run out at that speed (D164). It needs no governor: the watchdog reads the quota itself, on this Mac only.
+- each answer, note or action sent from the [Director's dashboard](director.md#acting-from-the-dashboard), once the Mac has run it, so an order you did not send is seen at once (D191).
 
 Never a runner's reason, a path, a token count, a single failed run or a pause for a limit: those are in `jerome heartbeat status` and on the [Director's dashboard](director.md). `/status` answers with the open requests and blocks of every project, in the same words, and the quota.
 

@@ -142,7 +142,7 @@ With Telegram set up, you get only what needs you, from every project:
 - a **problem** that lasts, as one sentence with buttons that fix it from afar: allow a tool, trust a folder, commit your changes, try again with a bigger budget, skip that work;
 - a warning when the week's quota is running out too fast.
 
-You can also send a project a **note**, such as `#my-project the pricing page should mention the free plan`. It is read at the next run or session. `/status` lists what waits for you everywhere. The bridge has no model behind it: it costs no tokens, and what you write is always data, never an instruction. To talk to the lead agent itself from the phone, use Claude Code's Remote Control on a session. See [docs/telegram.md](docs/telegram.md).
+You can also send a project a **note**, such as `#my-project the pricing page should mention the free plan`. It is read at the next run or session. `/status` lists what waits for you everywhere. The bridge has no model behind it: it costs no tokens, and what you write is always data, never an instruction. The [Director's dashboard](docs/director.md#acting-from-the-dashboard), if you use one, does the same from a browser. To talk to the lead agent itself from the phone, use Claude Code's Remote Control on a session. See [docs/telegram.md](docs/telegram.md).
 
 ### Keeping an eye on things
 

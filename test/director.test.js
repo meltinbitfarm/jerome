@@ -2,9 +2,9 @@
 // requests a forger, a replayer or a revoked Mac would send.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -75,8 +75,8 @@ async function startDirector() {
   return { home, url: `http://127.0.0.1:${port}`, cli, db, log: () => out, fingerprint: fp };
 }
 
-function mac(name) {
-  const p = readyProject({ JEROME_NOTIFY: 'off', JEROME_PLAIN_SYNC: '1' });
+function mac(name, extra = {}) {
+  const p = readyProject({ JEROME_NOTIFY: 'off', JEROME_PLAIN_SYNC: '1', ...extra });
   const endpoint = join(p.root, 'usage.json');
   writeFileSync(endpoint, JSON.stringify({
     five_hour: { utilization: 14, resets_at: new Date(Date.now() + 2 * H).toISOString() },
@@ -201,7 +201,7 @@ test('forged, replayed, late or unsigned requests are refused, and a Mac trusts 
   assert.match(d.log(), /refused \/v1\/beat from [0-9A-F-]+: request replayed/);
 });
 
-test('the dashboard is a page under a strict policy, its data only with the token, and nothing it answers writes', async () => {
+test('the dashboard is a page under a strict policy, its data only with the token, and its only write is an order', async () => {
   const d = await startDirector();
   const m = mac('mini');
   assert.equal(m.connect(d.url).status, 0);
@@ -259,4 +259,97 @@ test('the dashboard is a page under a strict policy, its data only with the toke
   // A new token: the old one no longer opens it.
   assert.equal(d.cli('dashboard', '--new-token').status, 0);
   assert.equal((await fetch(`${d.url}/api/overview`, { headers: { authorization: `Bearer ${token}` } })).status, 403);
+});
+
+test('an order from the dashboard reaches the Mac in its beat, is checked and run there, told on Telegram, and its outcome shown (D191)', async () => {
+  const d = await startDirector();
+  const fake = mkdtempSync(join(tmpdir(), 'jerome-tg-'));
+  const m = mac('mini', { JEROME_TELEGRAM_FAKE: fake });
+  mkdirSync(join(m.root, '.config', 'jerome'), { recursive: true });
+  writeFileSync(join(m.root, '.config', 'jerome', 'telegram.json'), JSON.stringify({ token: '1:x', chatId: 7, chat: 'Fabio', bot: 'jerome_test_bot' }));
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  assert.equal(m.runIn(m.dir, 'request', 'open', '--question', 'Which host?', '--options', 'A) Fly.io / B) Render', '--recommendation', 'A').status, 0);
+  m.beat();
+  const token = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  const overview = async () => (await fetch(`${d.url}/api/overview`, { headers: auth })).json();
+  const send = (body, headers = auth) => fetch(`${d.url}/api/order`, { method: 'POST', headers, body: JSON.stringify(body) });
+
+  const o = await overview();
+  const ask = o.attention.find((a) => a.kind === 'request');
+  assert.deepEqual(ask.choices, ['A) Fly.io', 'B) Render']);
+  const where = { machine: ask.machineCode, project: ask.key };
+
+  // Refused: no token, a project or question that is not there, an option it does not have, an action no block offers.
+  assert.equal((await send({ ...where, kind: 'note', text: 'x' }, { 'content-type': 'application/json' })).status, 403);
+  assert.equal((await send({ ...where, project: 'nope', kind: 'note', text: 'x' })).status, 400);
+  assert.equal((await send({ ...where, kind: 'answer', ref: 99, choice: 0 })).status, 400);
+  assert.equal((await send({ ...where, kind: 'answer', ref: ask.id, choice: 5 })).status, 400);
+  assert.equal((await send({ ...where, kind: 'action', ref: 1, action: 'commit' })).status, 400);
+  assert.equal((await send({ ...where, kind: 'shell', text: 'rm -rf /' })).status, 400);
+  assert.equal((await send({ ...where, kind: 'note', text: 'x'.repeat(2001) })).status, 400);
+
+  // A tap on an option, the same tap again, and a note.
+  assert.equal((await send({ ...where, kind: 'answer', ref: ask.id, choice: 1 })).status, 201);
+  assert.equal((await send({ ...where, kind: 'answer', ref: ask.id, choice: 0 })).status, 409);
+  assert.equal((await send({ ...where, kind: 'note', text: 'The pricing page should mention the free plan.' })).status, 201);
+  const waiting = await overview();
+  assert.deepEqual(waiting.orders.map((x) => [x.kind, x.status]), [['note', 'pending'], ['answer', 'pending']]);
+  // Answered from here, the question leaves the page at once, before the Mac's next beat says it is closed.
+  assert.deepEqual(waiting.attention, []);
+  assert.equal(waiting.projects[0].state, 'idle');
+
+  // The next beat carries them; the Mac runs them under its own checks and reports at once.
+  m.beat();
+  const project = m.db();
+  const request = project.prepare('SELECT status, answer FROM requests WHERE id = ?').get(ask.id);
+  const notes = project.prepare('SELECT text, source FROM notes').all().map((n) => ({ ...n }));
+  project.close();
+  assert.deepEqual({ ...request }, { status: 'answered', answer: 'B) Render' });
+  assert.deepEqual(notes, [{ text: 'The pricing page should mention the free plan.', source: 'director' }]);
+  const after = await overview();
+  assert.deepEqual(after.orders.map((x) => [x.kind, x.status]), [['note', 'done'], ['answer', 'done']]);
+  assert.match(after.orders[1].result, /R\d+ answered: B\) Render/);
+  assert.match(m.watchdogLog(), /director: order \d+ done/);
+
+  // The user hears of each one on Telegram, so an order they did not send is seen at once.
+  m.beat();
+  const told = readFileSync(join(fake, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((c) => c.method === 'sendMessage').map((c) => c.params?.text ?? c.text ?? '');
+  assert.ok(told.some((x) => /From the Director's dashboard: R\d+ answered: B\) Render/.test(x) && /--new-token/.test(x)), told.join('\n---\n'));
+  assert.ok(told.some((x) => /From the Director's dashboard: note N\d+/.test(x)));
+
+  // Given again (its result lost), an order is reported, not run twice; one older than 10 minutes lapses unrun.
+  const w = new DatabaseSync(join(d.home, '.local', 'share', 'jerome-director', 'director.db'));
+  w.prepare("UPDATE orders SET status = 'pending' WHERE kind = 'note'").run();
+  w.prepare("INSERT INTO orders (machine, project, kind, text, created_at) VALUES (?, ?, 'note', 'stale', ?)").run(where.machine, where.project, new Date(Date.now() - 11 * 60_000).toISOString());
+  w.close();
+  m.beat();
+  const again = m.db();
+  assert.deepEqual(again.prepare('SELECT text FROM notes').all().map((n) => n.text), ['The pricing page should mention the free plan.']);
+  again.close();
+  const last = await overview();
+  assert.deepEqual(last.orders.map((x) => [x.kind, x.text, x.status]), [['note', 'stale', 'lapsed'], ['note', 'The pricing page should mention the free plan.', 'done'], ['answer', 'B) Render', 'done']]);
+
+  // A block's button: the action it offers, run on the Mac by the same code as on Telegram (D167).
+  writeFileSync(join(m.dir, 'draft.md'), 'mine\n');
+  m.git('add', 'draft.md');
+  m.git('commit', '-q', '-m', 'draft');
+  writeFileSync(join(m.dir, 'draft.md'), 'mine, changed\n');
+  const pw = m.writableDb();
+  pw.prepare("INSERT INTO alerts (key, reason, opened_at, last_at) VALUES ('k', 'uncommitted changes (draft.md) on main, not left by a heartbeat: commit or discard them', ?, ?)").run(new Date().toISOString(), new Date().toISOString());
+  pw.close();
+  m.beat();
+  const block = (await overview()).attention.find((a) => a.kind === 'block');
+  assert.deepEqual(block.actions.map((x) => x.name), ['commit', 'stash']);
+  assert.equal(block.actions[1].label, 'Set them aside');
+  assert.equal((await send({ ...where, kind: 'action', ref: block.id, action: 'budget' })).status, 400);
+  assert.equal((await send({ ...where, kind: 'action', ref: block.id, action: 'stash' })).status, 201);
+  assert.deepEqual((await overview()).attention, []);
+  m.beat();
+  assert.match(execFileSync('git', ['stash', 'list'], { cwd: m.dir, encoding: 'utf8' }), /set aside from afar/);
+  const closed = m.db();
+  assert.equal(closed.prepare('SELECT status FROM alerts WHERE id = ?').get(block.id).status, 'resolved');
+  closed.close();
+  assert.equal((await overview()).orders[0].status, 'done');
 });

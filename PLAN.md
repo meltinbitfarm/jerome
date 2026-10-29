@@ -354,6 +354,8 @@ Then (0.12.4, D189): `jerome.md` back under its budget, 1000 → 841 tokens: the
 
 Then (0.12.5, D190): `jerome update` writes nothing while a heartbeat runs in the project, instead of leaving its files uncommitted in the run's working tree.
 
+Then (0.13.0, D191): the Director's dashboard answers requests (a tap or the user's words), sends notes and clears blocks with their buttons, as orders the Mac takes in its beat, checks and runs, each told on Telegram.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

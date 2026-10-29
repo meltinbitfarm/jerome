@@ -22,6 +22,7 @@ import { projectBoard } from './board.js';
 import { createHash } from 'node:crypto';
 import { projectStatus, projectOver } from './budget.js';
 import { lockHolder, cacheDir } from './runstate.js';
+import { runOrders } from './orders.js';
 
 export function linkPath(env = process.env) {
   return join(env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'jerome', 'director.json');
@@ -273,8 +274,11 @@ export async function directorBeat({ env = process.env, now = new Date(), log = 
     size += n;
     sending.push(b);
   }
+  // Results of the dashboard's orders whose quick report did not get through go with the beat (D191).
+  state.orders ??= { done: {}, unsent: [] };
+  const unsent = state.orders.unsent.slice(0, 50);
   const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), language: code, quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50),
-    boards: sending.map((b) => b.board) });
+    boards: sending.map((b) => b.board), results: unsent.length ? unsent : null });
   const problem = r.error ?? (r.status >= 400 ? r.data.error : null);
   if (problem) {
     if (problem !== state.lastError) log(`director: ${problem}`);
@@ -285,6 +289,17 @@ export async function directorBeat({ env = process.env, now = new Date(), log = 
   if (state.lastError || state.status !== 'approved') log('director: beat answered');
   for (const run of runs.slice(0, 50)) state.cursors[run.project] = Math.max(state.cursors[run.project] ?? 0, run.id);
   for (const b of sending) state.boards[b.board.key] = { hash: b.sum, at: now.toISOString() };
+  state.orders.unsent = state.orders.unsent.slice(unsent.length);
+  // The dashboard's orders (D169, D191): run here under this Mac's own checks, then reported at once.
+  if (Array.isArray(r.data.orders) && r.data.orders.length) {
+    const results = runOrders(r.data.orders, { done: state.orders.done, env, now });
+    for (const x of results) log(`director: order ${x.id} ${x.ok ? 'done' : 'not done'}: ${x.text}`);
+    const sent = await call(link, '/v1/results', { results: results.slice(0, 50) });
+    if (sent.error || sent.status >= 400) state.orders.unsent.push(...results);
+  }
+  // An order is remembered a day, so one given again is reported rather than run twice.
+  const day = now.getTime() - 86_400_000;
+  for (const [id, x] of Object.entries(state.orders.done)) if (Date.parse(x.at) < day) delete state.orders.done[id];
   writeState({ ...state, status: 'approved', lastOk: now.toISOString(), lastError: null, lastErrorAt: null, quotaReadAt: sendQuota ? quota.readAt : state.quotaReadAt });
   return r.data;
 }

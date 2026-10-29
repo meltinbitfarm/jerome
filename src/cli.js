@@ -87,7 +87,7 @@ const USAGE = `Usage:
   jerome request answer <id> <answer> | drop <id>
                           open or close a decision request
   jerome note list [dir] | done <id> [dir]
-                          the notes the user sent the project from Telegram, and closing one once recorded
+                          the notes the user sent the project from Telegram or the Director's dashboard, and closing one once recorded
   jerome telegram setup | status | test | off
                           the Telegram bridge of this machine: what waits for you, answers, notes, /status
   jerome watchdog install | uninstall | status | run

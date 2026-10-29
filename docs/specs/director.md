@@ -127,7 +127,7 @@ It is the least the brief's D13 allows: state, queues, usage, pending decisions.
 
 ## Dashboard (S7)
 
-Read-only, served by the Director on the same address. Each request needs the dashboard token that `init` prints as a full URL, with the token in the fragment. `jerome director dashboard` prints it again, and `--new-token` replaces it. There are no write endpoints. As in the local viewer, a strict Content-Security-Policy applies and every text is set with `textContent`. The page refreshes every 30 seconds and fits a phone.
+Read-only, served by the Director on the same address. Each request needs the dashboard token that `init` prints as a full URL, with the token in the fragment. `jerome director dashboard` prints it again, and `--new-token` replaces it. Its only write, since 0.13.0, is an order for a Mac (an answer, a note, a block's action), kept by the Director and taken by the Mac in its beat (D169, D191; see [director.md](../director.md#acting-from-the-dashboard)). As in the local viewer, a strict Content-Security-Policy applies and every text is set with `textContent`. The page refreshes every 30 seconds and fits a phone.
 
 - **Quota:** the 7-day window on the week's curve, with the target line and the reserve, the 5-hour window, the scoped limits, the share Claude Code / chats, and the result of past weeks (% at each reset).
 - **Macs:** connected or unreachable, mode (directed or local), last beat, runs going, permits and their expiry, queued slots.

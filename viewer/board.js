@@ -149,7 +149,7 @@ const HELP_WORDS = {
     title: 'Help', button: 'Help: what this page shows, and the guides', guides: 'The guides, on GitHub',
     pages: {
       view: 'This page shows one project, and only reads. At the top, the board: what Jérôme is doing now, what is left and what was done, in plain words. Below, the subscription\'s windows, the open requests, the team, the latest runs and the usage. To answer a question, use Telegram or a session in the project.',
-      director: 'This page shows every Mac and every project on your Claude account, and only reads. At the top, what waits for you; then each project, with its board to open; then the week\'s quota and its pace. Under the details, the Macs, the latest runs and the past weeks. It refreshes by itself. To answer a question, use Telegram or a session on the Mac.',
+      director: 'This page shows every Mac and every project on your Claude account. At the top, what waits for you: answer a question with a tap or in your own words, clear a block with its buttons. Then each project, with its board and a box for a note; then the week\'s quota and its pace. Under the details, the Macs, the latest runs and the past weeks. What you send reaches the Mac within a minute, and the Mac tells you on Telegram.',
     },
     links: [['How to use it', 'README.md#using-it'], ['Why Jérôme works this way', 'docs/why.md'], ['A project from start to finish', 'docs/guide.md'], ['The board', 'docs/board.md'], ['Telegram', 'docs/telegram.md'], ['The quota governor', 'docs/quota-governor.md'], ['Jérôme Director', 'docs/director.md']],
   },
@@ -157,7 +157,7 @@ const HELP_WORDS = {
     title: 'Aiuto', button: 'Aiuto: cosa mostra questa pagina, e le guide', guides: 'Le guide, su GitHub (in inglese)',
     pages: {
       view: 'Questa pagina mostra un progetto, in sola lettura. In alto il quadro: cosa sta facendo Jérôme adesso, cosa resta e cosa è stato fatto, in parole semplici. Sotto, le finestre dell\'abbonamento, le richieste aperte, il team, le ultime run e i consumi. Per rispondere a una domanda usa Telegram o una sessione nel progetto.',
-      director: 'Questa pagina mostra tutti i Mac e tutti i progetti del tuo account Claude, in sola lettura. In alto quello che aspetta te; poi ogni progetto, col suo quadro da aprire; poi la quota della settimana e il suo passo. Nei dettagli, i Mac, le ultime run e le settimane passate. Si aggiorna da sola. Per rispondere a una domanda usa Telegram o una sessione sul Mac.',
+      director: 'Questa pagina mostra tutti i Mac e tutti i progetti del tuo account Claude. In alto quello che aspetta te: rispondi a una domanda con un tocco o con parole tue, sblocca un problema coi suoi pulsanti. Poi ogni progetto, col suo quadro e un riquadro per una nota; poi la quota della settimana e il suo passo. Nei dettagli, i Mac, le ultime run e le settimane passate. Quello che mandi arriva al Mac entro un minuto, e il Mac te lo conferma su Telegram.',
     },
     links: [['Come si usa', 'README.md#using-it'], ['Perché Jérôme funziona così', 'docs/why.md'], ['Un progetto dall\'inizio alla fine', 'docs/guide.md'], ['Il quadro', 'docs/board.md'], ['Telegram', 'docs/telegram.md'], ['Il governatore della quota', 'docs/quota-governor.md'], ['Jérôme Director', 'docs/director.md']],
   },

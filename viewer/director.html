@@ -55,7 +55,13 @@ const WORDS = {
     question: 'Question',
     options: 'Options',
     recommended: 'Recommended',
-    answerHow: 'Answer on Telegram, or in a session in the project.',
+    answerHow: 'Tap an option, or write your answer. The Mac takes it within a minute.',
+    yourAnswer: 'Or write your answer…', send: 'Send', sending: 'Sending…',
+    note: 'Send a note to this project', notePlaceholder: 'What the project should know: it is read at the next run and in your next session.',
+    sent: 'Sent: the Mac takes it within a minute.',
+    orders: 'Sent from here',
+    order: { pending: 'waiting for the Mac', done: 'done', failed: 'not done', lapsed: 'lapsed: the Mac did not take it within 10 minutes' },
+    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `note: ${o.text}`, action: (o) => o.actionLabel },
     silent: (mac, since) => `The Mac ${mac} has not been heard from since ${since}. Is it on and connected?`,
     pending: (mac) => `The Mac ${mac} waits for your approval: \`jerome director approve\` on the server.`,
     projects: 'Projects',
@@ -78,7 +84,7 @@ const WORDS = {
     runs: 'Runs', started: 'Started', project: 'Project', kind: 'Kind', status: 'Status', points: '7d',
     every: { mac: 'every Mac', project: 'every project' },
     weeks: 'Past weeks', noWeeks: 'None yet: the first shows after this week\'s reset.',
-    readOnly: 'read-only', never: 'never',
+    readOnly: 'answers, notes and buttons reach the Macs within a minute', never: 'never',
     ago: { now: 'just now', m: (n) => `${n} min ago`, h: (n) => `${n} h ago`, d: (n) => `${n} days ago` },
     noToken: 'This address has no token: open the one `jerome director dashboard` prints on the server.',
     cannot: (e) => `Cannot read the Director: ${e}`,
@@ -91,7 +97,13 @@ const WORDS = {
     question: 'Domanda',
     options: 'Opzioni',
     recommended: 'Consiglio',
-    answerHow: 'Rispondi da Telegram, o in una sessione nel progetto.',
+    answerHow: 'Tocca un\'opzione, o scrivi la tua risposta. Il Mac la prende entro un minuto.',
+    yourAnswer: 'Oppure scrivi la tua risposta…', send: 'Invia', sending: 'Invio…',
+    note: 'Manda una nota a questo progetto', notePlaceholder: 'Quello che il progetto deve sapere: la legge la prossima run, e la tua prossima sessione.',
+    sent: 'Inviato: il Mac lo prende entro un minuto.',
+    orders: 'Inviati da qui',
+    order: { pending: 'aspetta il Mac', done: 'fatto', failed: 'non fatto', lapsed: 'scaduto: il Mac non l\'ha preso entro 10 minuti' },
+    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `nota: ${o.text}`, action: (o) => o.actionLabel },
     silent: (mac, since) => `Il Mac ${mac} non si sente da ${since}. È acceso e in rete?`,
     pending: (mac) => `Il Mac ${mac} aspetta la tua approvazione: \`jerome director approve\` sul server.`,
     projects: 'Progetti',
@@ -114,7 +126,7 @@ const WORDS = {
     runs: 'Run', started: 'Inizio', project: 'Progetto', kind: 'Tipo', status: 'Esito', points: '7g',
     every: { mac: 'tutti i Mac', project: 'tutti i progetti' },
     weeks: 'Settimane passate', noWeeks: 'Ancora nessuna: la prima compare dopo il reset di questa settimana.',
-    readOnly: 'sola lettura', never: 'mai',
+    readOnly: 'risposte, note e pulsanti arrivano ai Mac entro un minuto', never: 'mai',
     ago: { now: 'adesso', m: (n) => `${n} min fa`, h: (n) => (n === 1 ? 'un\'ora fa' : `${n} ore fa`), d: (n) => `${n} giorni fa` },
     noToken: 'Questo indirizzo non ha il token: apri quello che stampa `jerome director dashboard` sul server.',
     cannot: (e) => `Non riesco a leggere il Director: ${e}`,
@@ -130,6 +142,7 @@ function el(tag, attrs = {}, ...children) {
   for (const [k, v] of Object.entries(attrs)) {
     if (v === null || v === undefined || v === false) continue;
     if (k === 'class') node.className = v;
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
     else node.setAttribute(k, v === true ? '' : v);
   }
   for (const c of children.flat(Infinity)) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
@@ -142,7 +155,7 @@ function svg(tag, attrs = {}, text = null) {
   if (text !== null) node.textContent = text;
   return node;
 }
-const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat(Infinity));
+const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
 const title = (text, ...meta) => el('h2', {}, el('span', { class: 'cmd' }, text), ...meta);
 
 // Times in this device's own time zone, in the user's language.
@@ -183,22 +196,87 @@ function todoItems() {
 
 function renderTodo(items) {
   const section = document.getElementById('todo');
-  section.hidden = !items.length;
-  if (!items.length) return;
-  fill('todo', title(W.todo), items.map((a) => {
+  const sent = sentList();
+  section.hidden = !items.length && !sent;
+  if (section.hidden) return;
+  fill('todo', items.length ? title(W.todo) : null, items.map((a) => {
     if (a.kind === 'request') {
       return el('div', { class: 'card ask' },
         el('div', { class: 'card-head' }, el('span', { class: 'warn' }, `❓ ${W.question} R${a.id}`), el('span', { class: 'muted' }, ` · ${a.project}`)),
         el('div', { class: 'card-text' }, a.question),
-        a.options ? el('div', { class: 'muted' }, `${W.options}: ${a.options}`) : null,
-        a.recommendation ? el('div', { class: 'muted' }, `${W.recommended}: ${a.recommendation}`) : null,
+        a.choices.length
+          ? el('div', { class: 'choices' }, a.choices.map((c, i) => el('button', { type: 'button', class: 'choice', onclick: (ev) => order(ev.target, { machine: a.machineCode, project: a.key, kind: 'answer', ref: a.id, choice: i }) }, c)))
+          : a.options ? el('div', { class: 'muted' }, `${W.options}: ${a.options}`) : null,
+        a.recommendation ? el('div', { class: 'muted' }, `💡 ${W.recommended}: ${a.recommendation}`) : null,
+        writeBox(`answer:${a.machineCode}/${a.key}/${a.id}`, W.yourAnswer, (text, button) => order(button, { machine: a.machineCode, project: a.key, kind: 'answer', ref: a.id, text })),
         el('div', { class: 'muted small' }, W.answerHow));
     }
-    return el('div', { class: 'card stop' },
-      a.project ? el('div', { class: 'card-head' }, el('span', { class: 'high' }, '⚠ '), a.project) : null,
-      el('div', { class: 'card-text' }, a.text),
-      a.since ? el('div', { class: 'muted small' }, a.since) : null);
-  }));
+    if (a.kind === 'block') {
+      return el('div', { class: 'card stop' },
+        el('div', { class: 'card-head' }, el('span', { class: 'high' }, '⚠ '), a.project),
+        el('div', { class: 'card-text' }, a.text),
+        a.since ? el('div', { class: 'muted small' }, a.since) : null,
+        a.actions?.length ? el('div', { class: 'choices' }, a.actions.map((x) => el('button', { type: 'button', class: 'choice', onclick: (ev) => order(ev.target, { machine: a.machineCode, project: a.key, kind: 'action', ref: a.id, action: x.name }) }, x.label))) : null);
+    }
+    return el('div', { class: 'card stop' }, el('div', { class: 'card-text' }, a.text));
+  }), sent);
+}
+
+// What was sent from this page in the last hour, and what each Mac did with it.
+function sentList() {
+  const recent = (data.orders ?? []).filter((o) => Date.now() - Date.parse(o.createdAt) < 3_600_000);
+  if (!recent.length) return null;
+  const mark = { pending: '⏳', done: '✓', failed: '✗', lapsed: '✗' };
+  const tone = { pending: 'muted', done: 'ok', failed: 'high', lapsed: 'warn' };
+  return el('div', { class: 'sent' }, el('h3', {}, W.orders), recent.map((o) => el('div', { class: 'sent-row' },
+    el('span', { class: tone[o.status] }, `${mark[o.status]} `),
+    el('strong', {}, o.project), ` · ${W.orderWhat[o.kind](o)} `,
+    el('span', { class: 'muted small' }, `· ${clock(o.createdAt)} · ${W.order[o.status]}${o.result && o.status !== 'done' ? `: ${o.result}` : ''}`))));
+}
+
+// A text box with its Send button. What is typed is kept across the page's refreshes, and the page waits to redraw
+// while the box has the focus.
+const drafts = new Map();
+function writeBox(key, placeholder, onSend) {
+  const box = el('textarea', { class: 'write', rows: 2, maxlength: 2000, placeholder, 'aria-label': placeholder });
+  box.value = drafts.get(key) ?? '';
+  box.addEventListener('input', () => drafts.set(key, box.value));
+  // Drawn a moment after the box loses the focus, so a tap on Send still reaches its button.
+  box.addEventListener('blur', () => setTimeout(() => { if (waitingRender && document.activeElement?.tagName !== 'TEXTAREA') { waitingRender = false; render(); } }, 400));
+  const button = el('button', { type: 'button', class: 'choice send', onclick: () => {
+    const text = box.value.trim();
+    if (!text) return box.focus();
+    onSend(text, button).then((ok) => { if (ok) drafts.delete(key); });
+  } }, W.send);
+  return el('div', { class: 'write-box' }, box, button);
+}
+
+// An order for a Mac (D191): the Director keeps it, the Mac takes it with its next beat. The buttons of the card are
+// held while it is sent; the outcome shows in "Sent from here".
+async function order(button, body) {
+  const card = button.closest('.card, .row-card');
+  const buttons = card ? [...card.querySelectorAll('button')] : [button];
+  for (const b of buttons) b.disabled = true;
+  const label = button.textContent;
+  button.textContent = W.sending;
+  try {
+    const r = await fetch('/api/order', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+    const answer = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(answer.error ?? `HTTP ${r.status}`);
+    flash(card, W.sent, 'ok');
+    await load();
+    return true;
+  } catch (err) {
+    for (const b of buttons) b.disabled = false;
+    button.textContent = label;
+    flash(card, err.message, 'high');
+    return false;
+  }
+}
+function flash(card, text, tone) {
+  if (!card) return;
+  card.querySelector('.flash')?.remove();
+  card.append(el('div', { class: `flash small ${tone}` }, text));
 }
 
 function renderProjects() {
@@ -218,9 +296,19 @@ function renderProjects() {
       snag,
       el('div', { class: 'muted small clip' }, last),
       p.slots.length ? el('div', { class: 'muted small' }, W.next(p.slots.map((s) => s.at).join(' · '))) : null,
-      board(p));
+      board(p),
+      noteBox(p));
   });
   fill('projects', title(W.projects), rows);
+}
+
+// A note for the project, as `#project text` on Telegram: closed until opened.
+function noteBox(p) {
+  const id = `note:${p.machineCode}/${p.key}`;
+  const box = el('details', { class: 'note-box', open: opened.has(id) }, el('summary', {}, `✉ ${W.note}`),
+    writeBox(id, W.notePlaceholder, (text, button) => order(button, { machine: p.machineCode, project: p.key, kind: 'note', text })));
+  box.addEventListener('toggle', () => { if (box.open) opened.add(id); else opened.delete(id); });
+  return box;
 }
 
 // The project's board (D177), closed until opened: what it does now, what is left, what was done.
@@ -368,7 +456,13 @@ function renderDetails() {
     el('h3', {}, W.weeks), weeks);
 }
 
+// While the user types in a box, the refresh waits: drawn again, the box would lose its focus.
+let waitingRender = false;
 function render() {
+  if (document.activeElement?.tagName === 'TEXTAREA') {
+    waitingRender = true;
+    return;
+  }
   W = WORDS[data.language] ?? W;
   LOCALE = data.language === 'it' ? 'it-IT' : LOCALE;
   document.documentElement.lang = data.language;

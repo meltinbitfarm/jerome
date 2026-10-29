@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { newKeys, fingerprint, sameCode, verifyRequest, signResponse, NONCE_MS } from './sign.js';
 import { VERSION } from './template.js';
-import { serveDashboard } from './dashboard.js';
+import { serveDashboard, takeOrder, ORDER_BODY } from './dashboard.js';
 
 export const DEFAULT_PORT = 7788;
 // A beat with boards (D177) is larger than one without.
@@ -20,6 +20,8 @@ const MAX_BODY = 256 * 1024;
 const RATE_PER_MIN = 20;
 const MAX_PENDING = 5;
 const KEEP_DAYS = 90;
+// An order from the dashboard the Mac has not taken by then lapses (D169).
+export const ORDER_MS = 10 * 60_000;
 
 export function directorHome(env = process.env) {
   return join(env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'jerome-director');
@@ -110,7 +112,12 @@ export function openDirectorDb(env = process.env) {
     CREATE TABLE IF NOT EXISTS runs (machine TEXT NOT NULL, project TEXT NOT NULL, run_id INTEGER NOT NULL, ended_at TEXT,
       data TEXT NOT NULL, PRIMARY KEY (machine, project, run_id));
     CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS boards (machine TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (machine, key));`);
+    CREATE TABLE IF NOT EXISTS boards (machine TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (machine, key));
+    CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, project TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action')), ref INTEGER, action TEXT, text TEXT,
+      created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed', 'lapsed')),
+      result TEXT, done_at TEXT);
+    CREATE INDEX IF NOT EXISTS orders_open ON orders (machine, status);`);
   // Added with the dashboard in the user's language (D163).
   if (!db.prepare('PRAGMA table_info(machines)').all().some((c) => c.name === 'language')) db.exec('ALTER TABLE machines ADD COLUMN language TEXT');
   return db;
@@ -131,6 +138,7 @@ const BOARD = {
   // The texts not rewritten in plain words yet, left out until they are.
   'pending?': 'number',
 };
+const RESULT = { id: 'number', ok: 'boolean', text: 'string:300' };
 const SHAPES = {
   hello: { name: 'string:60', publicKey: 'string:400', version: 'string:20' },
   beat: {
@@ -158,7 +166,10 @@ const SHAPES = {
       status: 'string:20', reason: 'string:300', 'quota?': { before: POINTS, after: POINTS },
     }, 50],
     'boards?': [BOARD, 100],
+    // What the Mac did with the dashboard's orders (D191), when its quick report did not get through.
+    'results?': [RESULT, 50],
   },
+  results: { results: [RESULT, 50] },
 };
 
 export function checkShape(value, shape, at = 'body') {
@@ -288,6 +299,7 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
       const keys = body.projects.map((p) => p.key);
       db.prepare(`DELETE FROM boards WHERE machine = ? AND key NOT IN (${keys.map(() => '?').join(', ') || "''"})`).run(id, ...keys);
       for (const r of body.runs) db.prepare('INSERT OR REPLACE INTO runs (machine, project, run_id, ended_at, data) VALUES (?, ?, ?, ?, ?)').run(id, r.project, r.id, r.endedAt ?? null, JSON.stringify(r));
+      record(id, body.results ?? [], at);
       const old = new Date(now() - KEEP_DAYS * 86_400_000).toISOString();
       db.prepare('DELETE FROM readings WHERE read_at < ?').run(old);
       db.prepare('DELETE FROM runs WHERE ended_at < ?').run(old);
@@ -296,11 +308,38 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
       db.exec('ROLLBACK');
       throw err;
     }
-    // Step 1: the Director only sees. Permits come with step 3.
-    return { status: 200, body: { ok: true, mode: 'observing', permits: [] } };
+    // Step 1: the Director only sees. Permits come with step 3. The dashboard's orders for this Mac go with the answer
+    // (D169, D191): data the Mac checks and runs under its own rules, never a command.
+    return { status: 200, body: { ok: true, mode: 'observing', permits: [], orders: ordersFor(id) } };
   };
 
-  const routes = { 'POST /v1/hello': hello, 'POST /v1/beat': beat };
+  // The orders waiting for a Mac, given again at each beat until it reports them; older than ORDER_MS they lapse.
+  const ordersFor = (machine) => {
+    const at = now();
+    db.prepare("UPDATE orders SET status = 'lapsed', done_at = ? WHERE status = 'pending' AND created_at < ?").run(new Date(at).toISOString(), new Date(at - ORDER_MS).toISOString());
+    return db.prepare("SELECT id, project, kind, ref, action, text, created_at FROM orders WHERE machine = ? AND status = 'pending' ORDER BY id LIMIT 20").all(machine)
+      .map((o) => ({ id: o.id, project: o.project, kind: o.kind, ref: o.ref ?? null, action: o.action ?? null, text: o.text ?? null, at: o.created_at }));
+  };
+  // What a Mac did with its orders: only its own, and only once.
+  const record = (machine, results, at) => {
+    for (const r of results) {
+      db.prepare("UPDATE orders SET status = ?, result = ?, done_at = ? WHERE id = ? AND machine = ? AND status IN ('pending', 'lapsed')")
+        .run(r.ok ? 'done' : 'failed', r.text, at, r.id, machine);
+    }
+  };
+  // A Mac's quick report, right after it ran its orders, so the dashboard shows the outcome within seconds.
+  const results = (req) => {
+    const id = req.headers['x-jerome-machine'];
+    const machine = id ? db.prepare('SELECT id, public_key, status FROM machines WHERE id = ?').get(id) : null;
+    if (!machine) throw new Refusal(401, 'unknown Mac: run `jerome connect` again');
+    authentic(req, machine.public_key);
+    if (machine.status !== 'approved') throw new Refusal(403, machine.status === 'pending' ? 'waiting for approval' : 'this Mac was revoked');
+    const body = parse(req, SHAPES.results);
+    record(id, body.results, new Date(now()).toISOString());
+    return { status: 200, body: { ok: true } };
+  };
+
+  const routes = { 'POST /v1/hello': hello, 'POST /v1/beat': beat, 'POST /v1/results': results };
   const handle = (req) => {
     const route = routes[`${req.method} ${req.path}`];
     if (!route) return { status: 404, body: { error: 'not found' } };
@@ -328,7 +367,29 @@ export async function serve({ listen = null, env = process.env } = {}) {
   if (created) log(`set up in ${directorHome(env)}; Director fingerprint ${fingerprint(config.key.public)}`);
   const app = directorApp({ env, log });
   const server = createServer((req, res) => {
-    // The dashboard (D151), read-only: its token is read at each request, so `dashboard --new-token` takes effect at once.
+    // The dashboard (D151): its token is read at each request, so `dashboard --new-token` takes effect at once. Its one
+    // write, an order for a Mac (D191), is a POST to /api/order with the same token.
+    if (req.method === 'POST' && req.url === '/api/order') {
+      const chunks = [];
+      let size = 0;
+      req.on('data', (c) => {
+        size += c.length;
+        if (size <= ORDER_BODY) chunks.push(c);
+      });
+      req.on('end', () => {
+        try {
+          const r = size > ORDER_BODY ? { status: 413, body: { error: 'too long' } }
+            : takeOrder({ db: app.db, token: readDirectorConfig(env)?.dashboardToken, headers: req.headers, body: Buffer.concat(chunks).toString('utf8') });
+          res.writeHead(r.status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+          res.end(JSON.stringify(r.body));
+          if (r.status === 201) log(`order ${r.body.id} from the dashboard: ${r.body.kind} for ${r.body.project}`);
+        } catch (err) {
+          log(`dashboard error: ${err.message}`);
+          res.writeHead(500).end();
+        }
+      });
+      return;
+    }
     if (req.method === 'GET') {
       try {
         serveDashboard(req, res, { db: app.db, token: readDirectorConfig(env)?.dashboardToken });

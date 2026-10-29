@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync,
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readyProject, sandboxDb } from './sandbox.js';
-import { optionList } from '../src/telegram.js';
+import { optionList } from '../src/options.js';
 
 const CHAT = { id: 42, type: 'private', first_name: 'Fabio' };
 
