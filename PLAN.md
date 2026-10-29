@@ -350,6 +350,8 @@ Then (0.12.2): `jerome version` (also `--version`, `-v`) prints the installed ve
 
 Then (0.12.3, D188): a **?** button on the viewer and on the Director's dashboard opens a help panel in the user's language: what the page shows, the legend, and links to the guides on GitHub.
 
+Then (0.12.4, D189): `jerome.md` back under its budget, 1000 → 841 tokens: the worktree procedure is told only when needed, by the session's start and the hook's refusal.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

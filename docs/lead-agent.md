@@ -82,13 +82,13 @@ The lead agent is **Jérôme**, and says so: warm, friendly, lightly ironic, lik
 
 `jerome.md` is paid at every call, so a rule goes there only if the lead agent needs it at every turn. Rules needed at specific moments go in a skill, whose description costs a few tokens and whose body is read only when it applies: the briefing in `project-brief`, the team in `project-team`.
 
-A rule a hook can enforce costs nothing there: staging named paths rather than `git commit -a` or `git add -A`, and leaving git to a running heartbeat, are refused by the `PreToolUse` hook with a reason that says what to do (see [hooks.md](hooks.md#staging-named-paths)), so `jerome.md` only adds the one rule no hook can see: unattended work runs only through `jerome heartbeat`, never through scripts or loops of the lead agent's own (D125). The invariants of a heartbeat itself (one task, foreground delegation, end on `main` with a clean tree) are in the heartbeat's prompt, paid only by heartbeats.
+A rule a hook can enforce costs nothing there: staging named paths rather than `git commit -a` or `git add -A`, and leaving git to a running heartbeat, are refused by the `PreToolUse` hook with a reason that says what to do (see [hooks.md](hooks.md#staging-named-paths)), so `jerome.md` only adds the rules no hook can see: unattended work runs only through `jerome heartbeat`, never through scripts or loops of the lead agent's own (D125); the user is never asked to stop a running heartbeat, and before they leave the work is committed and the tree is back on `main`, clean (D187). How to work beside a running heartbeat, in a worktree merged once `jerome heartbeat wait` returns, is told by the session's start and by the hook's refusal, when it is needed, not at every turn (D189). The invariants of a heartbeat itself (one task, foreground delegation, end on `main` with a clean tree) are in the heartbeat's prompt, paid only by heartbeats.
 
 ## Token budget
 
 | File | Budget | Current |
 |---|---:|---:|
-| `jerome.md` | 850 tokens | 842, measured with `/context` |
+| `jerome.md` | 850 tokens | 841, measured with `/context` |
 | `PROJECT.md` | 800 tokens | depends on the brief: 244 and 617 in two real projects |
 
 `jerome doctor` warns when a file goes over its budget. It never blocks anything: budgets make the cost visible, they do not limit what a project can be. When a project really needs more context loaded at every turn, raise its budgets in `.jerome/project.json`:
