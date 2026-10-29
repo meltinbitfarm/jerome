@@ -322,6 +322,8 @@ Then (0.11.1, D177): the board reads as a checklist (☐ to do, ✓ done, eight 
 
 Then (0.11.2, D178): the board tells apart questions for you, work waiting for you at a session, and Jérôme's own work; an empty list while texts are rewritten says so instead of "nothing"; and a heartbeat asks one open question of open.md per run as a decision request, so it reaches Telegram.
 
+Then (0.11.3, D177): the board is easier to read: each part has its icon and colour (❓ questions for you, 🙋 waiting for you, 🛠 Jérôme's work, ✅ done, ⏳ spare time, 📦 closed, 💡 parked), the IDs are coloured by kind, and the items use a larger proportional font.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

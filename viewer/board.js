@@ -67,7 +67,7 @@ function boardDuration(iso) {
 function idTag(id, lang, el) {
   if (!id) return null;
   const meaning = boardWords(lang).ids[id[0]];
-  return el('span', { class: 'tag', title: meaning ? `${meaning[0]}: ${meaning[1]}` : null }, id);
+  return el('span', { class: `tag tag-${id[0]}`, title: meaning ? `${meaning[0]}: ${meaning[1]}` : null }, id);
 }
 
 // A list as a checklist: ☐ to do, ✓ done; the first `first` shown, the others under "and N more".
@@ -81,6 +81,12 @@ function boardList(items, lang, el, { mark = '☐', dated = false, first = 8 } =
   if (items.length <= first) return list;
   return el('div', {}, list, el('details', {}, el('summary', {}, w.more(items.length - first)), el('ul', { class: 'board-list' }, items.slice(first).map(line))));
 }
+
+// A part's title: an icon and a colour of its own, so the parts are told apart at a glance.
+function boardHead(el, icon, text, tone) {
+  return el('h4', { class: `board-head ${tone}` }, el('span', { class: 'icon', 'aria-hidden': 'true' }, icon), text);
+}
+const fold = (el, icon, text, tone, body) => el('details', { class: 'board-fold' }, el('summary', { class: tone }, `${icon} ${text}`), body);
 
 // The board as an element.
 function boardView(board, { lang, el }) {
@@ -102,18 +108,18 @@ function boardView(board, { lang, el }) {
   // The user's part first: questions for them, asked or still to ask, and work that waits for them.
   const asks = of('ask', 'asked');
   if (asks.length) {
-    parts.push(el('h4', { class: 'warn' }, w.asks(asks.length)), el('div', { class: 'muted small' }, w.asksHow),
+    parts.push(boardHead(el, '❓', w.asks(asks.length), 'warn'), el('div', { class: 'muted small' }, w.asksHow),
       boardList(asks.map((x) => ({ ...x, text: x.kind === 'asked' ? `${x.text} (${w.asked})` : x.text })), lang, el, { mark: '?' }));
   }
   const yours = of('you');
-  if (yours.length) parts.push(el('h4', { class: 'warn' }, w.yours(yours.length)), boardList(yours, lang, el));
+  if (yours.length) parts.push(boardHead(el, '🙋', w.yours(yours.length), 'warn'), boardList(yours, lang, el));
   // While texts are being rewritten an empty list is not "nothing": it is not written yet.
   const waiting = board.pending ? el('div', { class: 'muted small' }, w.pending(board.pending)) : null;
-  parts.push(el('h4', {}, w.todo(todo.length)), todo.length || !waiting ? boardList(todo, lang, el) : waiting);
-  if (backlog.length) parts.push(el('details', {}, el('summary', {}, w.backlog(backlog.length)), boardList(backlog, lang, el, { first: 50 })));
-  parts.push(el('h4', {}, w.done), board.done.length || !waiting ? boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5 }) : waiting);
-  if (board.closed.length) parts.push(el('details', {}, el('summary', {}, w.closed(board.closed.length)), boardList(board.closed, lang, el, { mark: '✓', dated: true, first: 50 })));
-  if (board.parked.length) parts.push(el('details', {}, el('summary', {}, w.parked(board.parked.length)), boardList(board.parked, lang, el, { mark: '·', first: 50 })));
+  parts.push(boardHead(el, '🛠', w.todo(todo.length), 'cyan'), todo.length || !waiting ? boardList(todo, lang, el) : waiting);
+  if (backlog.length) parts.push(fold(el, '⏳', w.backlog(backlog.length), 'muted', boardList(backlog, lang, el, { first: 50 })));
+  parts.push(boardHead(el, '✅', w.done, 'ok'), board.done.length || !waiting ? boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5 }) : waiting);
+  if (board.closed.length) parts.push(fold(el, '📦', w.closed(board.closed.length), 'muted', boardList(board.closed, lang, el, { mark: '✓', dated: true, first: 50 })));
+  if (board.parked.length) parts.push(fold(el, '💡', w.parked(board.parked.length), 'muted', boardList(board.parked, lang, el, { mark: '·', first: 50 })));
   if (waiting && (todo.length || board.done.length)) parts.push(waiting);
   return el('div', { class: 'board' }, parts);
 }
@@ -122,6 +128,6 @@ function boardView(board, { lang, el }) {
 function legendView(lang, el) {
   const w = boardWords(lang);
   return el('details', { class: 'legend' }, el('summary', {}, w.legend),
-    el('dl', {}, Object.entries(w.ids).flatMap(([id, [name, what]]) => [el('dt', {}, el('span', { class: 'tag' }, `${id}1`), ` ${name}`), el('dd', {}, what)]),
+    el('dl', {}, Object.entries(w.ids).flatMap(([id, [name, what]]) => [el('dt', {}, el('span', { class: `tag tag-${id}` }, `${id}1`), ` ${name}`), el('dd', {}, what)]),
       w.terms.flatMap(([name, what]) => [el('dt', {}, name), el('dd', {}, what)])));
 }

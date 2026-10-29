@@ -171,3 +171,24 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
   .project-board > .board { padding-left: 0; }
 }
 .dash #legend { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+
+/* Readable boards (D177): a larger, proportional font for the items, a title per part with its icon and colour, and
+   the IDs coloured by kind: the user's own (questions, requests) yellow, decisions green, assumptions cyan. */
+.dash { font-size: 15px; }
+.dash .small { font-size: 13px; }
+.board { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; max-width: 80ch; }
+.board .small { font-size: 13px; }
+.board-head { display: flex; align-items: center; gap: 1ch; margin: 16px 0 6px; padding: 4px 10px; border-radius: 6px; background: var(--hl); border-left: 4px solid currentColor; font-size: 15px; }
+.board-head .icon { font-size: 16px; }
+.board-fold { margin: 8px 0; }
+.board-fold > summary { font-size: 15px; padding: 2px 0; }
+.board-list li { grid-template-columns: 1.8em 1fr; padding: 4px 0; }
+.board-list .mark { font-size: 15px; }
+.board-now { font-size: 16px; }
+.tag { font: 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace; font-weight: 700; border-color: currentColor; }
+.tag-Q, .tag-R { color: var(--yellow); }
+.tag-D { color: var(--green); }
+.tag-A { color: var(--cyan); }
+.tag-O { color: var(--muted); }
+.tag-P { color: var(--track); }
+.legend { font-size: 15px; }
