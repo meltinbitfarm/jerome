@@ -126,6 +126,8 @@ test('with work to do, the lead agent runs in a new session within its caps, and
 
 test('the token cap stops the lead agent, and so does the turn cap', () => {
   const p = project({ FAKE_TRIAGE: '{"work": true, "task": "Big task"}', FAKE_LEAD_CALLS: '40', FAKE_LEAD_TOKENS: '100000', FAKE_LEAD_SLEEP: '0.05' });
+  // Only the caps here: the project's spending limits stay out of the way of three capped runs in a day.
+  assert.equal(p.run('limits', 'demo', '--daily', 'off', '--weekly', 'off').status, 0);
   p.run('heartbeat', 'demo');
   assert.equal(p.lastRun().status, 'stopped');
   assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 500,000/);
@@ -389,7 +391,7 @@ test('the triage chooses among the areas due; paused areas, open requests and pa
   // jerome state shows each area with its milestone and usage. The first heartbeat's usage, triage and lead agent, is
   // marketing's; the triages of the heartbeats that chose no area are shared.
   const state = p.run('state', 'demo', '--runs', '4');
-  assert.match(state.stdout, /^areas   development MVP paused 7d 0 \$0\.00 API · marketing pre-launch waiting R1 7d 5k <\$0\.01 API · research survey paused 7d 0 \$0\.00 API · shared 7d 6k <\$0\.01 API$/m);
+  assert.match(state.stdout, /^areas   development MVP paused 7d 0 \$0\.00 API · marketing pre-launch waiting R1 7d 5k [<≈]\$0\.01 API · research survey paused 7d 0 \$0\.00 API · shared 7d 6k <\$0\.01 API$/m);
   assert.match(state.stdout, /heartbeat marketing done/);
   const json = JSON.parse(p.run('state', 'demo', '--json').stdout);
   assert.equal(json.areas.find((a) => a.name === 'marketing').week.tokens, 2000 + 3040);
@@ -560,4 +562,13 @@ test('an area paced by the pages it follows is due only when one changed, and it
   } finally {
     server.stop();
   }
+});
+
+test('the token cap weighs the context read again from the cache at a tenth, as it is billed (D185)', async () => {
+  const { capTokens } = await import('../src/meter.js');
+  // calcolatoit's run of 29/10 11:34: 13 turns, stopped at "540,895 tokens" when the context read again counted whole.
+  const run = { input: 30, output: 2723, cache_read: 511_412, cache_write_5m: 0, cache_write_1h: 29_233 };
+  assert.equal(run.input + run.output + run.cache_read + run.cache_write_1h, 543_398);
+  assert.equal(capTokens(run), 83_127);
+  assert.equal(capTokens({ input: 1000, output: 500 }), 1500, 'what is not read again counts whole');
 });

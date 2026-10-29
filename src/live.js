@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { openDb, dbPath } from './db.js';
 import { findTranscript, toolHint } from './delegations.js';
 import { parseCall } from './usage.js';
+import { capTokens } from './meter.js';
 
 const LOG_LINES = 200;
 const FORGET_MS = 5 * 60_000;
@@ -109,7 +110,8 @@ function read(r, line, agentId, since) {
   }
   const call = parseCall(line);
   if (call) {
-    const tokens = call.input + call.output + call.cache_read + call.cache_write_5m + call.cache_write_1h;
+    // Weighed as the cap weighs them (D185), so the view's total is the one the cap stops at.
+    const tokens = capTokens(call);
     const seen = r.calls.get(call.requestId);
     const context = call.input + call.cache_read + call.cache_write_5m + call.cache_write_1h;
     if (!seen || tokens > seen.tokens) r.calls.set(call.requestId, { agentId, at: seen?.at ?? at, model: call.model, tokens, context, output: call.output });

@@ -6,6 +6,14 @@ import { join } from 'node:path';
 import { findTranscript } from './delegations.js';
 import { parseCall } from './usage.js';
 
+// What a call weighs against a run's token cap (D185): the context read again from the cache at every turn counts a
+// tenth, as it is billed, and everything else whole. Counted whole, the same context read again turn after turn
+// stopped runs after a dozen turns that had done little.
+export const CACHE_READ_WEIGHT = 0.1;
+export function capTokens(c) {
+  return Math.round((c.input ?? 0) + (c.output ?? 0) + (c.cache_write_5m ?? 0) + (c.cache_write_1h ?? 0) + CACHE_READ_WEIGHT * (c.cache_read ?? 0));
+}
+
 // read() returns { total, byAgent }, each call counted once by request id, with its largest usage.
 export function transcriptMeter(sessionId, { find = findTranscript } = {}) {
   const files = new Map();
@@ -28,7 +36,7 @@ export function transcriptMeter(sessionId, { find = findTranscript } = {}) {
     for (const line of buffer.subarray(0, end).toString('utf8').split('\n')) {
       const c = parseCall(line);
       if (!c) continue;
-      const tokens = c.input + c.output + c.cache_read + c.cache_write_5m + c.cache_write_1h;
+      const tokens = capTokens(c);
       const seen = calls.get(c.requestId);
       if (!seen || tokens > seen.tokens) calls.set(c.requestId, { path, tokens });
     }

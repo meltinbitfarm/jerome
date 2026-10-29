@@ -24,7 +24,7 @@ let viewer;
 
 let request_ = 0;
 const call = (sec, model, content, { context = 10_000, output = 100 } = {}) => `${JSON.stringify({ type: 'assistant', timestamp: t(sec), requestId: `r${++request_}`,
-  message: { model, usage: { input_tokens: 0, cache_read_input_tokens: context, cache_creation_input_tokens: 0, output_tokens: output }, content } })}\n`;
+  message: { model, usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: context, output_tokens: output }, content } })}\n`;
 const use = (name, input, id = `x${request_ + 1}`) => [{ type: 'tool_use', id, name, input }];
 const result = (sec, id, text) => `${JSON.stringify({ type: 'user', timestamp: t(sec), message: { content: [{ type: 'tool_result', tool_use_id: id, content: [{ type: 'text', text }] }] } })}\n`;
 const sub = (id, meta, lines) => {

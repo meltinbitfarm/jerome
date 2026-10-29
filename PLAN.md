@@ -338,6 +338,8 @@ Then (0.11.9, D183): request options become buttons however they are written, an
 
 Then (0.11.10, D184): the Telegram bridge always listens, so a tap is answered in a second or two; open questions the machine already answers are not asked.
 
+Then (0.11.11, D185): the token cap weighs cache reads at a tenth, so a run is not stopped after a dozen turns for reading its own context again.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

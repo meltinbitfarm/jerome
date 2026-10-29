@@ -29,7 +29,7 @@ import { serviceFolder, recordResultUsage } from './docs.js';
 import { DIGEST } from './digest.js';
 import { STATE, isLegacy } from './paths.js';
 import { areaPlan } from './areas.js';
-import { transcriptMeter } from './meter.js';
+import { transcriptMeter, capTokens } from './meter.js';
 import { checkPages, saveHashes, watchedPages } from './watch.js';
 import { n } from './state.js';
 import { heartbeatConfig, runAllowed } from './heartbeatconfig.js';
@@ -772,7 +772,7 @@ function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, 
         denials.set(e.tool_use_id, e.tool_name);
       } else if (e.type === 'assistant' && e.message?.usage) {
         const u = e.message.usage;
-        const tokens = (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+        const tokens = capTokens({ input: u.input_tokens, output: u.output_tokens, cache_read: u.cache_read_input_tokens, cache_write_5m: u.cache_creation_input_tokens });
         const key = e.message.id ?? `${usage.size}`;
         usage.set(key, Math.max(usage.get(key) ?? 0, tokens));
         streamed = [...usage.values()].reduce((a, b) => a + b, 0);
