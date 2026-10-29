@@ -5,7 +5,7 @@
 const BOARD_WORDS = {
   en: {
     now: 'Now', since: (ago) => `working since ${ago}`, starting: 'starting',
-    todo: (n) => `Jérôme does (${n})`, asks: (n) => `Questions for you (${n})`, asksHow: 'Jérôme asks them one at a time, as requests with buttons on Telegram.', asked: 'asked, waiting for your answer', yours: (n) => `Waiting for you at a session (${n})`, backlog: (n) => `When there is spare time (${n})`, done: 'Done lately',
+    todo: (n) => `Jérôme does (${n})`, asks: (n) => `Questions for you (${n})`, asksHow: 'Jérôme asks them one at a time, as requests with buttons on Telegram.', asked: 'asked, waiting for your answer', yours: (n) => `Once left for a session: Jérôme takes them up, or asks you (${n})`, backlog: (n) => `When there is spare time (${n})`, done: 'Done lately',
     closed: (n) => `Items closed (${n})`, parked: (n) => `Ideas set aside, not to do now (${n})`,
     none: 'nothing', noBoard: 'The board comes with the Mac\'s next beat.',
     more: (n) => `${n} more`, parkedHow: 'Each one comes back to you as a question when its date comes, or when the milestone changes.', pending: (n) => `${n} ${n === 1 ? 'text is' : 'texts are'} being put in plain words: they show in a minute or two.`,
@@ -30,7 +30,7 @@ const BOARD_WORDS = {
   },
   it: {
     now: 'Adesso', since: (ago) => `al lavoro da ${ago}`, starting: 'sta partendo',
-    todo: (n) => `Fa Jérôme (${n})`, asks: (n) => `Domande per te (${n})`, asksHow: 'Jérôme te le fa una alla volta, come richieste con i pulsanti su Telegram.', asked: 'già chiesta, aspetta la tua risposta', yours: (n) => `Aspetta te in una sessione (${n})`, backlog: (n) => `Quando avanza tempo (${n})`, done: 'Fatto di recente',
+    todo: (n) => `Fa Jérôme (${n})`, asks: (n) => `Domande per te (${n})`, asksHow: 'Jérôme te le fa una alla volta, come richieste con i pulsanti su Telegram.', asked: 'già chiesta, aspetta la tua risposta', yours: (n) => `Lasciate per una sessione: Jérôme le riprende, o te le chiede (${n})`, backlog: (n) => `Quando avanza tempo (${n})`, done: 'Fatto di recente',
     closed: (n) => `Voci chiuse (${n})`, parked: (n) => `Idee parcheggiate, da non fare ora (${n})`,
     none: 'niente', noBoard: 'Il quadro arriva col prossimo battito del Mac.',
     more: (n) => `altre ${n}`, parkedHow: 'Ognuna torna da te come domanda quando arriva la sua data, o quando cambia la milestone.', pending: (n) => `${n} ${n === 1 ? 'testo è' : 'testi sono'} in riscrittura: compaiono tra un paio di minuti.`,

@@ -326,6 +326,8 @@ Then (0.11.3, D177): the board is easier to read: each part has its icon and col
 
 Then (0.11.4, D179): parked ideas come back as decision requests when their date comes (or the milestone changes); the board's opened parts stay open across refreshes.
 
+Then (0.11.5, D180): the next heartbeat asks every open question not yet asked, each as its own request; nothing waits for an interactive session any more: items once marked for one are done by heartbeats or asked.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
