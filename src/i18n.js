@@ -223,7 +223,7 @@ const TEXTS = {
     'request.answered': ({ project, id, text }) => `${project}: R${id} risposta: ${text}`,
     'request.failed': ({ project, id, error }) => `${project}: non sono riuscito a rispondere a R${id}: ${error}`,
     'request.gone': ({ project, id }) => `${project}: R${id} non c'è più.`,
-    'request.closed': ({ project, id, status }) => `${project}: R${id} è già chiusa (${status}); non ho cambiato niente.`,
+    'request.closed': ({ project, id }) => `${project}: R${id} è già chiusa; non ho cambiato niente.`,
     'note.which': 'Per quale progetto è questa nota?',
     'note.expired': 'Quella nota non è più in attesa: mandala di nuovo.',
     'note.unknown': ({ name, list }) => `Su questo Mac non c'è un progetto ${name}: ${list}.`,

@@ -74,6 +74,15 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   p.tick();
   assert.match(p.sent().at(-1).params.text, /R1 is already answered; nothing changed/);
   assert.equal(requestRow(p, 1).answer, 'fix first');
+  // A request closed anywhere loses its buttons on Telegram, once: here R1, answered with a tap, and R3, dropped.
+  const cleared = () => p.tg().filter((c) => c.method === 'editMessageReplyMarkup').map((c) => c.params.message_id);
+  assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Keep the beta?', '--options', 'yes / no').status, 0);
+  p.tick();
+  assert.equal(p.runIn(p.dir, 'request', 'drop', '3').status, 0);
+  p.tick();
+  p.tick();
+  assert.deepEqual(cleared().filter((id) => id !== p.idOf(/R1 Merge/)), [p.idOf(/R3 Keep the beta/)]);
+  assert.ok(cleared().includes(p.idOf(/R1 Merge/)));
 });
 
 test('a lasting block comes with its buttons, and a tap does that one action in the project, once (D166-D168)', () => {

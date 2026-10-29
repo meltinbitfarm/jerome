@@ -160,6 +160,7 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
     }
     // The state is saved before sending, so an update is never handled twice.
     writeState(state);
+    await clearClosed(state, call, config);
     await sendQueue(state, call, config, done, now);
     const left = until ? Math.floor((until - Date.now()) / 1000) : 0;
     // A failed call is not retried in a loop: the next minute tries again.
@@ -167,6 +168,32 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
     wait = Math.min(25, left - 1);
   }
   return done;
+}
+
+// The buttons of a request closed since it was sent, answered or dropped anywhere, are taken off its message, so no
+// tap is spent on a question that is not open any more.
+async function clearClosed(state, call, config) {
+  let changed = false;
+  for (const [id, about] of Object.entries(state.sent)) {
+    // Messages remembered before `buttons` was kept may have some: tried, a message with none is refused harmlessly.
+    if (!about.request || about.cleared || about.buttons === false) continue;
+    const db = openDb(about.dir);
+    let row;
+    try {
+      row = db?.prepare('SELECT status FROM requests WHERE id = ?').get(about.request);
+    } finally {
+      db?.close();
+    }
+    if (row?.status === 'open') continue;
+    try {
+      await call('editMessageReplyMarkup', { chat_id: config.chatId, message_id: Number(id), reply_markup: { inline_keyboard: [] } });
+    } catch {
+      // A message too old to edit keeps its buttons: a tap on them says the request is closed.
+    }
+    about.cleared = true;
+    changed = true;
+  }
+  if (changed) writeState(state);
 }
 
 async function sendQueue(state, call, config, done, now) {
@@ -213,7 +240,7 @@ async function send(item, state, call, config) {
     chat_id: config.chatId, text: clip(text),
     ...(keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {}),
   });
-  state.sent[message.message_id] = { dir: item.dir, project: item.project, request: r?.id ?? null, alert: actions.length ? item.alert.id : null };
+  state.sent[message.message_id] = { dir: item.dir, project: item.project, request: r?.id ?? null, alert: actions.length ? item.alert.id : null, buttons: keyboard.length > 0 };
 }
 
 async function reply(call, config, text, extra = {}) {

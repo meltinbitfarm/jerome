@@ -40,6 +40,8 @@ The macOS notifications stay, and `heartbeat.alerts.command` stays for other cha
 | `/status` | what waits for you in every project, from `jerome projects`, then each block with its buttons |
 | `/help` | what you can send |
 
+A request closed in any other way, answered in a session or on the dashboard, or dropped, loses its buttons on Telegram within a minute, so no tap goes to a question that is no longer open. A tap on an old message whose buttons Telegram no longer lets the bridge remove gets the reply that the request is already closed.
+
 ## Unblocking with a button
 
 A block comes with one to three buttons, chosen by its kind (D166, [the spec](specs/unblock.md)):
