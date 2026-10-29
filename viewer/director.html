@@ -225,7 +225,7 @@ function renderProjects() {
 // The project's board (D177), closed until opened: what it does now, what is left, what was done.
 function board(p) {
   const id = `${p.machine}/${p.key}`;
-  const box = el('details', { class: 'project-board', open: opened.has(id) }, el('summary', {}, W.board), boardView(p.board, { lang: data.language, el }));
+  const box = el('details', { class: 'project-board', open: opened.has(id) }, el('summary', {}, W.board), boardView(p.board, { lang: data.language, el, key: id }));
   box.addEventListener('toggle', () => { if (box.open) opened.add(id); else opened.delete(id); });
   return box;
 }

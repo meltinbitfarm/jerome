@@ -12,13 +12,13 @@ Each project has a board (D177): what it does now and who works on it, what is l
 | **Jérôme does** | the other items of `open.md`, except the assumptions, the decision requests (the database holds them) and the parked ideas; the backlog apart, as work for when time is spare |
 | **Done lately** | the last 15 lines of `.jerome/digest.md`, one per heartbeat, newest first |
 | **Items closed** | the closed items of `.jerome/archive.md`, newest first by the date each one names |
-| **Ideas parked** | the parked section of `open.md`: not to do for now |
+| **Ideas parked** | the parked section of `open.md`: not to do for now. Each comes back to you as a question when its date comes, or when its area's milestone changes (D179) |
 
 The last work shown next to each project on the dashboard comes from the board too, when it has it.
 
 ## Plain words
 
-The state files are written for the lead agent: short, in English, with file names and IDs. The board shows each text rewritten for you, in your language, in one short sentence of at most 25 words, without file names, commands, code or IDs: the ID stays beside it as a small tag. It reads as a checklist: ☐ for what is left, ✓ for what was done, the first eight shown and the rest a tap away.
+The state files are written for the lead agent: short, in English, with file names and IDs. The board shows each text rewritten for you, in your language, in one short sentence of at most 25 words, without file names, commands, code or IDs: the ID stays beside it as a small tag. It reads as a checklist: ☐ for what is left, ✓ for what was done, the first eight shown and the rest a tap away. A part you open stays open when the page refreshes.
 
 - **Who rewrites it:** a call on Haiku with no tools, which gets the texts as data and is told never to follow them. It runs apart from the watchdog, so the watchdog never waits for it, a batch of 25 texts at a time.
 - **When:** the first time a text is seen, by the watchdog every minute or by the viewer when it is open. Until then the item is left out, never shown in the project's own words: a line under the board counts the texts still being rewritten.

@@ -8,7 +8,7 @@ const BOARD_WORDS = {
     todo: (n) => `Jérôme does (${n})`, asks: (n) => `Questions for you (${n})`, asksHow: 'Jérôme asks them one at a time, as requests with buttons on Telegram.', asked: 'asked, waiting for your answer', yours: (n) => `Waiting for you at a session (${n})`, backlog: (n) => `When there is spare time (${n})`, done: 'Done lately',
     closed: (n) => `Items closed (${n})`, parked: (n) => `Ideas set aside, not to do now (${n})`,
     none: 'nothing', noBoard: 'The board comes with the Mac\'s next beat.',
-    more: (n) => `${n} more`, pending: (n) => `${n} ${n === 1 ? 'text is' : 'texts are'} being put in plain words: they show in a minute or two.`,
+    more: (n) => `${n} more`, parkedHow: 'Each one comes back to you as a question when its date comes, or when the milestone changes.', pending: (n) => `${n} ${n === 1 ? 'text is' : 'texts are'} being put in plain words: they show in a minute or two.`,
     legend: 'Legend: what D1, O1, A1, R1… mean',
     ids: {
       D: ['Decision', 'a choice you made or confirmed; it holds until you change it'],
@@ -33,7 +33,7 @@ const BOARD_WORDS = {
     todo: (n) => `Fa Jérôme (${n})`, asks: (n) => `Domande per te (${n})`, asksHow: 'Jérôme te le fa una alla volta, come richieste con i pulsanti su Telegram.', asked: 'già chiesta, aspetta la tua risposta', yours: (n) => `Aspetta te in una sessione (${n})`, backlog: (n) => `Quando avanza tempo (${n})`, done: 'Fatto di recente',
     closed: (n) => `Voci chiuse (${n})`, parked: (n) => `Idee parcheggiate, da non fare ora (${n})`,
     none: 'niente', noBoard: 'Il quadro arriva col prossimo battito del Mac.',
-    more: (n) => `altre ${n}`, pending: (n) => `${n} ${n === 1 ? 'testo è' : 'testi sono'} in riscrittura: compaiono tra un paio di minuti.`,
+    more: (n) => `altre ${n}`, parkedHow: 'Ognuna torna da te come domanda quando arriva la sua data, o quando cambia la milestone.', pending: (n) => `${n} ${n === 1 ? 'testo è' : 'testi sono'} in riscrittura: compaiono tra un paio di minuti.`,
     legend: 'Leggenda: cosa vogliono dire D1, O1, A1, R1…',
     ids: {
       D: ['Decisione', 'una scelta presa o confermata da te; vale finché non la cambi'],
@@ -57,6 +57,15 @@ const BOARD_WORDS = {
 
 const boardWords = (lang) => BOARD_WORDS[lang] ?? BOARD_WORDS.en;
 
+// The parts opened by the user, by key, so a refresh of the page, which draws everything again, keeps them open.
+const BOARD_OPEN = new Set();
+function remember(node, key) {
+  if (!key) return node;
+  if (BOARD_OPEN.has(key)) node.open = true;
+  node.addEventListener('toggle', () => { if (node.open) BOARD_OPEN.add(key); else BOARD_OPEN.delete(key); });
+  return node;
+}
+
 // How long since a time: "12 min", "2 h".
 function boardDuration(iso) {
   const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
@@ -71,7 +80,7 @@ function idTag(id, lang, el) {
 }
 
 // A list as a checklist: ☐ to do, ✓ done; the first `first` shown, the others under "and N more".
-function boardList(items, lang, el, { mark = '☐', dated = false, first = 8 } = {}) {
+function boardList(items, lang, el, { mark = '☐', dated = false, first = 8, key = null } = {}) {
   const w = boardWords(lang);
   if (!items.length) return el('div', { class: 'muted small' }, w.none);
   const line = (x) => el('li', {}, el('span', { class: mark === '✓' ? 'mark ok' : 'mark' }, mark),
@@ -79,17 +88,17 @@ function boardList(items, lang, el, { mark = '☐', dated = false, first = 8 } =
       dated && x.at ? el('span', { class: 'muted small' }, ` ${x.at.slice(5, 10).split('-').reverse().join('/')}${x.at.length > 10 ? ` ${x.at.slice(11, 16)}` : ''}`) : null));
   const list = el('ul', { class: 'board-list' }, items.slice(0, first).map(line));
   if (items.length <= first) return list;
-  return el('div', {}, list, el('details', {}, el('summary', {}, w.more(items.length - first)), el('ul', { class: 'board-list' }, items.slice(first).map(line))));
+  return el('div', {}, list, remember(el('details', {}, el('summary', {}, w.more(items.length - first)), el('ul', { class: 'board-list' }, items.slice(first).map(line))), key && `${key}:more`));
 }
 
 // A part's title: an icon and a colour of its own, so the parts are told apart at a glance.
 function boardHead(el, icon, text, tone) {
   return el('h4', { class: `board-head ${tone}` }, el('span', { class: 'icon', 'aria-hidden': 'true' }, icon), text);
 }
-const fold = (el, icon, text, tone, body) => el('details', { class: 'board-fold' }, el('summary', { class: tone }, `${icon} ${text}`), body);
+const fold = (el, icon, text, tone, body, key) => remember(el('details', { class: 'board-fold' }, el('summary', { class: tone }, `${icon} ${text}`), body), key);
 
 // The board as an element.
-function boardView(board, { lang, el }) {
+function boardView(board, { lang, el, key = 'board' }) {
   const w = boardWords(lang);
   if (!board) return el('div', { class: 'muted small' }, w.noBoard);
   const parts = [];
@@ -109,17 +118,17 @@ function boardView(board, { lang, el }) {
   const asks = of('ask', 'asked');
   if (asks.length) {
     parts.push(boardHead(el, '❓', w.asks(asks.length), 'warn'), el('div', { class: 'muted small' }, w.asksHow),
-      boardList(asks.map((x) => ({ ...x, text: x.kind === 'asked' ? `${x.text} (${w.asked})` : x.text })), lang, el, { mark: '?' }));
+      boardList(asks.map((x) => ({ ...x, text: x.kind === 'asked' ? `${x.text} (${w.asked})` : x.text })), lang, el, { mark: '?', key: `${key}:asks` }));
   }
   const yours = of('you');
-  if (yours.length) parts.push(boardHead(el, '🙋', w.yours(yours.length), 'warn'), boardList(yours, lang, el));
+  if (yours.length) parts.push(boardHead(el, '🙋', w.yours(yours.length), 'warn'), boardList(yours, lang, el, { key: `${key}:yours` }));
   // While texts are being rewritten an empty list is not "nothing": it is not written yet.
   const waiting = board.pending ? el('div', { class: 'muted small' }, w.pending(board.pending)) : null;
-  parts.push(boardHead(el, '🛠', w.todo(todo.length), 'cyan'), todo.length || !waiting ? boardList(todo, lang, el) : waiting);
-  if (backlog.length) parts.push(fold(el, '⏳', w.backlog(backlog.length), 'muted', boardList(backlog, lang, el, { first: 50 })));
-  parts.push(boardHead(el, '✅', w.done, 'ok'), board.done.length || !waiting ? boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5 }) : waiting);
-  if (board.closed.length) parts.push(fold(el, '📦', w.closed(board.closed.length), 'muted', boardList(board.closed, lang, el, { mark: '✓', dated: true, first: 50 })));
-  if (board.parked.length) parts.push(fold(el, '💡', w.parked(board.parked.length), 'muted', boardList(board.parked, lang, el, { mark: '·', first: 50 })));
+  parts.push(boardHead(el, '🛠', w.todo(todo.length), 'cyan'), todo.length || !waiting ? boardList(todo, lang, el, { key: `${key}:todo` }) : waiting);
+  if (backlog.length) parts.push(fold(el, '⏳', w.backlog(backlog.length), 'muted', boardList(backlog, lang, el, { first: 50 }), `${key}:backlog`));
+  parts.push(boardHead(el, '✅', w.done, 'ok'), board.done.length || !waiting ? boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5, key: `${key}:done` }) : waiting);
+  if (board.closed.length) parts.push(fold(el, '📦', w.closed(board.closed.length), 'muted', boardList(board.closed, lang, el, { mark: '✓', dated: true, first: 50 }), `${key}:closed`));
+  if (board.parked.length) parts.push(fold(el, '💡', w.parked(board.parked.length), 'muted', el('div', {}, el('div', { class: 'muted small' }, w.parkedHow), boardList(board.parked, lang, el, { mark: '·', first: 50 })), `${key}:parked`));
   if (waiting && (todo.length || board.done.length)) parts.push(waiting);
   return el('div', { class: 'board' }, parts);
 }
@@ -127,7 +136,7 @@ function boardView(board, { lang, el }) {
 // The legend of the IDs and of the words the pages use.
 function legendView(lang, el) {
   const w = boardWords(lang);
-  return el('details', { class: 'legend' }, el('summary', {}, w.legend),
+  return remember(el('details', { class: 'legend' }, el('summary', {}, w.legend),
     el('dl', {}, Object.entries(w.ids).flatMap(([id, [name, what]]) => [el('dt', {}, el('span', { class: `tag tag-${id}` }, `${id}1`), ` ${name}`), el('dd', {}, what)]),
-      w.terms.flatMap(([name, what]) => [el('dt', {}, name), el('dd', {}, what)])));
+      w.terms.flatMap(([name, what]) => [el('dt', {}, name), el('dd', {}, what)]))), 'legend');
 }

@@ -374,12 +374,8 @@ async function refreshBoard() {
     if (!res.ok || text === lastBoard) return;
     lastBoard = text;
     const { language, board } = JSON.parse(text);
-    const box = document.getElementById('board');
-    const open = [...box.querySelectorAll('details')].map((d) => d.open);
     fill('board', el('h2', {}, el('span', { class: 'ps' }, '$'), el('span', { class: 'cmd' }, language === 'it' ? 'il lavoro' : 'the work')),
       boardView(board, { lang: language, el }), legendView(language, el));
-    // Opened parts stay open across refreshes.
-    box.querySelectorAll('details').forEach((d, i) => { if (open[i]) d.open = true; });
   } catch {
     // The rest of the page still shows.
   }

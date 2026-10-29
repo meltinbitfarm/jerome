@@ -324,6 +324,8 @@ Then (0.11.2, D178): the board tells apart questions for you, work waiting for y
 
 Then (0.11.3, D177): the board is easier to read: each part has its icon and colour (❓ questions for you, 🙋 waiting for you, 🛠 Jérôme's work, ✅ done, ⏳ spare time, 📦 closed, 💡 parked), the IDs are coloured by kind, and the items use a larger proportional font.
 
+Then (0.11.4, D179): parked ideas come back as decision requests when their date comes (or the milestone changes); the board's opened parts stay open across refreshes.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

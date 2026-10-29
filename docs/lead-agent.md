@@ -134,3 +134,5 @@ The service folder is one fixed path per project, emptied before each call, beca
 ## Open questions are asked
 
 The open questions of `open.md`, from the brief or written in a session, are for you, and nobody asks them by sitting in a file. A heartbeat asks the oldest one not yet asked as a decision request, with options and a recommendation, so it reaches you on Telegram with its buttons, and marks it `(asked: R<n>)`; once you answer, the answer becomes a decision and the question goes. One per run (D178).
+
+Parked ideas are not forgotten either: one that says when to come back to it ("after 16/12") is asked the same way once that time comes, with three options: take it up now, park it until a new date, or drop it. One with no date is asked when its area's milestone changes (D179).
