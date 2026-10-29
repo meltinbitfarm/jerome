@@ -59,6 +59,8 @@ test('1. on a work branch with uncommitted changes, the run resumes that work an
   // No triage in RESUME mode: the task is the half-done work, and the prompt says so.
   assert.doesNotMatch(p.calls(), /--model haiku/);
   assert.match(readFileSync(p.home('lead-prompt'), 'utf8'), /RESUME mode: an earlier run left work half done: the work branch agent\/half-done/);
+  // The open questions are asked first, in RESUME mode too (D181).
+  assert.match(readFileSync(p.home('lead-prompt'), 'utf8'), /^- FIRST, before the task: the open questions of open\.md/m);
   // The user's own changes on main are never resumed: they are skipped with an alert at once.
   writeFileSync(join(p.dir, 'notes.txt'), 'mine\n');
   p.run('heartbeat', 'demo');

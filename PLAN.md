@@ -328,6 +328,8 @@ Then (0.11.4, D179): parked ideas come back as decision requests when their date
 
 Then (0.11.5, D180): the next heartbeat asks every open question not yet asked, each as its own request; nothing waits for an interactive session any more: items once marked for one are done by heartbeats or asked.
 
+Then (0.11.6, D181): the open questions are asked first in every run, resume included, so a run stopped by its caps has asked them.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
