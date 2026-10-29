@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readyProject } from './sandbox.js';
-import { sections, kindOf } from '../src/board.js';
+import { sections, kindOf, owner } from '../src/board.js';
 
 const OPEN = `# Open
 
@@ -39,6 +39,12 @@ const DIGEST = `# Digest
 test('the board reads open.md by its sections: work to do, spare-time work, parked ideas; assumptions and requests stay out', () => {
   const items = sections(OPEN);
   assert.deepEqual(items.map((x) => [x.id, kindOf(x.heading)]), [['O17', 'todo'], ['O2', 'todo'], ['P1', 'parked'], [null, 'backlog'], ['A34', null]]);
+  // Whose: a question for the user, asked or not yet; work that waits for them at a session; Jérôme's work.
+  assert.equal(kindOf('Open questions'), 'ask');
+  assert.equal(owner('ask', 'Q2: do you push main yourself?'), 'ask');
+  assert.equal(owner('ask', 'Q2: do you push main yourself? (asked: R7)'), 'asked');
+  assert.equal(owner('todo', 'O4: update the 8:45 routine (lead, interactive session)'), 'you');
+  assert.equal(owner('todo', 'O17: archive for launch (ricercatore)'), 'todo');
 });
 
 test('the watchdog has the board\'s texts rewritten once in plain words, and the viewer and the board show those', async () => {

@@ -320,6 +320,8 @@ Then (0.11.0, D177): each project has a board — now, to do, done — at the to
 
 Then (0.11.1, D177): the board reads as a checklist (☐ to do, ✓ done, eight shown, the rest a tap away), each text one sentence of at most 25 words, and an item not yet in plain words is left out and counted, never shown with its commands and file names — Fabio found the first version a wall of text with code in it.
 
+Then (0.11.2, D178): the board tells apart questions for you, work waiting for you at a session, and Jérôme's own work; an empty list while texts are rewritten says so instead of "nothing"; and a heartbeat asks one open question of open.md per run as a decision request, so it reaches Telegram.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

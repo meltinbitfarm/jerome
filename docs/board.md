@@ -7,7 +7,9 @@ Each project has a board (D177): what it does now and who works on it, what is l
 | Part | From |
 |---|---|
 | **Now** | the heartbeat running: the triage's task and each subagent at work, with what the lead agent asked of it (read from the run's transcripts, as the [live view](commands/view.md#a-run-in-progress) does) |
-| **To do** | the items of `.jerome/open.md`, except the assumptions, the decision requests (the database holds them) and the parked ideas; the backlog apart, as work for when time is spare |
+| **Questions for you** | the open questions of `.jerome/open.md`: each still to ask, or asked as a request and waiting for your answer. A heartbeat asks one per run (D178) |
+| **Waiting for you at a session** | the items the lead agent marked for an interactive session |
+| **Jérôme does** | the other items of `open.md`, except the assumptions, the decision requests (the database holds them) and the parked ideas; the backlog apart, as work for when time is spare |
 | **Done lately** | the last 15 lines of `.jerome/digest.md`, one per heartbeat, newest first |
 | **Items closed** | the closed items of `.jerome/archive.md`, newest first by the date each one names |
 | **Ideas parked** | the parked section of `open.md`: not to do for now |

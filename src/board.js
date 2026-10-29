@@ -39,7 +39,16 @@ export function kindOf(heading) {
   if (/assumption|decision request/i.test(heading)) return null;
   if (/park|idea/i.test(heading)) return 'parked';
   if (/backlog/i.test(heading)) return 'backlog';
+  if (/question/i.test(heading)) return 'ask';
   return 'todo';
+}
+
+// Whose an item is: a question for the user, asked as a request or not yet; work that waits for the user at a
+// session; or work Jérôme does.
+export function owner(kind, text) {
+  if (kind === 'ask') return /\(asked: R\d+\)/.test(text) ? 'asked' : 'ask';
+  if (kind === 'todo' && /interactive session|sessione interattiva/i.test(text)) return 'you';
+  return kind;
 }
 
 const read = (dir, file) => (existsSync(join(dir, file)) ? readFileSync(join(dir, file), 'utf8') : '');
@@ -62,8 +71,8 @@ export function projectBoard(dir, { now = new Date(), code = lang(), plain = (te
   };
   const shown = (list) => list.filter((x) => x.text);
   const open = sections(read(dir, STATE.open));
-  const todo = shown(open.map((x) => ({ ...x, kind: kindOf(x.heading) })).filter((x) => x.kind === 'todo' || x.kind === 'backlog').slice(0, TODO)
-    .map((x) => ({ id: x.id, text: say(x.text), kind: x.kind })));
+  const todo = shown(open.map((x) => ({ ...x, kind: kindOf(x.heading) })).filter((x) => ['todo', 'backlog', 'ask'].includes(x.kind)).slice(0, TODO)
+    .map((x) => ({ id: x.id, text: say(x.text.replace(/\s*\(asked: R\d+\)/, '')), kind: owner(x.kind, x.text) })));
   const parked = shown(open.filter((x) => kindOf(x.heading) === 'parked').slice(0, PARKED).map((x) => ({ id: x.id, text: say(x.text) })));
   // The closed items, newest first by the date each one names.
   const closed = shown(sections(read(dir, STATE.archive)).filter((x) => /closed/i.test(x.heading) && x.id)

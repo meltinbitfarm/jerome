@@ -130,3 +130,7 @@ Some runs are not the lead agent's work, for example the documentation agent beh
 - adds the project with `--add-dir` only when the task needs its files. The lead agent's instructions still stay out, while the project's skills come in.
 
 The service folder is one fixed path per project, emptied before each call, because Claude Code keeps a small folder in `~/.claude/projects/` for every folder it is started from.
+
+## Open questions are asked
+
+The open questions of `open.md`, from the brief or written in a session, are for you, and nobody asks them by sitting in a file. A heartbeat asks the oldest one not yet asked as a decision request, with options and a recommendation, so it reaches you on Telegram with its buttons, and marks it `(asked: R<n>)`; once you answer, the answer becomes a decision and the question goes. One per run (D178).

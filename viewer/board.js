@@ -5,7 +5,7 @@
 const BOARD_WORDS = {
   en: {
     now: 'Now', since: (ago) => `working since ${ago}`, starting: 'starting',
-    todo: (n) => `To do (${n})`, backlog: (n) => `When there is spare time (${n})`, done: 'Done lately',
+    todo: (n) => `Jérôme does (${n})`, asks: (n) => `Questions for you (${n})`, asksHow: 'Jérôme asks them one at a time, as requests with buttons on Telegram.', asked: 'asked, waiting for your answer', yours: (n) => `Waiting for you at a session (${n})`, backlog: (n) => `When there is spare time (${n})`, done: 'Done lately',
     closed: (n) => `Items closed (${n})`, parked: (n) => `Ideas set aside, not to do now (${n})`,
     none: 'nothing', noBoard: 'The board comes with the Mac\'s next beat.',
     more: (n) => `${n} more`, pending: (n) => `${n} ${n === 1 ? 'text is' : 'texts are'} being put in plain words: they show in a minute or two.`,
@@ -30,7 +30,7 @@ const BOARD_WORDS = {
   },
   it: {
     now: 'Adesso', since: (ago) => `al lavoro da ${ago}`, starting: 'sta partendo',
-    todo: (n) => `Da fare (${n})`, backlog: (n) => `Quando avanza tempo (${n})`, done: 'Fatto di recente',
+    todo: (n) => `Fa Jérôme (${n})`, asks: (n) => `Domande per te (${n})`, asksHow: 'Jérôme te le fa una alla volta, come richieste con i pulsanti su Telegram.', asked: 'già chiesta, aspetta la tua risposta', yours: (n) => `Aspetta te in una sessione (${n})`, backlog: (n) => `Quando avanza tempo (${n})`, done: 'Fatto di recente',
     closed: (n) => `Voci chiuse (${n})`, parked: (n) => `Idee parcheggiate, da non fare ora (${n})`,
     none: 'niente', noBoard: 'Il quadro arriva col prossimo battito del Mac.',
     more: (n) => `altre ${n}`, pending: (n) => `${n} ${n === 1 ? 'testo è' : 'testi sono'} in riscrittura: compaiono tra un paio di minuti.`,
@@ -96,14 +96,25 @@ function boardView(board, { lang, el }) {
           el('span', {}, el('strong', {}, a.name), a.what ? ` · ${a.what}` : '', a.status === 'starting' ? el('span', { class: 'muted small' }, ` (${w.starting})`) : null))))
         : null));
   }
-  const todo = board.todo.filter((x) => x.kind !== 'backlog');
-  const backlog = board.todo.filter((x) => x.kind === 'backlog');
-  parts.push(el('h4', {}, w.todo(todo.length)), boardList(todo, lang, el));
+  const of = (...kinds) => board.todo.filter((x) => kinds.includes(x.kind));
+  const todo = of('todo');
+  const backlog = of('backlog');
+  // The user's part first: questions for them, asked or still to ask, and work that waits for them.
+  const asks = of('ask', 'asked');
+  if (asks.length) {
+    parts.push(el('h4', { class: 'warn' }, w.asks(asks.length)), el('div', { class: 'muted small' }, w.asksHow),
+      boardList(asks.map((x) => ({ ...x, text: x.kind === 'asked' ? `${x.text} (${w.asked})` : x.text })), lang, el, { mark: '?' }));
+  }
+  const yours = of('you');
+  if (yours.length) parts.push(el('h4', { class: 'warn' }, w.yours(yours.length)), boardList(yours, lang, el));
+  // While texts are being rewritten an empty list is not "nothing": it is not written yet.
+  const waiting = board.pending ? el('div', { class: 'muted small' }, w.pending(board.pending)) : null;
+  parts.push(el('h4', {}, w.todo(todo.length)), todo.length || !waiting ? boardList(todo, lang, el) : waiting);
   if (backlog.length) parts.push(el('details', {}, el('summary', {}, w.backlog(backlog.length)), boardList(backlog, lang, el, { first: 50 })));
-  parts.push(el('h4', {}, w.done), boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5 }));
+  parts.push(el('h4', {}, w.done), board.done.length || !waiting ? boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5 }) : waiting);
   if (board.closed.length) parts.push(el('details', {}, el('summary', {}, w.closed(board.closed.length)), boardList(board.closed, lang, el, { mark: '✓', dated: true, first: 50 })));
   if (board.parked.length) parts.push(el('details', {}, el('summary', {}, w.parked(board.parked.length)), boardList(board.parked, lang, el, { mark: '·', first: 50 })));
-  if (board.pending) parts.push(el('div', { class: 'muted small' }, w.pending(board.pending)));
+  if (waiting && (todo.length || board.done.length)) parts.push(waiting);
   return el('div', { class: 'board' }, parts);
 }
 
