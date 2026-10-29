@@ -352,6 +352,8 @@ Then (0.12.3, D188): a **?** button on the viewer and on the Director's dashboar
 
 Then (0.12.4, D189): `jerome.md` back under its budget, 1000 → 841 tokens: the worktree procedure is told only when needed, by the session's start and the hook's refusal.
 
+Then (0.12.5, D190): `jerome update` writes nothing while a heartbeat runs in the project, instead of leaving its files uncommitted in the run's working tree.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

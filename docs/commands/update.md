@@ -9,7 +9,9 @@ jerome update                                                  # in the project 
 
 ## What it commits
 
-The files it writes, and `.jerome/project.json`, are committed at once by their paths, as `Jérôme: template files updated to <version>` (D158): left uncommitted, they would stop the next heartbeat as someone's changes. In a folder with no commit yet, or while a heartbeat runs, it says so and commits nothing.
+The files it writes, and `.jerome/project.json`, are committed at once by their paths, as `Jérôme: template files updated to <version>` (D158): left uncommitted, they would stop the next heartbeat as someone's changes. In a folder with no commit yet it says so and commits nothing.
+
+While a heartbeat runs in the project, it shows what would change and **writes nothing** (D190): the run holds the working tree, and files written beside it would be uncommitted changes that are not its own, failing its end check. Run it again once the run ends; `jerome heartbeat wait` waits for it. With `--check` it reports as usual.
 
 ## What it touches
 

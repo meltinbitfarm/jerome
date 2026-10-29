@@ -1,6 +1,6 @@
 {
   "name": "@meltinbitfarm/jerome",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "A lead agent and lean subagents for Claude Code projects, with token usage kept in check.",
   "type": "module",
   "bin": {

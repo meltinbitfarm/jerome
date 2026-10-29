@@ -245,3 +245,29 @@ test('update commits the files it writes, so the next heartbeat does not stop on
   assert.equal(execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: p.dir, encoding: 'utf8' }), '');
   assert.match(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: p.dir, encoding: 'utf8' }), /^Jérôme: template files updated to /);
 });
+
+test('update writes nothing while a heartbeat runs in the project, so the run does not end on files of its own (D190)', () => {
+  const p = readyProject();
+  p.git('config', 'user.email', 't@example.com');
+  p.git('config', 'user.name', 't');
+  writeFileSync(join(p.dir, '.claude', 'rules', 'jerome.md'), 'old lead agent\n');
+  const m = marker(p.dir);
+  m.files['.claude/rules/jerome.md'] = sha('old lead agent\n');
+  writeFileSync(join(p.dir, '.jerome', 'project.json'), JSON.stringify(m));
+  p.git('add', '-A');
+  p.git('commit', '-q', '-m', 'an older template');
+  const label = execFileSync(process.execPath, ['-e', `import('${new URL('../src/schedule.js', import.meta.url)}').then(m => console.log(m.jobLabel(${JSON.stringify(p.dir)})))`], { encoding: 'utf8' }).trim();
+  const lock = join(p.root, '.cache', 'jerome', 'locks', `${label}.lock`);
+  mkdirSync(join(lock, '..'), { recursive: true });
+  writeFileSync(lock, String(process.pid));
+  const r = p.run('update', 'demo', '--yes');
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /A heartbeat is running in this project \(pid \d+\): nothing was changed/);
+  assert.equal(readFileSync(join(p.dir, '.claude', 'rules', 'jerome.md'), 'utf8'), 'old lead agent\n');
+  assert.equal(execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: p.dir, encoding: 'utf8' }), '');
+  // Once it ends, the update goes through and is committed.
+  writeFileSync(lock, '999999');
+  const again = p.run('update', 'demo', '--yes');
+  assert.equal(again.status, 0, again.stdout + again.stderr);
+  assert.match(again.stdout, /✓ Committed as "Jérôme: template files updated to /);
+});

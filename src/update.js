@@ -56,6 +56,13 @@ export async function update(dirArg, { check = false, yes = false } = {}) {
   for (const f of todo) console.log(`  ${LABELS[f.status].padEnd(12)} ${f.path}`);
   for (const f of todo) printDiff(dir, f);
   if (check) return 1;
+  // A heartbeat running here holds the working tree: files written now would be its uncommitted changes, and fail its
+  // end check. Nothing is written until it ends (D190).
+  const running = lockHolder(dir);
+  if (running) {
+    console.error(`\nA heartbeat is running in this project (pid ${running}): nothing was changed. Run \`jerome update\` again once it ends; \`jerome heartbeat wait\` waits for it.`);
+    return 1;
+  }
 
   const clean = todo.filter((f) => f.status !== 'modified');
   const modified = todo.filter((f) => f.status === 'modified');
@@ -104,7 +111,8 @@ export async function update(dirArg, { check = false, yes = false } = {}) {
 function commitTemplate(dir, paths) {
   const git = (...args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
   if (git('rev-parse', '--verify', '-q', 'HEAD').status !== 0) return null;
-  if (lockHolder(dir)) return '! A heartbeat is running: commit these files after it ends, or the next one finds them as uncommitted changes.';
+  // A heartbeat that started while the user was choosing: the files are written, and wait for it to end.
+  if (lockHolder(dir)) return '! A heartbeat started meanwhile: commit these files after it ends, or the next one finds them as uncommitted changes.';
   const changed = paths.filter((p) => git('status', '--porcelain', '--', p).stdout.trim());
   if (!changed.length) return null;
   git('add', '-A', '--', ...changed);
