@@ -140,3 +140,45 @@ function legendView(lang, el) {
     el('dl', {}, Object.entries(w.ids).flatMap(([id, [name, what]]) => [el('dt', {}, el('span', { class: `tag tag-${id}` }, `${id}1`), ` ${name}`), el('dd', {}, what)]),
       w.terms.flatMap(([name, what]) => [el('dt', {}, name), el('dd', {}, what)]))), 'legend');
 }
+
+// The help panel behind the pages' "?" button: what the page shows, in the user's language, the legend, and the guides
+// on GitHub, which are in English and not in the installed package.
+const DOCS = 'https://github.com/meltinbitfarm/jerome/blob/main/';
+const HELP_WORDS = {
+  en: {
+    title: 'Help', button: 'Help: what this page shows, and the guides', guides: 'The guides, on GitHub',
+    pages: {
+      view: 'This page shows one project, and only reads. At the top, the board: what Jérôme is doing now, what is left and what was done, in plain words. Below, the subscription\'s windows, the open requests, the team, the latest runs and the usage. To answer a question, use Telegram or a session in the project.',
+      director: 'This page shows every Mac and every project on your Claude account, and only reads. At the top, what waits for you; then each project, with its board to open; then the week\'s quota and its pace. Under the details, the Macs, the latest runs and the past weeks. It refreshes by itself. To answer a question, use Telegram or a session on the Mac.',
+    },
+    links: [['How to use it', 'README.md#using-it'], ['Why Jérôme works this way', 'docs/why.md'], ['A project from start to finish', 'docs/guide.md'], ['The board', 'docs/board.md'], ['Telegram', 'docs/telegram.md'], ['The quota governor', 'docs/quota-governor.md'], ['Jérôme Director', 'docs/director.md']],
+  },
+  it: {
+    title: 'Aiuto', button: 'Aiuto: cosa mostra questa pagina, e le guide', guides: 'Le guide, su GitHub (in inglese)',
+    pages: {
+      view: 'Questa pagina mostra un progetto, in sola lettura. In alto il quadro: cosa sta facendo Jérôme adesso, cosa resta e cosa è stato fatto, in parole semplici. Sotto, le finestre dell\'abbonamento, le richieste aperte, il team, le ultime run e i consumi. Per rispondere a una domanda usa Telegram o una sessione nel progetto.',
+      director: 'Questa pagina mostra tutti i Mac e tutti i progetti del tuo account Claude, in sola lettura. In alto quello che aspetta te; poi ogni progetto, col suo quadro da aprire; poi la quota della settimana e il suo passo. Nei dettagli, i Mac, le ultime run e le settimane passate. Si aggiorna da sola. Per rispondere a una domanda usa Telegram o una sessione sul Mac.',
+    },
+    links: [['Come si usa', 'README.md#using-it'], ['Perché Jérôme funziona così', 'docs/why.md'], ['Un progetto dall\'inizio alla fine', 'docs/guide.md'], ['Il quadro', 'docs/board.md'], ['Telegram', 'docs/telegram.md'], ['Il governatore della quota', 'docs/quota-governor.md'], ['Jérôme Director', 'docs/director.md']],
+  },
+};
+
+// The panel's content, for the page `page` (view, director).
+function helpView(lang, el, page) {
+  const w = HELP_WORDS[lang] ?? HELP_WORDS.en;
+  return el('div', {}, el('h3', {}, w.title), el('p', {}, w.pages[page]), legendView(lang, el), el('h4', {}, w.guides),
+    el('ul', { class: 'help-links' }, w.links.map(([text, path]) => el('li', {}, el('a', { href: DOCS + path, target: '_blank', rel: 'noopener noreferrer' }, text)))));
+}
+
+// The "?" button shows and hides the panel; its label follows the language.
+function helpButton(button, panel, lang) {
+  const w = HELP_WORDS[lang] ?? HELP_WORDS.en;
+  button.title = w.button;
+  button.setAttribute('aria-label', w.button);
+  if (button.dataset.wired) return;
+  button.dataset.wired = '1';
+  button.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    button.setAttribute('aria-expanded', String(!panel.hidden));
+  });
+}

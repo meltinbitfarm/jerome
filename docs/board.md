@@ -25,9 +25,12 @@ The state files are written for the lead agent: short, in English, with file nam
 - **Kept:** in `~/.cache/jerome/plain/<language>.json` on the Mac, by the text's hash: each text is rewritten once. The newest 4000 are kept.
 - **Cost:** a few thousand Haiku tokens for a project's first board, then only the new items and runs.
 
-## The legend
+## The help panel and the legend
 
-Under the board, the legend says what the IDs mean:
+The **?** button opens a panel in your language: what the page shows and where to answer, the legend below, and links to the guides on GitHub (How to use it, Why Jérôme works this way, the step-by-step guide, the board, Telegram, the quota governor, the Director). The guides are in English and live on GitHub, not in the installed package, so the links need the internet; the rest of the page does not.
+
+
+In the help panel, behind the **?** button at the top of the viewer and of the Director's dashboard (D188), the legend says what the IDs mean:
 
 | ID | Meaning |
 |---|---|

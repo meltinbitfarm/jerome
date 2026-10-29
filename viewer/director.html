@@ -20,14 +20,15 @@
       <div class="muted" id="updated">…</div>
     </div>
     <div>
+      <button type="button" id="help-toggle" class="help-toggle" aria-controls="help" aria-expanded="false">?</button>
       <select id="theme" aria-label="theme"><option value="auto">◐</option><option value="light">☀</option><option value="dark">☾</option></select>
     </div>
   </header>
+  <section id="help" class="help" hidden></section>
   <div id="error" class="error" hidden></div>
   <section id="todo" hidden></section>
   <section id="projects"></section>
   <section id="quota"></section>
-  <div id="legend"></div>
   <details id="details"><summary id="details-title"></summary><div id="details-body"></div></details>
   <footer id="footer"></footer>
 </main>
@@ -379,7 +380,8 @@ function render() {
   renderTodo(items);
   renderProjects();
   renderQuota();
-  fill('legend', legendView(data.language, el));
+  fill('help', helpView(data.language, el, 'director'));
+  helpButton(document.getElementById('help-toggle'), document.getElementById('help'), data.language);
   // The details keep their state, open or closed, across refreshes.
   renderDetails();
   fill('footer', `Jérôme Director ${data.version} · ${W.readOnly}`);
@@ -405,6 +407,9 @@ async function load() {
   }
 }
 
+// The help panel works before the data arrives, in the browser's language until the data says the user's.
+fill('help', helpView(browserLang, el, 'director'));
+helpButton(document.getElementById('help-toggle'), document.getElementById('help'), browserLang);
 load();
 setInterval(load, REFRESH_MS);
 let resized = null;

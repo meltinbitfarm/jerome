@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -149,4 +149,11 @@ test('jerome state --json carries the team too', () => {
   const s = readState(dir, { readOnly: true });
   assert.ok(s.team.subagents.length >= 1);
   assert.equal(statSync(dbPath(dir)).isFile(), true);
+});
+
+test('the help panel links only to guides that exist, in every language', () => {
+  const script = readFileSync(new URL('../viewer/board.js', import.meta.url), 'utf8');
+  const paths = [...script.matchAll(/, '([\w/.-]+\.md(?:#[\w-]+)?)'\]/g)].map((m) => m[1]);
+  assert.ok(paths.length >= 14, `found ${paths.length} links`);
+  for (const path of paths) assert.ok(existsSync(new URL(`../${path.split('#')[0]}`, import.meta.url)), path);
 });

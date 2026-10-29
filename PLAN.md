@@ -348,6 +348,8 @@ Then (0.12.1): a Telegram call that hangs is given up after its own wait plus 10
 
 Then (0.12.2): `jerome version` (also `--version`, `-v`) prints the installed version, and the install command ends with it, since npm 11 hides what a package prints while it installs.
 
+Then (0.12.3, D188): a **?** button on the viewer and on the Director's dashboard opens a help panel in the user's language: what the page shows, the legend, and links to the guides on GitHub.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

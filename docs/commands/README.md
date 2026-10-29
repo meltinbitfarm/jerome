@@ -13,7 +13,7 @@ Every command of `jerome`, each with its own page. `jerome --help` prints the sa
 | [`jerome language [code]`](language.md) | The language Jérôme writes to you in: notifications, Telegram, decision requests (`en`, `it`) |
 | [`jerome update [dir] [--check] [--yes]`](update.md) | Brings a project's template files up to the installed version, without touching its state |
 | [`jerome state [dir] [--json]`](state.md) | Shows a project's usage, areas, runs and open decision requests in a few lines, with dollars as API equivalents |
-| [`jerome view [dir]`](view.md) | Opens a read-only page in the browser: at the top the project's [board](../board.md) (now, to do, done, in plain words in your language, with a legend of the IDs), then the team, areas, runs, usage, subscription windows and the messages between agents |
+| [`jerome view [dir]`](view.md) | Opens a read-only page in the browser: at the top the project's [board](../board.md) (now, to do, done, in plain words in your language, with a **?** button for help, the legend of the IDs and the guides), then the team, areas, runs, usage, subscription windows and the messages between agents |
 | [`jerome projects [--json] [--view]`](projects.md) | Shows every project on this machine, from any folder, with what needs you first; `--view` as a page in the browser |
 | [`jerome schedule [dir] hourly\|daily\|weekly`](schedule.md) | Schedules heartbeats, runs of the lead agent without you, with a cap per run (macOS) |
 | [`jerome heartbeat [dir]`](heartbeat.md) | One scheduled run, as launchd starts it; `install`, `uninstall`, `status`, `run <slot>`, `marathon --until HH:MM` and `override --today` for a project's slots and their runs |

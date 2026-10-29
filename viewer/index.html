@@ -16,10 +16,12 @@
       <div id="back" hidden><a id="back-link">← $ jerome projects</a></div>
     </div>
     <div>
+      <button type="button" id="help-toggle" class="help-toggle" aria-controls="help" aria-expanded="false">?</button>
       <label class="muted" for="theme">theme</label>
       <select id="theme"><option value="auto">auto</option><option value="light">light</option><option value="dark">dark</option></select>
     </div>
   </header>
+  <section id="help" class="help" hidden></section>
   <div id="error" class="error" hidden></div>
   <div id="live" hidden></div>
   <div id="overview">
@@ -365,7 +367,7 @@ function render(d) {
   fill('footer', `# Dollar amounts are API equivalents at the list prices of ${d.pricesDate}: a subscription is not billed per token. Read-only: the viewer never writes anything.`);
 }
 
-// The project's board (D177) at the top, in the user's language, with the legend.
+// The project's board (D177) at the top, in the user's language; the legend is in the help panel.
 let lastBoard = '';
 async function refreshBoard() {
   try {
@@ -375,7 +377,9 @@ async function refreshBoard() {
     lastBoard = text;
     const { language, board } = JSON.parse(text);
     fill('board', el('h2', {}, el('span', { class: 'ps' }, '$'), el('span', { class: 'cmd' }, language === 'it' ? 'il lavoro' : 'the work')),
-      boardView(board, { lang: language, el }), legendView(language, el));
+      boardView(board, { lang: language, el }));
+    fill('help', helpView(language, el, 'view'));
+    helpButton(document.getElementById('help-toggle'), document.getElementById('help'), language);
   } catch {
     // The rest of the page still shows.
   }
@@ -598,6 +602,9 @@ if (location.pathname.startsWith('/p/')) {
   document.getElementById('back').hidden = false;
 }
 
+// The help panel works before the board arrives, in English until the board says the user's language.
+fill('help', helpView('en', el, 'view'));
+helpButton(document.getElementById('help-toggle'), document.getElementById('help'), 'en');
 refresh().then(route);
 setInterval(() => { if (!document.hidden) refresh(); }, 10_000);
 document.addEventListener('visibilitychange', () => {
