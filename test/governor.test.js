@@ -6,6 +6,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pace, modelFor } from '../src/pacing.js';
 import { parseUsage } from '../src/quota.js';
+import { slotWithin } from '../src/heartbeatconfig.js';
+import { triagePrompt } from '../src/heartbeat.js';
 import { readyProject } from './sandbox.js';
 
 const H = 3_600_000;
@@ -145,4 +147,16 @@ test('the watchdog starts fill runs when the week is behind, staggered, and a sl
   assert.match(status, /^cost {5}per run, 7 days: opus 0 pt of 7d \(2 runs\)$/m);
   assert.equal(p.gov('governor', 'off').status, 0);
   assert.match(p.gov('heartbeat', 'fill', 'demo').stdout, /blocked .*governor: off/);
+});
+
+test('a fill run leaves alone a project whose slot comes before it would end (D176); no criteria is no reason to stop', () => {
+  const news = [{ name: 'news', times: [{ hour: 7, minute: 30 }], days: null }];
+  const local = (h, m) => new Date(2026, 9, 29, h, m);
+  assert.equal(slotWithin(news, 90, local(6, 47)), true);
+  assert.equal(slotWithin(news, 90, local(5, 59)), false);
+  assert.equal(slotWithin(news, 90, local(7, 30)), false, 'the slot just started is behind, not ahead');
+  assert.equal(slotWithin([{ ...news[0], days: ['fri'] }], 90, local(6, 47)), false, 'not its day');
+  assert.equal(slotWithin([{ name: 'h', times: [{ minute: 15 }], days: null }], 90, local(6, 47)), true);
+  const prompt = triagePrompt({ plan: { due: [{ name: 'main', goal: null, criteria: null }], implicit: true } });
+  assert.match(prompt, /An area with no goal or criteria .* never answer no work for want of criteria/);
 });

@@ -138,3 +138,17 @@ export function describeSlot(slot) {
 export function dayNumber(day) {
   return DAYS.indexOf(day);
 }
+
+// Whether one of the slots comes round within `minutes` from now, local time: a fill run started now could still hold
+// the project's lock then, and the slot's run would find it locked.
+export function slotWithin(slots, minutes, now = new Date()) {
+  for (let m = 1; m <= minutes; m++) {
+    const at = new Date(now.getTime() + m * 60_000);
+    const day = DAYS[at.getDay()];
+    for (const s of slots) {
+      if (s.days && !s.days.includes(day)) continue;
+      if (s.times.some((t) => t.minute === at.getMinutes() && (t.hour === undefined || t.hour === at.getHours()))) return true;
+    }
+  }
+  return false;
+}

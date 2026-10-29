@@ -243,7 +243,7 @@ test('8. install and uninstall are idempotent, slots run with their text, and st
   // A slot's run gives its text to the triage and the lead agent; an unknown slot is an alert at once.
   p.run('heartbeat', 'run', 'evening', 'demo');
   assert.equal(p.lastRun().slot, 'evening');
-  assert.match(p.calls(), /## This run's slot: evening\nPolish the copy only\./);
+  assert.match(p.calls(), /## This run's slot: evening\n.*that work comes first and is the task\.\nPolish the copy only\./);
   assert.match(readFileSync(p.home('lead-prompt'), 'utf8'), /This run's slot \(evening\): Polish the copy only\.[\s\S]*Verify with `npm test`/);
   p.run('heartbeat', 'run', 'night', 'demo');
   assert.match(p.lastRun().reason, /^no slot "night"/);

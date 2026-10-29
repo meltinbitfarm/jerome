@@ -12,6 +12,7 @@ import { MARKER } from './template.js';
 import { openDb, dbPath } from './db.js';
 import { lockHolder, cacheDir } from './runstate.js';
 import { jobLabel, logPath } from './schedule.js';
+import { heartbeatConfig, slotWithin } from './heartbeatconfig.js';
 import { projectStatus, projectOver, projectLimitSettings, limitText } from './budget.js';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
@@ -71,13 +72,16 @@ export async function governorTick({ env = process.env, now = new Date(), log = 
   return { ...p, started: dir };
 }
 
-// The project to fill: among the governor's, those with no open alert and no heartbeat started in the last
-// FILL_COOLDOWN_MIN minutes, the one whose last heartbeat is oldest.
+// The project to fill: among the governor's, those with no open alert, no heartbeat started in the last
+// FILL_COOLDOWN_MIN minutes and no slot due before a run started now would end (D176), the one whose last heartbeat
+// is oldest.
 export function pickProject(projects, now = new Date()) {
   const since = new Date(now.getTime() - FILL_COOLDOWN_MIN * 60_000).toISOString();
   const ready = [];
   for (const dir of projects) {
     if (!existsSync(join(dir, MARKER)) || !existsSync(dbPath(dir)) || lockHolder(dir)) continue;
+    const { slots, maxMinutes } = heartbeatConfig(dir).config;
+    if (slotWithin(slots, maxMinutes, now)) continue;
     const db = openDb(dir, { readOnly: true, migrate: false });
     if (!db) continue;
     try {

@@ -314,6 +314,8 @@ Then (0.10.0, D172-D174): every block reaches Fabio on Telegram and can be clear
 
 Then (0.10.1, D172, D175): the bridge listens for most of each minute (long polling), so a tap is answered in a second or two; no block asks for a session or a command, each points to its buttons (try again, skip, update the schedule); an alert from before 0.10.0 allows the rules its reason names.
 
+Then (0.10.2, D176): a fill run is not started in a project whose slot comes before it could end, so the slot's run never finds the project locked; a project with no goal or success criteria works on its open items instead of doing nothing; a slot's own work comes first.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
