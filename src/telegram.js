@@ -115,10 +115,33 @@ function knownProjects() {
   return stores().filter((s) => !s.orphan && s.record?.path).map((s) => ({ name: basename(s.record.path), dir: s.record.path }));
 }
 
-// A request's options as buttons: "merge / fix first" gives two; more than six, or none, gives none.
+// A request's options as buttons, however the agent wrote them: labelled in order ("A) …", "B: …", "1) …"), split at
+// the labels, so a "/" or ";" inside an option stays in it; else separated by " / ", ";", " | " or " · ". Fewer than
+// two, or more than six, gives none.
 export function optionList(options) {
-  const list = String(options ?? '').split(/\s+\/\s+|\s*;\s*|\s+\|\s+/).map((o) => o.trim()).filter(Boolean);
-  return list.length >= 2 && list.length <= 6 ? list : [];
+  const text = String(options ?? '').trim();
+  const list = labelled(text) ?? text.split(/\s+\/\s+|\s*;\s*|\s+\|\s+|\s+·\s+/);
+  const out = list.map((o) => o.trim()).filter(Boolean);
+  return out.length >= 2 && out.length <= 6 ? out : [];
+}
+
+// The options split at their labels A, B, C… or 1, 2, 3…, when the text starts with the first and has the next in
+// order; the separator before each label is left out.
+function labelled(text) {
+  const first = text.match(/^([A-Z]|1)[):]\s/);
+  if (!first) return null;
+  const next = (label) => (/\d/.test(label) ? String(Number(label) + 1) : String.fromCharCode(label.charCodeAt(0) + 1));
+  const starts = [0];
+  let label = first[1];
+  for (;;) {
+    label = next(label);
+    const at = text.slice(starts.at(-1) + 3).search(new RegExp(`(^|[\\s;·|/,])${label}[):]\\s`));
+    if (at < 0) break;
+    const from = starts.at(-1) + 3 + at;
+    starts.push(from + text.slice(from).indexOf(label));
+  }
+  if (starts.length < 2) return null;
+  return starts.map((at, i) => text.slice(at, starts[i + 1] ?? text.length).replace(/[\s;·|/,]+$/, ''));
 }
 
 const clip = (text) => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}…` : text);
@@ -160,7 +183,7 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
     }
     // The state is saved before sending, so an update is never handled twice.
     writeState(state);
-    await clearClosed(state, call, config);
+    await syncButtons(state, call, config);
     await sendQueue(state, call, config, done, now);
     const left = until ? Math.floor((until - Date.now()) / 1000) : 0;
     // A failed call is not retried in a loop: the next minute tries again.
@@ -170,27 +193,33 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
   return done;
 }
 
-// The buttons of a request closed since it was sent, answered or dropped anywhere, are taken off its message, so no
-// tap is spent on a question that is not open any more.
-async function clearClosed(state, call, config) {
+// A request's buttons follow it on the messages already sent: taken off once it is closed, answered or dropped
+// anywhere, so no tap goes to a question that is not open any more; put on a message of an open request sent with
+// none, when its options are read better now than when it was sent.
+async function syncButtons(state, call, config) {
   let changed = false;
   for (const [id, about] of Object.entries(state.sent)) {
-    // Messages remembered before `buttons` was kept may have some: tried, a message with none is refused harmlessly.
-    if (!about.request || about.cleared || about.buttons === false) continue;
+    if (!about.request || about.cleared) continue;
     const db = openDb(about.dir);
     let row;
     try {
-      row = db?.prepare('SELECT status FROM requests WHERE id = ?').get(about.request);
+      row = db?.prepare('SELECT status, options FROM requests WHERE id = ?').get(about.request);
     } finally {
       db?.close();
     }
-    if (row?.status === 'open') continue;
+    const open = row?.status === 'open';
+    const options = open ? optionList(row.options) : [];
+    // Messages remembered before `buttons` was kept may have some: tried, a message already so is refused harmlessly.
+    if (open && (about.buttons === true || !options.length)) continue;
+    if (!open && about.buttons === false) continue;
+    const keyboard = options.map((o, i) => [{ text: o, callback_data: `a:${about.request}:${i}` }]);
     try {
-      await call('editMessageReplyMarkup', { chat_id: config.chatId, message_id: Number(id), reply_markup: { inline_keyboard: [] } });
+      await call('editMessageReplyMarkup', { chat_id: config.chatId, message_id: Number(id), reply_markup: { inline_keyboard: keyboard } });
     } catch {
-      // A message too old to edit keeps its buttons: a tap on them says the request is closed.
+      // A message too old to edit keeps what it has: a tap on a closed request says it is closed.
     }
-    about.cleared = true;
+    if (open) about.buttons = true;
+    else about.cleared = true;
     changed = true;
   }
   if (changed) writeState(state);
@@ -229,7 +258,7 @@ async function send(item, state, call, config) {
   // A message about the account, not a project (the quota running fast), has no project's name.
   const head = item.project ? `Jérôme · ${item.project}` : 'Jérôme';
   const text = r
-    ? `${head}\n❓ R${r.id} ${r.question}${r.options ? `\n${t('request.options')}: ${r.options}` : ''}${r.recommendation ? `\n${t('request.recommended')}: ${r.recommendation}` : ''}\n\n${t('request.how')}`
+    ? `${head}\n❓ R${r.id} ${r.question}${r.options ? `\n${t('request.options')}: ${r.options}` : ''}${r.recommendation ? `\n${t('request.recommended')}: ${r.recommendation}` : ''}\n\n${t(optionList(r.options).length ? 'request.how' : 'request.howReply')}`
     : `${head}\n${item.text}`;
   const options = r ? optionList(r.options) : [];
   // A block's actions (D166), one button each: the alert's id and the action's name, nothing else.
@@ -260,6 +289,7 @@ async function onButton(q, state, call, config, now, env) {
   const clearButtons = async () => {
     try {
       await call('editMessageReplyMarkup', { chat_id: config.chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } });
+      if (about) about.cleared = true;
     } catch {
       // The buttons left are harmless: a second tap finds the request answered, or the block closed.
     }
@@ -276,10 +306,8 @@ async function onButton(q, state, call, config, now, env) {
     const row = db?.prepare('SELECT options FROM requests WHERE id = ?').get(Number(a));
     db?.close();
     const option = optionList(row?.options)[Number(b)];
-    if (option) {
-      await answer(about, Number(a), option, call, config);
-      await clearButtons();
-    }
+    // The buttons go only once the request is closed: after a failed answer they stay, for another tap.
+    if (option && (await answer(about, Number(a), option, call, config))) await clearButtons();
     return;
   }
   // The project chosen for a note that named none.
@@ -323,10 +351,17 @@ async function answer(about, id, text, call, config) {
   const db = openDb(about.dir);
   const row = db?.prepare('SELECT status FROM requests WHERE id = ?').get(id);
   db?.close();
-  if (!row) return reply(call, config, t('request.gone', { project: about.project, id }));
-  if (row.status !== 'open') return reply(call, config, t('request.closed', { project: about.project, id, status: row.status }));
+  if (!row) {
+    await reply(call, config, t('request.gone', { project: about.project, id }));
+    return true;
+  }
+  if (row.status !== 'open') {
+    await reply(call, config, t('request.closed', { project: about.project, id, status: row.status }));
+    return true;
+  }
   const r = spawnSync(process.execPath, [BIN, 'request', 'answer', String(id), '--', text], { cwd: about.dir, encoding: 'utf8', timeout: 30_000 });
-  return reply(call, config, r.status === 0 ? t('request.answered', { project: about.project, id, text }) : t('request.failed', { project: about.project, id, error: (r.stderr || r.stdout).trim() }));
+  await reply(call, config, r.status === 0 ? t('request.answered', { project: about.project, id, text }) : t('request.failed', { project: about.project, id, error: (r.stderr || r.stdout).trim() }));
+  return r.status === 0;
 }
 
 async function saveNote(project, text, call, config, now) {

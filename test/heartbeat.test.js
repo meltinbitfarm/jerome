@@ -436,7 +436,7 @@ test('a question holds up only what depends on it: its area stays due, and the l
   assert.match(triage, /An open request holds up only what depends on it: choose another task of the same area\. The assumptions of open\.md hold nothing up\./);
   const lead = calls.filter((c) => c.includes('--max-turns')).pop();
   assert.match(lead, /Already asked, still open: R1 Which parser library\?\. Do not ask again, nor do what depends on them\./);
-  assert.match(lead, /then go on with the parts of the task that do not depend on it/);
+  assert.match(lead, /Then go on with the parts of the task that do not depend on it/);
   assert.doesNotMatch(lead, /Survey done/);
 
   // jerome state: only the milestone request holds its area.

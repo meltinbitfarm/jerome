@@ -334,6 +334,8 @@ Then (0.11.7, D182): a task stopped by its caps becomes a question to the user a
 
 Then (0.11.8): a request closed anywhere loses its buttons on Telegram, so no tap goes to a closed question.
 
+Then (0.11.9, D183): request options become buttons however they are written, and the buttons follow the request.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

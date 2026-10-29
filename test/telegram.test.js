@@ -3,10 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readyProject, sandboxDb } from './sandbox.js';
+import { optionList } from '../src/telegram.js';
 
 const CHAT = { id: 42, type: 'private', first_name: 'Fabio' };
 
@@ -56,6 +57,7 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   assert.match(buttons.params.text, /^Jérôme · demo\n❓ R1 Merge the report\?\nOptions: merge \/ fix first\nRecommended: fix first/);
   assert.deepEqual(buttons.params.reply_markup.inline_keyboard, [[{ text: 'merge', callback_data: 'a:1:0' }], [{ text: 'fix first', callback_data: 'a:1:1' }]]);
   assert.equal(plain.params.reply_markup, undefined);
+  assert.match(plain.params.text, /\n\nReply to this message with your answer\.$/, 'no option to tap: none offered');
   // Sent once: the queue is empty after.
   p.tick();
   assert.equal(p.sent().length, 3);
@@ -83,6 +85,38 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   p.tick();
   assert.deepEqual(cleared().filter((id) => id !== p.idOf(/R1 Merge/)), [p.idOf(/R3 Keep the beta/)]);
   assert.ok(cleared().includes(p.idOf(/R1 Merge/)));
+  // A message of an open request sent with no buttons gets them once its options can be read: here R4's, written in
+  // the database after it was sent, as a Jérôme that read fewer ways of writing them left it.
+  assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Which host?').status, 0);
+  p.tick();
+  const d = new DatabaseSync(sandboxDb(p.root, p.dir));
+  d.prepare("UPDATE requests SET options = ? WHERE id = 4").run('A) Coolify, as today · B) a VPS of our own');
+  d.close();
+  p.tick();
+  const put = p.tg().filter((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === p.idOf(/R4 Which host/));
+  assert.deepEqual(put.map((c) => c.params.reply_markup.inline_keyboard), [[[{ text: 'A) Coolify, as today', callback_data: 'a:4:0' }], [{ text: 'B) a VPS of our own', callback_data: 'a:4:1' }]]]);
+  p.tick();
+  assert.equal(p.tg().filter((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === p.idOf(/R4 Which host/)).length, 1, 'once');
+  p.receive({ callback_query: { id: 'q4', data: 'a:4:1', message: { message_id: p.idOf(/R4 Which host/), chat: CHAT } } });
+  p.tick();
+  assert.deepEqual({ ...requestRow(p, 4) }, { status: 'answered', answer: 'B) a VPS of our own' });
+  const edits = (re) => p.tg().filter((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === p.idOf(re));
+  assert.deepEqual(edits(/R4 Which host/).map((c) => c.params.reply_markup.inline_keyboard.length), [2, 0], 'taken off once');
+  // An answer that fails leaves the buttons, for another tap.
+  assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Ship it?', '--options', 'A) yes / B) not yet').status, 0);
+  p.tick();
+  const marker = join(p.dir, '.jerome', 'project.json');
+  renameSync(marker, `${marker}.away`);
+  p.receive({ callback_query: { id: 'q5', data: 'a:5:0', message: { message_id: p.idOf(/R5 Ship it/), chat: CHAT } } });
+  p.tick();
+  assert.equal(requestRow(p, 5).status, 'open');
+  assert.match(p.sent().at(-1).params.text, /R5/);
+  assert.equal(edits(/R5 Ship it/).length, 0);
+  renameSync(`${marker}.away`, marker);
+  p.receive({ callback_query: { id: 'q6', data: 'a:5:0', message: { message_id: p.idOf(/R5 Ship it/), chat: CHAT } } });
+  p.tick();
+  assert.deepEqual({ ...requestRow(p, 5) }, { status: 'answered', answer: 'A) yes' });
+  assert.equal(edits(/R5 Ship it/).length, 1);
 });
 
 test('a lasting block comes with its buttons, and a tap does that one action in the project, once (D166-D168)', () => {
@@ -248,4 +282,16 @@ test('the watchdog tells the user once about a slot that did not start, and jero
   // A run of that slot since then: nothing is missed any more.
   p.run('heartbeat', 'run', 'evening', 'demo');
   assert.ok(!JSON.parse(p.run('projects', '--json').stdout).projects[0].attention.some((a) => /did not start/.test(a)));
+});
+
+test('the options of a request become buttons however the agent separated them', () => {
+  assert.deepEqual(optionList('A) Calcolato.it: la tengo · B) Altro progetto: la tolgo'), ['A) Calcolato.it: la tengo', 'B) Altro progetto: la tolgo']);
+  assert.deepEqual(optionList('merge / fix first'), ['merge', 'fix first']);
+  assert.deepEqual(optionList('yes; no'), ['yes', 'no']);
+  // Labelled options are split at their labels, so a "/" or ";" inside one stays in it.
+  assert.deepEqual(optionList('A) the command/endpoint you give me · B) I clear it myself; after the deploy'), ['A) the command/endpoint you give me', 'B) I clear it myself; after the deploy']);
+  assert.deepEqual(optionList('A: local midnight | B: 00:00 UTC'), ['A: local midnight', 'B: 00:00 UTC']);
+  assert.deepEqual(optionList('1) connect it (D19); 2) later; 3) never'), ['1) connect it (D19)', '2) later', '3) never']);
+  assert.deepEqual(optionList('a/b paths only'), []);
+  assert.deepEqual(optionList('Approve'), []);
 });
