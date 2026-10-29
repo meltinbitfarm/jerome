@@ -340,6 +340,8 @@ Then (0.11.10, D184): the Telegram bridge always listens, so a tap is answered i
 
 Then (0.11.11, D185): the token cap weighs cache reads at a tenth, so a run is not stopped after a dozen turns for reading its own context again.
 
+Then (0.11.12, D186): Telegram messages laid out for the phone, options one per line.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

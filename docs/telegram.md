@@ -40,6 +40,8 @@ The macOS notifications stay, and `heartbeat.alerts.command` stays for other cha
 | `/status` | what waits for you in every project, from `jerome projects`, then each block with its buttons |
 | `/help` | what you can send |
 
+Messages are laid out for the phone (D186): the project's name in bold on its own line, then the text. A request shows its question, each option on its own line, the recommendation, and how to answer in italics. Every text is escaped for Telegram's HTML, and a message Telegram refuses that way goes again as plain text, with the same lines.
+
 Each option of a request is a button. The options are read however the agent wrote them: labelled in order (`A) … B) …`, `A: …`, `1) …`), split at the labels so a `/` or `;` inside an option stays in it, or else separated by ` / `, `;`, ` | ` or ` · `. A request with fewer than two options, or more than six, has no buttons, and its message says to reply instead.
 
 A request's buttons follow it. Once it is closed in any way (a tap, a reply, a session, the dashboard, dropped) they are taken off its message within a minute, so no tap goes to a question that is no longer open; a message of an open request sent with none gets them when its options can be read. An answer that fails leaves the buttons, for another tap, and a tap on an old message whose buttons Telegram no longer lets the bridge change gets the reply that the request is already closed.

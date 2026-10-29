@@ -23,7 +23,11 @@ function bridged(env = {}) {
   const tg = () => (existsSync(join(fake, 'calls.jsonl')) ? readFileSync(join(fake, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
   const sent = () => tg().filter((c) => c.method === 'sendMessage');
   // The message id the fake gave a call: 1000 plus the lines before it.
-  const idOf = (match) => 1000 + tg().findIndex((c) => c.method === 'sendMessage' && match.test(c.params.text)) + 1;
+  const idOf = (match) => {
+    const at = tg().findIndex((c) => c.method === 'sendMessage' && match.test(c.params.text));
+    assert.ok(at >= 0, `no message sent matches ${match}`);
+    return 1000 + at + 1;
+  };
   const tick = () => {
     const r = p.run('watchdog', 'run');
     assert.equal(r.status, 0, r.stderr);
@@ -52,27 +56,29 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Which name?').status, 0);
   p.tick();
   const [alert, buttons, plain] = p.sent();
-  assert.match(alert.params.text, /^Jérôme · demo\nThere are changes of yours not committed \(README\.md\)\. Commit or discard them, and it starts by itself\. Stuck for less than an hour, 1 run lost\.$/);
+  assert.match(alert.params.text, /^<b>demo<\/b>\nThere are changes of yours not committed \(README\.md\)\. Commit or discard them, and it starts by itself\. Stuck for less than an hour, 1 run lost\.$/);
   assert.equal(alert.params.chat_id, 42);
-  assert.match(buttons.params.text, /^Jérôme · demo\n❓ R1 Merge the report\?\nOptions: merge \/ fix first\nRecommended: fix first/);
+  // The project's name in bold, each option on its own line, the recommendation and how to answer apart (D186).
+  assert.equal(buttons.params.parse_mode, 'HTML');
+  assert.equal(buttons.params.text, '<b>demo</b>\n❓ <b>R1</b> Merge the report?\n\n<b>Options</b>\nmerge\nfix first\n\n💡 <b>Recommended:</b> fix first\n\n<i>Tap an option, or reply to this message with your answer.</i>');
   assert.deepEqual(buttons.params.reply_markup.inline_keyboard, [[{ text: 'merge', callback_data: 'a:1:0' }], [{ text: 'fix first', callback_data: 'a:1:1' }]]);
   assert.equal(plain.params.reply_markup, undefined);
-  assert.match(plain.params.text, /\n\nReply to this message with your answer\.$/, 'no option to tap: none offered');
+  assert.match(plain.params.text, /\n\n<i>Reply to this message with your answer\.<\/i>$/, 'no option to tap: none offered');
   // Sent once: the queue is empty after.
   p.tick();
   assert.equal(p.sent().length, 3);
 
   p.receive(
     // A tap the bridge sees after Telegram's 15 seconds: too late to stop the spinner, still an answer.
-    { callback_query: { id: 'old-q1', data: 'a:1:1', message: { message_id: p.idOf(/R1 Merge/), chat: CHAT } } },
-    { message: { message_id: 7, chat: CHAT, text: '-- call it Pulse', reply_to_message: { message_id: p.idOf(/R2 Which name/) } } },
+    { callback_query: { id: 'old-q1', data: 'a:1:1', message: { message_id: p.idOf(/R1<\/b> Merge/), chat: CHAT } } },
+    { message: { message_id: 7, chat: CHAT, text: '-- call it Pulse', reply_to_message: { message_id: p.idOf(/R2<\/b> Which name/) } } },
   );
   p.tick();
   assert.deepEqual({ ...requestRow(p, 1) }, { status: 'answered', answer: 'fix first' });
   assert.deepEqual({ ...requestRow(p, 2) }, { status: 'answered', answer: '-- call it Pulse' });
   assert.match(p.sent().at(-1).params.text, /^demo: R2 answered: -- call it Pulse$/);
   // An answer to a request already closed changes nothing.
-  p.receive({ message: { message_id: 8, chat: CHAT, text: 'merge', reply_to_message: { message_id: p.idOf(/R1 Merge/) } } });
+  p.receive({ message: { message_id: 8, chat: CHAT, text: 'merge', reply_to_message: { message_id: p.idOf(/R1<\/b> Merge/) } } });
   p.tick();
   assert.match(p.sent().at(-1).params.text, /R1 is already answered; nothing changed/);
   assert.equal(requestRow(p, 1).answer, 'fix first');
@@ -83,8 +89,8 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   assert.equal(p.runIn(p.dir, 'request', 'drop', '3').status, 0);
   p.tick();
   p.tick();
-  assert.deepEqual(cleared().filter((id) => id !== p.idOf(/R1 Merge/)), [p.idOf(/R3 Keep the beta/)]);
-  assert.ok(cleared().includes(p.idOf(/R1 Merge/)));
+  assert.deepEqual(cleared().filter((id) => id !== p.idOf(/R1<\/b> Merge/)), [p.idOf(/R3<\/b> Keep the beta/)]);
+  assert.ok(cleared().includes(p.idOf(/R1<\/b> Merge/)));
   // A message of an open request sent with no buttons gets them once its options can be read: here R4's, written in
   // the database after it was sent, as a Jérôme that read fewer ways of writing them left it.
   assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Which host?').status, 0);
@@ -93,30 +99,30 @@ test('what waits for the user goes to Telegram with the project name, and a requ
   d.prepare("UPDATE requests SET options = ? WHERE id = 4").run('A) Coolify, as today · B) a VPS of our own');
   d.close();
   p.tick();
-  const put = p.tg().filter((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === p.idOf(/R4 Which host/));
+  const put = p.tg().filter((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === p.idOf(/R4<\/b> Which host/));
   assert.deepEqual(put.map((c) => c.params.reply_markup.inline_keyboard), [[[{ text: 'A) Coolify, as today', callback_data: 'a:4:0' }], [{ text: 'B) a VPS of our own', callback_data: 'a:4:1' }]]]);
   p.tick();
-  assert.equal(p.tg().filter((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === p.idOf(/R4 Which host/)).length, 1, 'once');
-  p.receive({ callback_query: { id: 'q4', data: 'a:4:1', message: { message_id: p.idOf(/R4 Which host/), chat: CHAT } } });
+  assert.equal(p.tg().filter((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === p.idOf(/R4<\/b> Which host/)).length, 1, 'once');
+  p.receive({ callback_query: { id: 'q4', data: 'a:4:1', message: { message_id: p.idOf(/R4<\/b> Which host/), chat: CHAT } } });
   p.tick();
   assert.deepEqual({ ...requestRow(p, 4) }, { status: 'answered', answer: 'B) a VPS of our own' });
   const edits = (re) => p.tg().filter((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === p.idOf(re));
-  assert.deepEqual(edits(/R4 Which host/).map((c) => c.params.reply_markup.inline_keyboard.length), [2, 0], 'taken off once');
+  assert.deepEqual(edits(/R4<\/b> Which host/).map((c) => c.params.reply_markup.inline_keyboard.length), [2, 0], 'taken off once');
   // An answer that fails leaves the buttons, for another tap.
   assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Ship it?', '--options', 'A) yes / B) not yet').status, 0);
   p.tick();
   const marker = join(p.dir, '.jerome', 'project.json');
   renameSync(marker, `${marker}.away`);
-  p.receive({ callback_query: { id: 'q5', data: 'a:5:0', message: { message_id: p.idOf(/R5 Ship it/), chat: CHAT } } });
+  p.receive({ callback_query: { id: 'q5', data: 'a:5:0', message: { message_id: p.idOf(/R5<\/b> Ship it/), chat: CHAT } } });
   p.tick();
   assert.equal(requestRow(p, 5).status, 'open');
   assert.match(p.sent().at(-1).params.text, /R5/);
-  assert.equal(edits(/R5 Ship it/).length, 0);
+  assert.equal(edits(/R5<\/b> Ship it/).length, 0);
   renameSync(`${marker}.away`, marker);
-  p.receive({ callback_query: { id: 'q6', data: 'a:5:0', message: { message_id: p.idOf(/R5 Ship it/), chat: CHAT } } });
+  p.receive({ callback_query: { id: 'q6', data: 'a:5:0', message: { message_id: p.idOf(/R5<\/b> Ship it/), chat: CHAT } } });
   p.tick();
   assert.deepEqual({ ...requestRow(p, 5) }, { status: 'answered', answer: 'A) yes' });
-  assert.equal(edits(/R5 Ship it/).length, 1);
+  assert.equal(edits(/R5<\/b> Ship it/).length, 1);
 });
 
 test('a lasting block comes with its buttons, and a tap does that one action in the project, once (D166-D168)', () => {
@@ -156,7 +162,7 @@ test('a lasting block comes with its buttons, and a tap does that one action in 
   p.tick();
   const card = p.sent().find((c) => c.params.reply_markup?.inline_keyboard?.[1]?.[0]?.callback_data === 'x:2:stash');
   assert.ok(card, 'the block of /status has its buttons');
-  p.receive({ callback_query: { id: 'q4', data: 'x:2:stash', message: { message_id: p.idOf(/^Jérôme · demo\n⚠/), chat: CHAT } } });
+  p.receive({ callback_query: { id: 'q4', data: 'x:2:stash', message: { message_id: p.idOf(/^<b>demo<\/b>\n⚠/), chat: CHAT } } });
   p.tick();
   assert.ok(p.sent().some((c) => /^demo: Set aside \(README\.md\): `git stash list`/.test(c.params.text)));
   assert.equal(p.tracked(), '');
@@ -168,7 +174,7 @@ test('a tool a run was refused is allowed for the project with a button, and an 
   p.runWith({ FAKE_LEAD_DENIED: 'x', FAKE_LEAD_DENIED_TOOL: 'mcp__vault__search' }, 'heartbeat', 'demo');
   p.tick();
   const block = p.sent().find((c) => /mcp__vault__search/.test(c.params.text));
-  assert.match(block.params.text, /^Jérôme · demo\nIt needed something its runs may not use \(mcp__vault__search\)\. Allow it for this project, or let it skip that\./);
+  assert.match(block.params.text, /^<b>demo<\/b>\nIt needed something its runs may not use \(mcp__vault__search\)\. Allow it for this project, or let it skip that\./);
   assert.deepEqual(block.params.reply_markup.inline_keyboard.map((r) => r[0].callback_data), ['x:1:allow', 'x:1:skip']);
   // As an alert from before the rules were kept on it (D172): the ones its reason names are allowed.
   const w = p.writableDb();
@@ -311,11 +317,28 @@ test('the bridge has a listener of its own, always listening, one at a time, whi
   assert.equal(startListener(env), false);
   assert.equal(await listen({ env, maxMs: 100 }), 0);
   while (!p.sent().length) await new Promise((r) => setTimeout(r, 20));
-  p.receive({ callback_query: { id: 'q1', data: 'a:1:1', message: { message_id: p.idOf(/R1 Ship it/), chat: CHAT } } });
+  p.receive({ callback_query: { id: 'q1', data: 'a:1:1', message: { message_id: p.idOf(/R1<\/b> Ship it/), chat: CHAT } } });
   assert.equal(await first, 0);
   assert.equal(listenerRunning(), false, 'its pid file goes with it');
-  assert.match(p.sent()[0].params.text, /R1 Ship it\?/);
+  assert.match(p.sent()[0].params.text, /R1<\/b> Ship it\?/);
   assert.deepEqual({ ...requestRow(p, 1) }, { status: 'answered', answer: 'B) not yet' });
   // A poll waits for Telegram at most 10 seconds, so what is queued goes out within that.
   assert.ok(p.tg().filter((c) => c.method === 'getUpdates').every((c) => c.params.timeout <= 10));
+});
+
+test('a message is laid out in Telegram\'s HTML with every text escaped, and goes as plain text if Telegram refuses it (D186)', () => {
+  const p = bridged();
+  assert.equal(p.runIn(p.dir, 'request', 'open', '--question', 'Keep <script> & the "R&D" page?', '--options', 'A) keep <it> · B) drop it', '--recommendation', 'B: less & simpler').status, 0);
+  p.tick();
+  const [m] = p.sent();
+  assert.equal(m.params.parse_mode, 'HTML');
+  assert.equal(m.params.text, '<b>demo</b>\n❓ <b>R1</b> Keep &lt;script&gt; &amp; the "R&amp;D" page?\n\n<b>Options</b>\nA) keep &lt;it&gt;\nB) drop it\n\n💡 <b>Recommended:</b> B: less &amp; simpler\n\n<i>Tap an option, or reply to this message with your answer.</i>');
+  assert.deepEqual(m.params.reply_markup.inline_keyboard.map((x) => x[0].text), ['A) keep <it>', 'B) drop it']);
+});
+
+test('the plain layout has the same lines without the marks', async () => {
+  const { layout } = await import('../src/telegram.js');
+  const item = { project: 'demo', request: { id: 3, question: 'Ship it?', options: 'A) yes / B) not yet', recommendation: 'A' } };
+  assert.equal(layout(item, false), 'demo\n❓ R3 Ship it?\n\nOptions\nA) yes\nB) not yet\n\n💡 Recommended: A\n\nTap an option, or reply to this message with your answer.');
+  assert.equal(layout({ project: null, text: 'The week runs fast' }), '<b>Jérôme</b>\nThe week runs fast');
 });

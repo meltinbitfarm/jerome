@@ -101,6 +101,8 @@ export function telegramApi(token, env = process.env) {
         }
       }
       if (method === 'getMe') return { username: 'jerome_test_bot' };
+      // Telegram refuses HTML with a mark it does not know or an unescaped "<" or "&".
+      if (method === 'sendMessage' && params.parse_mode === 'HTML' && /<(?!\/?[bi]>)|&(?!(amp|lt|gt);)/.test(params.text)) throw new Error('Telegram sendMessage: Bad Request: can\'t parse entities');
       if (method === 'sendMessage') return { message_id: next };
       // Telegram refuses an answer to a tap older than about 15 seconds, and the bridge runs once a minute.
       if (method === 'answerCallbackQuery' && params.callback_query_id?.startsWith('old')) throw new Error('Telegram answerCallbackQuery: Bad Request: query is too old and response timeout expired or query ID is invalid');
@@ -259,24 +261,44 @@ async function sendQueue(state, call, config, done, now) {
   writeState(state);
 }
 
-// A queued message: the project's name first; a request with its options as buttons, and remembered, so a button
-// or a reply answers it.
+// A message's text, laid out for the phone: the project's name in bold on its own line, then the text; a request with
+// its question, each option on its own line, the recommendation, and how to answer in italics. `html` gives it in
+// Telegram's HTML, every text escaped, else as plain text, the same lines without the marks.
+export function layout(item, html = true) {
+  const esc = (x) => (html ? String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : String(x ?? ''));
+  const b = (x) => (html ? `<b>${x}</b>` : x);
+  const i = (x) => (html ? `<i>${x}</i>` : x);
+  // A message about the account, not a project (the quota running fast), has no project's name.
+  const head = b(esc(item.project ?? 'Jérôme'));
+  const r = item.request;
+  if (!r) return `${head}\n${esc(item.text)}`;
+  const options = optionList(r.options);
+  const lines = [head, `❓ ${b(`R${r.id}`)} ${esc(r.question)}`];
+  if (options.length) lines.push('', b(t('request.options')), ...options.map(esc));
+  else if (r.options) lines.push('', `${b(t('request.options'))}: ${esc(r.options)}`);
+  if (r.recommendation) lines.push('', `💡 ${b(`${t('request.recommended')}:`)} ${esc(r.recommendation)}`);
+  lines.push('', i(esc(t(options.length ? 'request.how' : 'request.howReply'))));
+  return lines.join('\n');
+}
+
+// A queued message, with a request's options as buttons, and remembered, so a button or a reply answers it. Sent in
+// Telegram's HTML; should Telegram refuse its marks, the same message goes as plain text, so nothing is lost.
 async function send(item, state, call, config) {
   const r = item.request;
-  // A message about the account, not a project (the quota running fast), has no project's name.
-  const head = item.project ? `Jérôme · ${item.project}` : 'Jérôme';
-  const text = r
-    ? `${head}\n❓ R${r.id} ${r.question}${r.options ? `\n${t('request.options')}: ${r.options}` : ''}${r.recommendation ? `\n${t('request.recommended')}: ${r.recommendation}` : ''}\n\n${t(optionList(r.options).length ? 'request.how' : 'request.howReply')}`
-    : `${head}\n${item.text}`;
   const options = r ? optionList(r.options) : [];
   // A block's actions (D166), one button each: the alert's id and the action's name, nothing else.
   const actions = !r && item.alert?.actions?.length ? item.alert.actions.filter((a) => ACTIONS.includes(a)) : [];
   const keyboard = options.length ? options.map((o, i) => [{ text: o, callback_data: `a:${r.id}:${i}` }])
     : actions.map((a) => [{ text: t(`action.${a}`), callback_data: `x:${item.alert.id}:${a}` }]);
-  const message = await call('sendMessage', {
-    chat_id: config.chatId, text: clip(text),
-    ...(keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {}),
-  });
+  const markup = keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {};
+  const html = layout(item);
+  let message;
+  try {
+    message = await call('sendMessage', { chat_id: config.chatId, text: html.length > MAX_TEXT ? clip(layout(item, false)) : html, ...(html.length > MAX_TEXT ? {} : { parse_mode: 'HTML' }), ...markup });
+  } catch (err) {
+    if (!/parse entities|can't parse/i.test(err.message)) throw err;
+    message = await call('sendMessage', { chat_id: config.chatId, text: clip(layout(item, false)), ...markup });
+  }
   state.sent[message.message_id] = { dir: item.dir, project: item.project, request: r?.id ?? null, alert: actions.length ? item.alert.id : null, buttons: keyboard.length > 0 };
 }
 
