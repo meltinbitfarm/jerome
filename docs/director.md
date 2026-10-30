@@ -60,6 +60,7 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
      docker compose exec director jerome director approve <code>
      ```
    - The [watchdog](commands/watchdog.md) sends the first beat within a minute. `jerome connect status` shows it.
+   - After you answer a question, send a note or tap a block's button on Telegram, the bridge sends a beat at once, so the dashboard shows it at its next refresh rather than a minute later (D193).
 
 3. **The dashboard.** Run `jerome director dashboard` on the server: it prints the dashboard's address, with its token after the `#`. Open it from any device on your VPN, such as the iPhone, and keep it as a bookmark.
    - It speaks your language, the one of your Macs (`jerome language`), and says first, in one sentence, whether anything waits for you (D163). Then **what you need to do**: the open decision requests with their options, the blocks that have lasted (three runs or six hours) as one sentence each with how long, and a Mac not heard from for 15 minutes. Then **the projects**, one line each with its state in words (working, stopped and needing you, trying again by itself, waiting for your answer, waiting for its next turn), its last work and its turns. Then **the quota** of the week in one line, what Jérôme does with it, and its curve against the pace and the reserve. The Macs, the runs and the past weeks are under **details**, closed. Times are in the device's own time zone. It refreshes every 30 seconds.

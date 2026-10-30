@@ -132,7 +132,9 @@ const clip = (text) => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}
 // One pass of the bridge: the updates first, then the queue. With `until`, it then keeps listening (Telegram's long
 // polling) until that time, so a tap or a message is handled within a second or two rather than at the next minute;
 // the queue is sent after each answer. Returns what it did, for the watchdog's log.
-export async function bridgeTick({ env = process.env, now = new Date(), api = null, until = null } = {}) {
+// `acted` is called once the user's answer, note or action is written and its reply sent: the listener then beats the
+// Director at once (D193), so the dashboard does not show the question open for up to a minute more.
+export async function bridgeTick({ env = process.env, now = new Date(), api = null, until = null, acted = null } = {}) {
   const config = readConfig();
   if (!config) return { configured: false };
   const call = api ?? telegramApi(config.token, env);
@@ -141,6 +143,7 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
   let wait = 0;
   for (;;) {
     let got = 0;
+    let wrote = false;
     try {
       const updates = await call('getUpdates', { offset: state.offset, timeout: wait, allowed_updates: ['message', 'callback_query'] });
       got = updates.length;
@@ -153,6 +156,8 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
           continue;
         }
         done.received += 1;
+        // Anything but a command may have written to a project: an answer, a note, an action.
+        if (u.callback_query || !/^\s*\//.test(u.message?.text ?? '/')) wrote = true;
         try {
           if (u.callback_query) await onButton(u.callback_query, state, call, config, new Date(), env);
           else if (typeof u.message.text === 'string') await onMessage(u.message, state, call, config, new Date());
@@ -168,6 +173,13 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
     writeState(state);
     await syncButtons(state, call, config);
     await sendQueue(state, call, config, done, now);
+    if (wrote && acted) {
+      try {
+        await acted();
+      } catch (err) {
+        done.errors.push(err.message);
+      }
+    }
     const left = until ? Math.floor((until - Date.now()) / 1000) : 0;
     // A failed call is not retried in a loop: the next minute tries again.
     if (got < 0 || left < 2) break;
@@ -561,6 +573,13 @@ function installedVersion() {
   }
 }
 
+// The Director's beat sent by the bridge (D193). Imported when needed: the Director's link uses this module too.
+async function beatNow(env) {
+  const { directorBeat } = await import('./directorlink.js');
+  const log = (line) => console.log(`${new Date().toISOString()} ${line}`);
+  return directorBeat({ env, now: new Date(), log });
+}
+
 export async function listen({ env = process.env, maxMs = LISTENER_MS } = {}) {
   if (listenerRunning()) return 0;
   mkdirSync(dataDir(), { recursive: true });
@@ -568,7 +587,7 @@ export async function listen({ env = process.env, maxMs = LISTENER_MS } = {}) {
   const end = Date.now() + maxMs;
   try {
     while (Date.now() < end && installedVersion() === VERSION) {
-      const done = await bridgeTick({ env, now: new Date(), until: Math.min(end, Date.now() + 60_000) });
+      const done = await bridgeTick({ env, now: new Date(), until: Math.min(end, Date.now() + 60_000), acted: () => beatNow(env) });
       if (!done.configured) break;
       if (done.received || done.sent || done.ignored || done.errors.length) {
         console.log(`${new Date().toISOString()} telegram: ${done.received} received, ${done.sent} sent${done.ignored ? `, ${done.ignored} from other chats ignored` : ''}${done.errors.length ? `; errors: ${done.errors.join('; ')}` : ''}`);

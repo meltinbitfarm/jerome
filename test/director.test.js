@@ -353,3 +353,33 @@ test('an order from the dashboard reaches the Mac in its beat, is checked and ru
   closed.close();
   assert.equal((await overview()).orders[0].status, 'done');
 });
+
+test('a question answered on Telegram leaves the dashboard in the same pass, by a beat sent at once (D193)', async () => {
+  const d = await startDirector();
+  const fake = mkdtempSync(join(tmpdir(), 'jerome-tg-'));
+  const m = mac('mini', { JEROME_TELEGRAM_FAKE: fake });
+  mkdirSync(join(m.root, '.config', 'jerome'), { recursive: true });
+  writeFileSync(join(m.root, '.config', 'jerome', 'telegram.json'), JSON.stringify({ token: '1:x', chatId: 7, chat: 'Fabio', bot: 'jerome_test_bot' }));
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  assert.equal(m.runIn(m.dir, 'request', 'open', '--question', 'Which host?', '--options', 'A) Fly.io / B) Render', '--recommendation', 'A').status, 0);
+  // The watchdog's pass: the beat, then the bridge sends the question.
+  m.beat();
+  const token = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  const overview = async () => (await fetch(`${d.url}/api/overview`, { headers: { authorization: `Bearer ${token}` } })).json();
+  const ask = (await overview()).attention.find((a) => a.kind === 'request');
+  assert.ok(ask);
+  const calls = () => readFileSync(join(fake, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const at = calls().findIndex((c) => c.method === 'sendMessage' && /Which host/.test(c.params.text));
+  assert.ok(at >= 0);
+  // A tap on B. The pass beats first, while the question is still open; the bridge then answers it and beats again.
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 1, callback_query: { id: 'q1', data: `a:${ask.id}:1`, message: { message_id: 1000 + at + 1, chat: { id: 7, type: 'private' } } } }]));
+  m.beat();
+  const project = m.db();
+  assert.equal(project.prepare('SELECT status FROM requests WHERE id = ?').get(ask.id).status, 'answered');
+  project.close();
+  const after = await overview();
+  assert.deepEqual(after.attention, []);
+  assert.deepEqual(after.orders, []);
+  assert.ok(!existsSync(join(m.root, '.cache', 'jerome', 'director', 'beat.lock')), 'the lock goes with its beat');
+});

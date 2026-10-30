@@ -118,7 +118,7 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
     if (startListener(env)) log('telegram: listener started');
     return 0;
   }
-  const bridge = await bridgeTick({ env, now });
+  const bridge = await bridgeTick({ env, now, acted: () => directorBeat({ env, now: new Date(), log }) });
   if (bridge.configured && (bridge.received || bridge.sent || bridge.ignored || bridge.errors.length)) {
     log(`telegram: ${bridge.received} received, ${bridge.sent} sent${bridge.ignored ? `, ${bridge.ignored} from other chats ignored` : ''}${bridge.errors.length ? `; errors: ${bridge.errors.join('; ')}` : ''}`);
   }

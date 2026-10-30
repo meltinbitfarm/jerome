@@ -3,7 +3,7 @@
 // at connect, once Fabio has compared its fingerprint, and any response not signed with it is ignored (D146). What
 // the beat carries is listed in D147: percentages, the projects' state and their finished runs, never a credential,
 // code, prompts, transcripts or paths; and, since D177, each project's board: the texts of its work items and runs.
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -233,9 +233,41 @@ function quotaBeat(account) {
   };
 }
 
-// The watchdog's beat, every minute (D148). The quota is read here too, at most every 5 minutes (D140), so the
-// Director has the freshest reading of any Mac. Lines go to the log only when the outcome changes.
+// One beat at a time on a Mac: the watchdog's and the one the Telegram bridge sends after an answer (D193) would
+// otherwise read the same state and run the same orders twice. A lock older than two minutes is a beat that died.
+const beatLock = () => cacheDir('director', 'beat.lock');
+async function takeBeatLock(waitMs) {
+  mkdirSync(dirname(beatLock()), { recursive: true });
+  for (const end = Date.now() + waitMs; ; await new Promise((r) => setTimeout(r, 250))) {
+    try {
+      writeFileSync(beatLock(), String(process.pid), { flag: 'wx' });
+      return true;
+    } catch {
+      try {
+        if (Date.now() - statSync(beatLock()).mtimeMs > 2 * 60_000) rmSync(beatLock(), { force: true });
+      } catch {
+        // Gone meanwhile: taken at the next try.
+      }
+    }
+    if (Date.now() > end) return false;
+  }
+}
+
+// The watchdog's beat, every minute (D148), and the bridge's, at once after the user acted on Telegram (D193). The
+// quota is read here too, at most every 5 minutes (D140), so the Director has the freshest reading of any Mac. Lines
+// go to the log only when the outcome changes.
 export async function directorBeat({ env = process.env, now = new Date(), log = () => {} } = {}) {
+  if (!readLink(env)) return null;
+  // A beat already under way is waited for, so the one after it carries what changed meanwhile.
+  if (!(await takeBeatLock(30_000))) return { busy: true };
+  try {
+    return await beat({ env, now, log });
+  } finally {
+    rmSync(beatLock(), { force: true });
+  }
+}
+
+async function beat({ env, now, log }) {
   const link = readLink(env);
   if (!link) return null;
   const state = readState();

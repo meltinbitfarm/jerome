@@ -360,6 +360,8 @@ Then (0.13.1): a Mac's beat carries `results` only when it has some, so a Direct
 
 Then (0.13.2, D192): the user's answers reach the next run with their words, to be recorded as decisions, and an answered question leaves the board at once.
 
+Then (0.13.3, D193): an answer, note or action given on Telegram reaches the Director's dashboard within seconds, by a beat the bridge sends at once.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
