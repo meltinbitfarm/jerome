@@ -17,7 +17,7 @@ The name is a nod to Saint Jerome, patron saint of translators: the lead agent t
 - **Picks up where you left off.** Each project remembers its goal, its decisions, what is open and what was done, in files you can read. A new session knows all of it in a few thousand tokens, without you explaining anything again.
 - **Works while you do something else.** At the times you choose, or whenever the week's quota would otherwise go unused, it takes one task, does it on a branch, checks it with the tests, merges it and writes one line about it.
 - **Asks, and does not guess, when it matters.** A choice that costs money, cannot be undone or goes outside the project becomes a question with options and a recommendation. It arrives on your phone, and one tap answers it. Smaller choices it makes itself, and lists them for you to confirm.
-- **Stays inside the lines.** It never pushes, deploys, publishes or sends email. Those are drafts for you, enforced by Claude Code's permission rules and not by a promise in a prompt.
+- **Stays inside the lines.** It never pushes, deploys, publishes or sends email. Those are drafts for you, enforced by Claude Code's permission rules and not by a promise in a prompt. For a project where you want it, you can [unlock the push](docs/commands/rules.md): Jérôme asks on your phone, and pushes on your yes.
 
 ## Why it is different
 
@@ -140,7 +140,8 @@ With Telegram set up, you get only what needs you, from every project:
 
 - a **question** with its options as buttons: one tap answers it, or reply to the message with your own words;
 - a **problem** that lasts, as one sentence with buttons that fix it from afar: allow a tool, trust a folder, commit your changes, try again with a bigger budget, skip that work;
-- a warning when the week's quota is running out too fast.
+- a warning when the week's quota is running out too fast;
+- in a project where you [unlocked the push](docs/commands/rules.md), the main branch's new commits, with a button to push them.
 
 You can also send a project a **note**, such as `#my-project the pricing page should mention the free plan`. It is read at the next run or session. `/status` lists what waits for you everywhere. The bridge has no model behind it: it costs no tokens, and what you write is always data, never an instruction. The [Director's dashboard](docs/director.md#acting-from-the-dashboard), if you use one, does the same from a browser. To talk to the lead agent itself from the phone, use Claude Code's Remote Control on a session. See [docs/telegram.md](docs/telegram.md).
 

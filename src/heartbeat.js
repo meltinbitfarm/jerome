@@ -12,6 +12,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { MARKER, readMarker } from './template.js';
 import { openDb, dbPath } from './db.js';
 import { isTrusted } from './limits.js';
+import { isUnlocked } from './rules.js';
 import { isProvisional } from './brief.js';
 import { runDoctor } from './doctor.js';
 import { readAccount, recordWindows, WINDOWS } from './account.js';
@@ -175,7 +176,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
     // RESUME (D119): half-done work is finished or dropped before anything new, with no triage.
     if (start.mode === 'resume') {
-      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, openRequests(dir), { config, slot, resume: start.why, notes: projectNotes(dir), answers: answersToRecord(dir) }) }, caps, given, model, env, config, stopper, record, slot, governed);
+      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, openRequests(dir), { config, slot, resume: start.why, notes: projectNotes(dir), answers: answersToRecord(dir), push: isUnlocked(dir, 'push') }) }, caps, given, model, env, config, stopper, record, slot, governed);
       return finish(lead.status, `resume: ${start.why} → ${lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules });
     }
 
@@ -212,7 +213,7 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     const area = plan.due.find((a) => a.name === triage.area);
     setRunArea(dir, run, area.name);
 
-    const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot, notes: projectNotes(dir), fill, answers: answersToRecord(dir) });
+    const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot, notes: projectNotes(dir), fill, answers: answersToRecord(dir), push: isUnlocked(dir, 'push') });
     const lead = await leadRun(dir, run, { label: `lead agent: ${triage.task}`, prompt }, caps, given, model, env, config, stopper, record, slot, governed);
     writeLast(dir, { fingerprint: projectFingerprint(dir, [], null, fill), verdict: 'work', at: new Date().toISOString() });
     // The pages' new hashes count only once the area's heartbeat has done its work (D111).
@@ -676,7 +677,7 @@ ${notesBlock(notes)}` : ''}`;
 // The lead agent's prompt (D73, D125): project-agnostic, shipped with Jérôme, and the same invariants in both modes.
 // In RESUME mode (D119) the task is the half-done work; otherwise the triage's task, in its area. A slot's text and
 // the project's own `heartbeat.prompt` are appended.
-export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, notes = [], fill = false, answers = [] } = {}) {
+export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, notes = [], fill = false, answers = [], push = false } = {}) {
   const main = config?.mainBranch ?? 'main';
   const branch = (config?.workBranch ?? 'agent/*').replace('*', '<short-name>');
   const where = area ? `
@@ -704,7 +705,7 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
 - FIRST, before the task: the open questions of open.md are the user's to answer, and nobody has asked them yet unless one is marked \`(asked: R<n>)\` or is among the requests already asked (below). First check whether what you can read already answers it (the project, the other projects on this machine, the web): then record that answer as an assumption, saying where it comes from, and remove the question instead of asking. Ask each one still open and not asked, each as its own decision request written as below, with options and your recommendation, and mark it \`(asked: R<n>)\` in open.md (a question already asked only gets its mark). Do it now, with your own commands and no agent: a run stopped by its caps halfway through the task has asked them all the same.${answered}
 ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Delegate reading and work to the agents in .claude/agents/, in the foreground: wait for every result before going on, never start one in the background, and never end while one is still working. Keep your own turns few.
-- Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "A) … / B) …" --recommendation "…"\`. The user reads it on the phone, each option a button: write it in plain words, with no ticket or item IDs (MEL-151, O4), file names or paths, and no command unless it is one they must run. Then go on with the parts of the task that do not depend on it. When the work is ready and needs a push, a deploy or a release, which only the user does, open a request too, saying in plain words what and the exact command to run, and go on. A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${spoken}${asked}
+- Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "A) … / B) …" --recommendation "…"\`. The user reads it on the phone, each option a button: write it in plain words, with no ticket or item IDs (MEL-151, O4), file names or paths, and no command unless it is one they must run. Then go on with the parts of the task that do not depend on it. ${push ? `The push of ${main} is Jérôme's in this project (D194): once ${main} has commits not pushed, it asks the user with a button and pushes on their yes, with the deploy the push may start; never open a request about pushing ${main}. A release or any other deploy, which only the user does, is a request, saying in plain words what and the exact command to run, and go on.` : 'When the work is ready and needs a push, a deploy or a release, which only the user does, open a request too, saying in plain words what and the exact command to run, and go on.'} A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${spoken}${asked}
 - Never leave work for an interactive session: the user does not open one. Do it in this run; what only the user can do (a step outside the project, a login, a payment, a choice) is a decision request saying exactly what is needed. An item of open.md marked for an interactive session is done or asked the same way, and the mark goes.
 - When the request of an open question is answered, record the answer as a decision and remove the question. A parked item of open.md that names when to come back to it (a date, \"after 16/12\") is asked the same way once that time has come: take it up now, park it until a new date, or drop it. Ask a parked item with no such time when the area's milestone changes.
 - Verify with ${tests}, and with whatever PROJECT.md asks for, such as screenshots of visual changes. When it passes with no conflicts, merge the branch into ${main} and report it; if it fails or there is a conflict, open a decision request instead.

@@ -19,6 +19,7 @@ import { ACTIONS, actionsFor, runAction } from './unblock.js';
 import { VERSION } from './template.js';
 import { cacheDir } from './runstate.js';
 import { optionList } from './options.js';
+import { answerPush, pushAsked } from './push.js';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'jerome.js');
 // Telegram refuses longer messages.
@@ -61,10 +62,11 @@ export function writeConfig(config) {
 }
 
 // Queues a message for the user (D131), when the bridge is set up: { dir, text, request? }.
-export function enqueue({ dir = null, text, request = null, alert = null, now = new Date() }) {
+// A push question (D194) has `push`: { head, branch }.
+export function enqueue({ dir = null, text, request = null, alert = null, push = null, now = new Date() }) {
   if (!readConfig()) return;
   mkdirSync(dataDir(), { recursive: true });
-  appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: dir ? basename(dir) : null, text, request, alert })}\n`);
+  appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: dir ? basename(dir) : null, text, request, alert, ...(push ? { push } : {}) })}\n`);
 }
 
 function readState() {
@@ -194,6 +196,17 @@ export async function bridgeTick({ env = process.env, now = new Date(), api = nu
 async function syncButtons(state, call, config) {
   let changed = false;
   for (const [id, about] of Object.entries(state.sent)) {
+    // A push question answered, or asked again with new commits, loses its buttons.
+    if (about.push && !about.cleared && !pushAsked(about.dir, about.push)) {
+      try {
+        await call('editMessageReplyMarkup', { chat_id: config.chatId, message_id: Number(id), reply_markup: { inline_keyboard: [] } });
+      } catch {
+        // Too old to edit: a tap says the branch has moved or is pushed.
+      }
+      about.cleared = true;
+      changed = true;
+      continue;
+    }
     if (!about.request || about.cleared) continue;
     const db = openDb(about.dir);
     let row;
@@ -273,8 +286,11 @@ async function send(item, state, call, config) {
   const options = r ? optionList(r.options) : [];
   // A block's actions (D166), one button each: the alert's id and the action's name, nothing else.
   const actions = !r && item.alert?.actions?.length ? item.alert.actions.filter((a) => ACTIONS.includes(a)) : [];
+  // A push question (D194): its head and the choice, nothing else.
+  const push = !r && /^[0-9a-f]{12}$/.test(item.push?.head ?? '') ? item.push : null;
   const keyboard = options.length ? options.map((o, i) => [{ text: o, callback_data: `a:${r.id}:${i}` }])
-    : actions.map((a) => [{ text: t(`action.${a}`), callback_data: `x:${item.alert.id}:${a}` }]);
+    : push ? [[{ text: t('push.go', { branch: push.branch }), callback_data: `p:${push.head}:go` }], [{ text: t('push.no'), callback_data: `p:${push.head}:no` }]]
+      : actions.map((a) => [{ text: t(`action.${a}`), callback_data: `x:${item.alert.id}:${a}` }]);
   const markup = keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {};
   const html = layout(item);
   let message;
@@ -284,7 +300,7 @@ async function send(item, state, call, config) {
     if (!/parse entities|can't parse/i.test(err.message)) throw err;
     message = await call('sendMessage', { chat_id: config.chatId, text: clip(layout(item, false)), ...markup });
   }
-  state.sent[message.message_id] = { dir: item.dir, project: item.project, request: r?.id ?? null, alert: actions.length ? item.alert.id : null, buttons: keyboard.length > 0 };
+  state.sent[message.message_id] = { dir: item.dir, project: item.project, request: r?.id ?? null, alert: actions.length ? item.alert.id : null, ...(push ? { push: push.head } : {}), buttons: keyboard.length > 0 };
 }
 
 async function reply(call, config, text, extra = {}) {
@@ -314,6 +330,14 @@ async function onButton(q, state, call, config, now, env) {
   if (kind === 'x' && about?.alert === Number(a) && ACTIONS.includes(b)) {
     const done = runAction(about.dir, Number(a), b, { origin: 'telegram', env, now });
     if (done.ok) await clearButtons();
+    return reply(call, config, `${about.project}: ${done.text}`);
+  }
+  // The push question (D194): only on its own message, for its head; pushing checks again that it is unlocked and
+  // that the branch has not moved.
+  if (kind === 'p' && about?.push === a && ['go', 'no'].includes(b)) {
+    const done = answerPush(about.dir, a, b, { origin: 'telegram', env, now });
+    // A push that failed, or found a run working, keeps its buttons for another tap.
+    if (!done.retry) await clearButtons();
     return reply(call, config, `${about.project}: ${done.text}`);
   }
   if (kind === 'a' && about?.request === Number(a)) {

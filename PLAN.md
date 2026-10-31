@@ -362,6 +362,8 @@ Then (0.13.2, D192): the user's answers reach the next run with their words, to 
 
 Then (0.13.3, D193): an answer, note or action given on Telegram reaches the Director's dashboard within seconds, by a beat the bridge sends at once.
 
+Then (0.14.0, D194): `jerome rules` lists what Jérôme blocks per project, and the push can be unlocked there: Jérôme asks on Telegram once main has commits not pushed, and pushes on the user's yes. Next: the other groups (as ask rules, in sessions), then the lists in the viewer and on the Director, with the push button and locking from the dashboard.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

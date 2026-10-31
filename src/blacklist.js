@@ -45,6 +45,14 @@ function deletable(path, dir) {
   return allowed.some((a) => inside(target, a) && target !== a);
 }
 
+// What the user unlocked for a project (D194) is theirs to change, at a terminal: refused to the model in a session
+// too, as the command or as a write to the files that keep it.
+const UNLOCK = /\bjerome(\.js)?\s+rules\s+unlock\b|jerome\/projects\/[^\s'"]*\/(unlocked|push)\.json|\b(unlocked|push)\.json\b[^|;&]*jerome\/projects/;
+export function usersOnly(command) {
+  if (!UNLOCK.test(String(command ?? ''))) return null;
+  return { reason: 'Refused (Jérôme D194): what is unlocked for this project is the user\'s to change, at a terminal with `jerome rules`. Do not try it another way.' };
+}
+
 // Null when the command may run in a heartbeat, or { reason } for the agent.
 export function blacklisted(command, { dir, cwd = dir }) {
   const text = String(command ?? '');

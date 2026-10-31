@@ -7,9 +7,11 @@ import { MARKER } from './template.js';
 import { openDb, prune } from './db.js';
 import { ingestTranscript } from './usage.js';
 import { checkChain, checkStaging, splitCommand, changingGit } from './chain.js';
-import { blacklisted } from './blacklist.js';
+import { blacklisted, usersOnly } from './blacklist.js';
 import { projectStatus, projectSummary, globalLimits } from './budget.js';
 import { readAssumptions } from './assumptions.js';
+import { heartbeatConfig } from './heartbeatconfig.js';
+import { isUnlocked } from './rules.js';
 import { lockHolder } from './runstate.js';
 import { openAlerts, alertsContext, lostRuns } from './alerts.js';
 import { claudePid, processStart, sweepLostRuns } from './lostruns.js';
@@ -37,7 +39,7 @@ export async function hook(event, { input = readStdin(), env = process.env } = {
     const heartbeat = env.JEROME_RUN_KIND === 'heartbeat';
     let verdict;
     try {
-      verdict = checkChain(command) ?? checkStaging(command) ?? besideHeartbeat(dir, command, env)
+      verdict = usersOnly(command) ?? checkChain(command) ?? checkStaging(command) ?? besideHeartbeat(dir, command, env)
         ?? (heartbeat ? blacklisted(command, { dir, cwd: payload.cwd || dir }) : null);
     } catch (err) {
       // A heartbeat may run any command but the blacklist (D159): when the check itself fails, the command is refused.
@@ -171,7 +173,10 @@ function sessionStart(db, payload, env, dir) {
   // A heartbeat working in the project as the session opens (D187): how to change code meanwhile without stopping it.
   const running = lockHolder(dir);
   const beside = running ? `A heartbeat of this project is running now (pid ${running}) in this working tree: git commands that change the repository are refused here until it ends. For a change that cannot wait, work in a worktree of your own and merge it once \`jerome heartbeat wait\` returns; never ask the user to stop the run. While this session is in use, no other heartbeat starts here.` : null;
-  const context = [beside, alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
+  // The push unlocked for the project (D194): Jérôme's to ask and do, so the lead agent never asks the user to push.
+  const main = heartbeatConfig(dir).config.mainBranch;
+  const push = isUnlocked(dir, 'push') ? `The push of ${main} is unlocked in this project (D194): Jérôme asks the user on Telegram once ${main} has commits not pushed, and pushes on their yes. You still cannot push: never ask the user to push ${main}; if they want it at once, they tap that button or run \`! git push\` themselves.` : null;
+  const context = [beside, push, alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
   const alertLine = alerts.length ? `Jérôme: ${alerts.length} heartbeat ${alerts.length === 1 ? 'alert' : 'alerts'}: ${alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}` : null;
   const message = [alertLine, limitsWarning(db, dir)].filter(Boolean).join('\n');
   return { context: context || null, message: message || null };

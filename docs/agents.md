@@ -63,6 +63,8 @@ Each rule is written as `Bash(<command>)`. Tested on Claude Code 2.1.300, the ru
 - in interactive and headless sessions, even with `--dangerously-skip-permissions` or with an allow rule such as `Bash(git *)`;
 - inside compound commands (`cd x && git push`) and after environment variables (`FOO=1 git push`).
 
+You can unlock the push for one project with [`jerome rules unlock push`](commands/rules.md): the rule stays, and Jérôme itself asks you on Telegram and pushes the main branch on your yes.
+
 They are a safety net for the common commands, not a sandbox. A command they do not list, such as an unusual form of `git` or a deploy tool not in the table, still relies on the written limits. Buying, and sending email through a connector, cannot be expressed as rules at all.
 
 ### Tools a project never uses

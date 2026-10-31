@@ -15,6 +15,7 @@ import { request } from './request.js';
 import { digest } from './digest.js';
 import { deps } from './deps.js';
 import { limits } from './limitscmd.js';
+import { rules } from './rules.js';
 import { forget } from './forget.js';
 import { projects } from './projects.js';
 import { note } from './notes.js';
@@ -106,6 +107,9 @@ const USAGE = `Usage:
                           Jérôme Director, on the server: it listens only on a VPN or private address
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
+  jerome rules [dir]      what Jérôme blocks for the model in this project, and what you unlocked
+  jerome rules unlock <name> [dir]   unlock one for this project, at a terminal (only push, for now)
+  jerome rules lock <name> [dir]     lock it again
   jerome limits [dir]     show the usage limits, global and of the project, with the current usage
     --five-hour <n|off>   global limit on the 5-hour window, in % (account.json)
     --seven-day <n|off>   global limit on the 7-day window, in %
@@ -160,7 +164,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token'], connect: ['name'], disconnect: [], plain: [] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], rules: [], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token'], connect: ['name'], disconnect: [], plain: [] };
 
 export async function main(argv) {
   let parsed;
@@ -349,6 +353,15 @@ export async function main(argv) {
     case 'digest':
       if (rest.length > 1) return usageError('jerome digest takes at most one folder.');
       return digest(rest[0] ?? '.', { since: parsed.values.since ?? '7d' });
+    case 'rules': {
+      // jerome rules [dir] · jerome rules unlock|lock <name> [dir] (D194)
+      if (['unlock', 'lock'].includes(rest[0])) {
+        if (rest.length < 2 || rest.length > 3) return usageError(`jerome rules ${rest[0]} takes a name, such as push, and at most one folder.`);
+        return rules(rest[0], rest[1], rest[2] ?? '.');
+      }
+      if (rest.length > 1) return usageError('jerome rules takes unlock <name>, lock <name>, or at most one folder.');
+      return rules(null, null, rest[0] ?? '.');
+    }
     case 'limits':
       if (rest.length > 1) return usageError('jerome limits takes at most one folder.');
       return limits(rest[0] ?? '.', parsed.values);

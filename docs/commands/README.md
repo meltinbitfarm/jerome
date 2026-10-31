@@ -24,6 +24,7 @@ Every command of `jerome`, each with its own page. `jerome --help` prints the sa
 | [`jerome governor on`](governor.md), [`jerome quota`](quota.md) | The quota governor: reads the subscription's real quota and starts fill runs while the week is behind its pace, to reach the weekly reset at about 90% |
 | [`jerome note`](note.md) | Lists and closes the notes you sent a project from Telegram |
 | [`jerome digest [dir]`](digest.md) | What happened recently, at zero tokens |
+| [`jerome rules [dir]`, `unlock <name>`, `lock <name>`](rules.md) | What Jérôme blocks for the model in a project, and the push you can unlock there: Jérôme asks on Telegram and pushes on your yes |
 | [`jerome limits [dir]`](limits.md) | Shows and sets the usage limits that pause heartbeats: global in % of the subscription windows, per project in API-equivalent dollars |
 | [`jerome deps [--json]`](deps.md) | Lists what Jérôme depends on in Claude Code, for tools that watch Claude Code releases |
 | [`jerome docs [dir]`](docs.md) | Brings the documentation queue into the project's docs, with the documentarist on Haiku |
