@@ -50,6 +50,29 @@ function commitRules(dir, group, to, main) {
   return null;
 }
 
+// Locks a group again, from the terminal or from the Director's dashboard (D196): the safe way, so it needs no name
+// typed. Returns { ok, text }.
+export function lockGroup(dir, name, { now = new Date() } = {}) {
+  const project = basename(dir);
+  const open = unlocked(dir);
+  if (!GROUPS[name]) return { ok: false, text: `No group ${name ?? ''}.` };
+  if (!open[name]) return { ok: true, text: `${name} is locked already in ${project}.` };
+  const main = heartbeatConfig(dir).config.mainBranch;
+  if (name !== 'push') {
+    const why = commitRules(dir, name, 'deny', main);
+    if (why) return { ok: false, text: `Not locked: ${why}` };
+  }
+  delete open[name];
+  saveUnlocked(dir, open);
+  if (name === 'push') {
+    rmSync(join(storeDir(dir), 'push.json'), { force: true });
+    tell(dir, `From the user: the push is locked again for this project, so the user pushes ${main} themselves. Record it as a decision; when work on ${main} needs a push, ask them with a decision request, as before.`, now);
+  } else {
+    tell(dir, `From the user: ${GROUPS[name].what} is locked again for this project. Record it as a decision; when work needs it, ask the user with a decision request, as before.`, now);
+  }
+  return { ok: true, text: `${name} locked again in ${project}.` };
+}
+
 // `jerome rules [dir]`, `jerome rules unlock <name> [dir]`, `jerome rules lock <name> [dir]`.
 export async function rules(action, name, dirArg = '.', { input = process.stdin, output = process.stdout, env = process.env, now = new Date() } = {}) {
   const dir = resolve(dirArg);
@@ -73,26 +96,12 @@ export async function rules(action, name, dirArg = '.', { input = process.stdin,
     return 2;
   }
   if (action === 'lock') {
-    if (!open[name]) {
-      console.log(`${name} is locked already in ${project}.`);
-      return 0;
+    const r = lockGroup(dir, name, { now });
+    if (!r.ok) {
+      console.error(r.text);
+      return 1;
     }
-    if (name !== 'push') {
-      const why = commitRules(dir, name, 'deny', main);
-      if (why) {
-        console.error(`Not locked: ${why}`);
-        return 1;
-      }
-    }
-    delete open[name];
-    saveUnlocked(dir, open);
-    if (name === 'push') {
-      rmSync(join(storeDir(dir), 'push.json'), { force: true });
-      tell(dir, `From the user, at the Mac: the push is locked again for this project, so the user pushes ${main} themselves. Record it as a decision; when work on ${main} needs a push, ask them with a decision request, as before.`, now);
-    } else {
-      tell(dir, `From the user, at the Mac: ${GROUPS[name].what} is locked again for this project. Record it as a decision; when work needs it, ask the user with a decision request, as before.`, now);
-    }
-    console.log(`✓ ${name} locked again in ${project}.`);
+    console.log(`✓ ${r.text}`);
     return 0;
   }
   if (action !== 'unlock') {

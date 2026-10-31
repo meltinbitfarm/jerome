@@ -61,7 +61,10 @@ const WORDS = {
     sent: 'Sent: the Mac takes it within a minute.',
     orders: 'Sent from here',
     order: { pending: 'waiting for the Mac', done: 'done', failed: 'not done', lapsed: 'lapsed: the Mac did not take it within 10 minutes' },
-    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `note: ${o.text}`, action: (o) => o.actionLabel },
+    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `note: ${o.text}`, action: (o) => o.actionLabel, push: (o) => o.actionLabel, lock: (o) => o.actionLabel },
+    push: (n, branch) => `${n} ${n === 1 ? 'commit' : 'commits'} on ${branch} not pushed yet`,
+    pushHow: 'The push may start a deploy. Jérôme asked on Telegram too: either answer counts.',
+    unlocked: 'Unlocked here', lock: 'Lock again', lockHint: 'Unlocking is done only at the Mac: jerome rules unlock <name>.',
     silent: (mac, since) => `The Mac ${mac} has not been heard from since ${since}. Is it on and connected?`,
     pending: (mac) => `The Mac ${mac} waits for your approval: \`jerome director approve\` on the server.`,
     projects: 'Projects',
@@ -103,7 +106,10 @@ const WORDS = {
     sent: 'Inviato: il Mac lo prende entro un minuto.',
     orders: 'Inviati da qui',
     order: { pending: 'aspetta il Mac', done: 'fatto', failed: 'non fatto', lapsed: 'scaduto: il Mac non l\'ha preso entro 10 minuti' },
-    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `nota: ${o.text}`, action: (o) => o.actionLabel },
+    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `nota: ${o.text}`, action: (o) => o.actionLabel, push: (o) => o.actionLabel, lock: (o) => o.actionLabel },
+    push: (n, branch) => `${n} commit su ${branch} non ancora ${n === 1 ? 'pushato' : 'pushati'}`,
+    pushHow: 'Il push può far partire il deploy. Jérôme te l\'ha chiesto anche su Telegram: vale la prima risposta.',
+    unlocked: 'Sbloccato qui', lock: 'Blocca di nuovo', lockHint: 'Sbloccare si fa solo dal Mac: jerome rules unlock <nome>.',
     silent: (mac, since) => `Il Mac ${mac} non si sente da ${since}. È acceso e in rete?`,
     pending: (mac) => `Il Mac ${mac} aspetta la tua approvazione: \`jerome director approve\` sul server.`,
     projects: 'Progetti',
@@ -211,6 +217,13 @@ function renderTodo(items) {
         writeBox(`answer:${a.machineCode}/${a.key}/${a.id}`, W.yourAnswer, (text, button) => order(button, { machine: a.machineCode, project: a.key, kind: 'answer', ref: a.id, text })),
         el('div', { class: 'muted small' }, W.answerHow));
     }
+    if (a.kind === 'push') {
+      return el('div', { class: 'card ask' },
+        el('div', { class: 'card-head' }, el('span', { class: 'warn' }, `🚀 ${W.push(a.count, a.branch)}`), el('span', { class: 'muted' }, ` · ${a.project}`)),
+        el('ul', { class: 'card-text' }, a.subjects.map((s) => el('li', {}, s))),
+        el('div', { class: 'choices' }, a.choices.map((c) => el('button', { type: 'button', class: 'choice', onclick: (ev) => order(ev.target, { machine: a.machineCode, project: a.key, kind: 'push', head: a.head, action: c.name }) }, c.label))),
+        el('div', { class: 'muted small' }, W.pushHow));
+    }
     if (a.kind === 'block') {
       return el('div', { class: 'card stop' },
         el('div', { class: 'card-head' }, el('span', { class: 'high' }, '⚠ '), a.project),
@@ -296,10 +309,20 @@ function renderProjects() {
       snag,
       el('div', { class: 'muted small clip' }, last),
       p.slots.length ? el('div', { class: 'muted small' }, W.next(p.slots.map((s) => s.at).join(' · '))) : null,
+      unlockedLine(p),
       board(p),
       noteBox(p));
   });
   fill('projects', title(W.projects), rows);
+}
+
+// What the user unlocked in the project (D196), each with a button to lock it again: unlocking is only at the Mac.
+function unlockedLine(p) {
+  if (!p.unlocked?.length) return null;
+  return el('div', { class: 'unlocked', title: W.lockHint },
+    el('span', { class: 'muted small' }, `🔓 ${W.unlocked}: `),
+    p.unlocked.map((g) => el('span', { class: 'small' }, `${g.label} `,
+      el('button', { type: 'button', class: 'choice small', onclick: (ev) => order(ev.target, { machine: p.machineCode, project: p.key, kind: 'lock', group: g.name }) }, `🔒 ${W.lock}`), ' ')));
 }
 
 // A note for the project, as `#project text` on Telegram: closed until opened.

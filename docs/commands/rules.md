@@ -24,6 +24,8 @@ A push that fails, for example because the remote has commits this Mac has not, 
 
 `jerome rules lock push` stops the questions; the lead agent goes back to asking you to push.
 
+The same question, with the same buttons, shows on the [Director's dashboard](../director.md#the-push-and-what-is-unlocked) when the Mac is connected to one.
+
 ## Unlocking the others
 
 Any other group, such as `deploy-fly` or `publish`, is unlocked the same way, at a terminal with the project's name typed, and while no run is working, on the main branch, with `.claude/settings.json` not changed by you. Its rules move from deny to ask in that file, which is committed on the main branch by itself. Then:
@@ -32,3 +34,7 @@ Any other group, such as `deploy-fly` or `publish`, is unlocked the same way, at
 - **In heartbeats**, nobody is there to answer, so they stay refused: the hook says why, and the lead agent opens a decision request instead, as before.
 
 `jerome doctor` keeps them so, and the lead agent is told with a note, which it records as a decision. `jerome rules lock <name>` moves them back to deny, committed the same way.
+
+## Where you see them
+
+`jerome view` lists what is unlocked in the project, and the push asked. The [Director's dashboard](../director.md#the-push-and-what-is-unlocked) shows them under each project, each with a **Lock again** button: locking again is the safe way, so it can be done from afar; unlocking only here.

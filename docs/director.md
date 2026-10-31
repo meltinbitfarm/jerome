@@ -73,13 +73,19 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
 
 What you send from the dashboard is an **order**, and an order is data, never a command (D169, D191):
 
-1. The Director checks it against what the Mac last said: the project is the Mac's, the question or the block is open, the option is one of the question's, the action one the block offers, a text at most 2,000 characters. Then it only keeps it. The same answer or action twice is one order, and at most 20 orders a minute are taken.
+1. The Director checks it against what the Mac last said: the project is the Mac's, the question or the block is open, the option is one of the question's, the action one the block offers, the push the one asked, the group to lock one that is unlocked, a text at most 2,000 characters. Then it only keeps it. The same answer or action twice is one order, and at most 20 orders a minute are taken.
 2. The Mac takes it in the answer to its next beat, within a minute, signed with the Director's key it pinned. The Director still never contacts a Mac.
 3. The Mac checks it again under its own rules, and runs it with the same code as a tap or a reply on Telegram: an answer through `jerome request answer`, a note as a note of the project, an action from the closed list of D167, never while a heartbeat holds the project. An order older than 10 minutes lapses, and one given twice runs once.
 4. It reports at once what it did. The dashboard shows it under **Sent from here**: waiting for the Mac, done, not done with the reason, or lapsed. A question answered from the dashboard leaves the page at once.
 5. **The Mac tells you on Telegram** of each order it ran, when its Telegram bridge is set up: "📋 From the Director's dashboard: R4 answered: B". If you did not send it, someone has the dashboard's address: `jerome director dashboard --new-token` on the server makes it stop working.
 
-Whoever took the dashboard could therefore answer, leave notes and press the blocks' buttons, all reversible and inside the projects. A text from the dashboard reaches the agents as your words, but as data: it lifts none of a project's limits (no push, deploy, publish or email, no credentials read), and the message on Telegram tells you it came.
+### The push and what is unlocked
+
+In a project where you [unlocked the push](commands/rules.md), the push Jérôme asked on Telegram shows under **What you need to do** too, with its commits and the same two buttons, **Push main** and **Not now**: the first answer counts, from either side. Under each project, a line lists what you unlocked there, each with a **Lock again** button (D196). Unlocking has no button: it is done only at a terminal on the Mac, so whoever took the dashboard cannot unlock anything.
+
+A Mac sends these only to a Director at 0.16.0 or later, which says its version in the answer to the beat; an older Director keeps working without them.
+
+Whoever took the dashboard could therefore answer, leave notes, press the blocks' buttons, push a main branch whose push you unlocked and Jérôme asked, and lock again what you unlocked. A text from the dashboard reaches the agents as your words, but as data: it lifts none of a project's limits (no push, deploy, publish or email, no credentials read), and the message on Telegram tells you it came.
 
 The image is built from the repository. After an update: in Coolify, a deploy; by hand, `git pull` and the same `up -d` with `--build`. The Director's data, its keys included, live in the `director-data` volume.
 

@@ -14,6 +14,9 @@ import { readAreas, agentAreas } from './areas.js';
 import { readAssumptions } from './assumptions.js';
 import { openAlerts, lostRuns } from './alerts.js';
 import { openNotes } from './notes.js';
+import { GROUPS } from './limits.js';
+import { unlocked } from './unlocked.js';
+import { pushPending } from './push.js';
 
 export const STATE_SCHEMA = 'jerome.state/v1';
 
@@ -108,6 +111,8 @@ export function readState(dir, { runs = 3, agent = null, readOnly = false, now =
       alerts: openAlerts(db),
       // Notes the user sent from Telegram (D133), open until the lead agent records them.
       notes: openNotes(db),
+      // What Jérôme blocks for the model here, and what the user unlocked (D194-D196), with the push asked.
+      rules: { groups: Object.entries(GROUPS).map(([name, g]) => ({ name, what: g.what, unlocked: Boolean(unlocked(dir)[name]) })), push: pushPending(dir) },
     };
   } finally {
     db.close();

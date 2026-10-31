@@ -65,6 +65,15 @@ export function proposePush(dir, { env = process.env, now = new Date(), enqueue 
   return item;
 }
 
+// The question asked and not answered yet, for the Director's dashboard (D196): { head, branch, count, subjects }.
+export function pushPending(dir) {
+  const asked = readState(dir).asked?.head;
+  if (!asked) return null;
+  const s = pushStatus(dir);
+  if (!s?.ahead || s.head !== asked) return null;
+  return { head: short(s.head), branch: s.branch, count: s.ahead, subjects: s.subjects };
+}
+
 // Whether the question with this head is still the one to answer: the bridge takes the buttons off the others.
 export function pushAsked(dir, head) {
   return short(readState(dir).asked?.head) === head;

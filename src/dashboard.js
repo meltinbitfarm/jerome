@@ -16,6 +16,7 @@ import { blockMessage, howLong, lasting } from './blocks.js';
 import { LANGUAGES, t } from './i18n.js';
 import { optionList } from './options.js';
 import { actionsFor, ACTIONS } from './unblock.js';
+import { GROUPS } from './limits.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'director.html');
 const STYLE = join(import.meta.dirname, '..', 'viewer', 'style.css');
@@ -112,13 +113,23 @@ export function takeOrder({ db, token, headers, body, now = new Date() }) {
     if (!alert) return bad('that block is closed');
     if (!ACTIONS.includes(o.action) || !actionsFor(alert.reason).includes(o.action)) return bad('that block does not offer this action');
     order = { kind: 'action', ref: alert.id, action: o.action, text: null };
-  } else return bad('kind is answer, note or action');
+  } else if (o.kind === 'push') {
+    // The push the Mac asked (D196): only for the head it asked about, and only go or not now.
+    const push = project.rules?.push;
+    if (!push || push.head !== o.head) return bad('that push is not asked any more');
+    if (!['go', 'no'].includes(o.action)) return bad('a push is go or no');
+    order = { kind: 'push', ref: null, action: o.action, text: push.head };
+  } else if (o.kind === 'lock') {
+    // Locking again is the safe way (D196); unlocking is done only at the Mac.
+    if (!GROUPS[o.group] || !(project.rules?.unlocked ?? []).includes(o.group)) return bad('that is not unlocked');
+    order = { kind: 'lock', ref: null, action: null, text: o.group };
+  } else return bad('kind is answer, note, action, push or lock');
   const at = now.toISOString();
   if (db.prepare('SELECT count(*) n FROM orders WHERE created_at > ?').get(new Date(now.getTime() - 60_000).toISOString()).n >= ORDERS_PER_MIN) {
     return { status: 429, body: { error: 'too many orders: wait a minute' } };
   }
   // The same answer or action twice, before the Mac took the first, is one order.
-  if (order.kind !== 'note' && db.prepare("SELECT 1 FROM orders WHERE machine = ? AND project = ? AND kind = ? AND ref = ? AND status = 'pending'").get(o.machine, o.project, order.kind, order.ref)) {
+  if (order.kind !== 'note' && db.prepare("SELECT 1 FROM orders WHERE machine = ? AND project = ? AND kind = ? AND coalesce(ref, -1) = coalesce(?, -1) AND (ref IS NOT NULL OR text = ?) AND status = 'pending'").get(o.machine, o.project, order.kind, order.ref, order.text)) {
     return { status: 409, body: { error: 'already sent: the Mac takes it within a minute' } };
   }
   const id = Number(db.prepare('INSERT INTO orders (machine, project, kind, ref, action, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -181,10 +192,17 @@ export function overview(db, now = new Date()) {
   // for the Mac's next beat to say they are closed.
   const handled = new Set(db.prepare("SELECT machine, project, kind, ref FROM orders WHERE status IN ('pending', 'done') AND ref IS NOT NULL AND created_at > ?")
     .all(new Date(now.getTime() - 15 * 60_000).toISOString()).map((o) => `${o.machine}/${o.project}/${o.kind}/${o.ref}`));
+  const recent = db.prepare("SELECT machine, project, kind, text FROM orders WHERE status IN ('pending', 'done') AND kind IN ('push', 'lock') AND created_at > ?")
+    .all(new Date(now.getTime() - 15 * 60_000).toISOString());
+  const pushed = new Set(recent.filter((o) => o.kind === 'push').map((o) => `${o.machine}/${o.project}/${o.text}`));
+  const locked = new Set(recent.filter((o) => o.kind === 'lock').map((o) => `${o.machine}/${o.project}/${o.text}`));
   const projects = db.prepare('SELECT machine, key, data FROM projects ORDER BY name').all().filter((p) => names.has(p.machine)).map((p) => {
     const data = parse(p.data);
     data.requests = (data.requests ?? []).filter((r) => !handled.has(`${p.machine}/${p.key}/answer/${r.id}`));
     data.alerts = (data.alerts ?? []).filter((a) => !handled.has(`${p.machine}/${p.key}/action/${a.id}`));
+    // The push answered and the groups locked from here lately (D196), gone at once too.
+    if (data.rules?.push && pushed.has(`${p.machine}/${p.key}/${data.rules.push.head}`)) delete data.rules.push;
+    if (data.rules) data.rules.unlocked = data.rules.unlocked.filter((g) => !locked.has(`${p.machine}/${p.key}/${g}`));
     const mine = db.prepare('SELECT data FROM runs WHERE machine = ? AND project = ? AND ended_at >= ?').all(p.machine, p.key, since).map((r) => parse(r.data));
     // The last work done: a heartbeat that stopped is a block, told apart, never "the last work".
     const done = db.prepare("SELECT data FROM runs WHERE machine = ? AND project = ? AND json_extract(data, '$.status') = 'done' ORDER BY ended_at DESC LIMIT 1").get(p.machine, p.key);
@@ -203,6 +221,8 @@ export function overview(db, now = new Date()) {
       : (data.requests ?? []).length ? 'asking' : data.overLimit ? 'paused' : 'idle';
     return {
       ...data,
+      // The groups unlocked here, named in the user's language, each with its Lock button (D196).
+      unlocked: (data.rules?.unlocked ?? []).filter((g) => GROUPS[g]).map((g) => ({ name: g, label: t(`group.${g}`, {}, spoken) })),
       blocks,
       state,
       // The last work in plain words when the board has it (D177), else as the runner wrote it.
@@ -224,13 +244,19 @@ export function overview(db, now = new Date()) {
     attention: [
       ...projects.flatMap((p) => (p.requests ?? []).map((r) => ({ kind: 'request', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode, id: r.id,
         question: r.question, options: r.options ?? null, choices: optionList(r.options), recommendation: r.recommendation ?? null }))),
+      // The push the Mac asked on Telegram too (D196), with the same two choices.
+      ...projects.filter((p) => p.rules?.push).map((p) => ({ kind: 'push', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode,
+        head: p.rules.push.head, branch: p.rules.push.branch, count: p.rules.push.count, subjects: p.rules.push.subjects,
+        text: t('push.ask', { count: p.rules.push.count, branch: p.rules.push.branch, subjects: p.rules.push.subjects.map((x) => `• ${x}`).join('\n') }, spoken),
+        choices: [{ name: 'go', label: t('push.go', { branch: p.rules.push.branch }, spoken) }, { name: 'no', label: t('push.no', {}, spoken) }] })),
       ...projects.flatMap((p) => p.blocks.filter((b) => b.lasting).map((b) => ({ kind: 'block', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode, id: b.id,
         text: b.text, since: b.since, actions: b.actions }))),
     ],
     // The dashboard's orders of the last day (D191), newest first, with what the Mac did.
     orders: db.prepare('SELECT o.*, m.name machine_name FROM orders o JOIN machines m ON m.id = o.machine WHERE o.created_at > ? ORDER BY o.id DESC LIMIT 30')
       .all(new Date(now.getTime() - 86_400_000).toISOString()).map((o) => ({
-        id: o.id, kind: o.kind, ref: o.ref, action: o.action, actionLabel: o.action ? t(`action.${o.action}`, {}, spoken) : null, text: o.text,
+        id: o.id, kind: o.kind, ref: o.ref, action: o.action, text: o.text,
+        actionLabel: o.kind === 'push' ? t(o.action === 'go' ? 'push.yes' : 'push.no', {}, spoken) : o.kind === 'lock' ? t('rules.lockOne', { group: o.text }, spoken) : o.action ? t(`action.${o.action}`, {}, spoken) : null,
         project: projects.find((p) => p.machineCode === o.machine && p.key === o.project)?.name ?? o.project, machine: o.machine_name,
         status: o.status, result: o.result ? scrub(o.result) : null, createdAt: o.created_at, doneAt: o.done_at,
       })),

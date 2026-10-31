@@ -11,6 +11,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { privateAddress, parseListen, checkListen, checkShape } from '../src/director.js';
 import { newKeys, signRequest, verifyResponse } from '../src/sign.js';
 import { scrub } from '../src/scrub.js';
+import { atLeast } from '../src/directorlink.js';
 import { readyProject } from './sandbox.js';
 
 const BIN = new URL('../bin/jerome.js', import.meta.url).pathname;
@@ -382,4 +383,94 @@ test('a question answered on Telegram leaves the dashboard in the same pass, by 
   assert.deepEqual(after.attention, []);
   assert.deepEqual(after.orders, []);
   assert.ok(!existsSync(join(m.root, '.cache', 'jerome', 'director', 'beat.lock')), 'the lock goes with its beat');
+});
+
+test('the dashboard shows what is unlocked and the push asked: a tap pushes main on the Mac, another locks again; unlocking stays at the Mac (D196)', async () => {
+  const d = await startDirector();
+  const fake = mkdtempSync(join(tmpdir(), 'jerome-tg-'));
+  const m = mac('mini', { JEROME_TELEGRAM_FAKE: fake });
+  mkdirSync(join(m.root, '.config', 'jerome'), { recursive: true });
+  writeFileSync(join(m.root, '.config', 'jerome', 'telegram.json'), JSON.stringify({ token: '1:x', chatId: 7, chat: 'Fabio', bot: 'jerome_test_bot' }));
+  const remote = join(m.root, 'remote.git');
+  execFileSync('git', ['init', '-q', '--bare', remote]);
+  m.git('remote', 'add', 'origin', remote);
+  m.git('push', '-q', 'origin', 'main');
+  assert.equal(m.runWithInput({ JEROME_TEST_TTY: '1' }, 'demo\n', 'rules', 'unlock', 'push', m.dir).status, 0);
+  writeFileSync(join(m.dir, 'page.md'), 'x\n');
+  m.git('add', 'page.md');
+  m.git('commit', '-q', '-m', 'Add the page');
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  const token = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  const overview = async () => (await fetch(`${d.url}/api/overview`, { headers: auth })).json();
+  const send = (body) => fetch(`${d.url}/api/order`, { method: 'POST', headers: auth, body: JSON.stringify(body) });
+
+  // The first beat learns the Director's version; the next carries the rules, and the push asked on Telegram.
+  m.beat();
+  m.beat();
+  const o = await overview();
+  const p = o.projects[0];
+  assert.deepEqual(p.unlocked.map((g) => g.name), ['push']);
+  const ask = o.attention.find((a) => a.kind === 'push');
+  assert.ok(ask, JSON.stringify(o.attention));
+  assert.equal(ask.count, 1);
+  assert.deepEqual(ask.subjects, ['Add the page']);
+  assert.deepEqual(ask.choices.map((c) => c.name), ['go', 'no']);
+  const head = execFileSync('git', ['rev-parse', 'main'], { cwd: m.dir, encoding: 'utf8' }).trim();
+  assert.equal(ask.head, head.slice(0, 12));
+
+  // Refused: another head, another action, a group not unlocked, and unlocking, which has no order.
+  const where = { machine: p.machineCode, project: p.key };
+  assert.equal((await send({ ...where, kind: 'push', head: '0123456789ab', action: 'go' })).status, 400);
+  assert.equal((await send({ ...where, kind: 'push', head: ask.head, action: 'force' })).status, 400);
+  assert.equal((await send({ ...where, kind: 'lock', group: 'deploy-fly' })).status, 400);
+  assert.equal((await send({ ...where, kind: 'unlock', group: 'deploy-fly' })).status, 400);
+
+  assert.equal((await send({ ...where, kind: 'push', head: ask.head, action: 'go' })).status, 201);
+  assert.equal((await send({ ...where, kind: 'push', head: ask.head, action: 'go' })).status, 409);
+  assert.ok(!(await overview()).attention.some((a) => a.kind === 'push'), 'gone from the page at once');
+  m.beat();
+  assert.equal(execFileSync('git', ['rev-parse', 'main'], { cwd: remote, encoding: 'utf8' }).trim(), head);
+  const after = await overview();
+  assert.equal(after.orders[0].status, 'done', JSON.stringify(after.orders[0]));
+  assert.match(after.orders[0].result, /Pushed: main, 1 commit/);
+  assert.ok(!after.attention.some((a) => a.kind === 'push'));
+
+  // Lock again from the page: the Mac locks it, and the page shows it locked.
+  assert.equal((await send({ ...where, kind: 'lock', group: 'push' })).status, 201);
+  m.beat();
+  assert.match(m.run('rules', m.dir).stdout, /push +locked/);
+  m.beat();
+  const last = await overview();
+  assert.deepEqual(last.projects[0].unlocked, []);
+  assert.match(last.orders[0].result, /push locked again/);
+  const told = readFileSync(join(fake, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).filter((c) => c.method === 'sendMessage').map((c) => c.params.text);
+  assert.ok(told.some((x) => /From the Director's dashboard: Pushed: main/.test(x)), told.join('\n---\n'));
+  assert.ok(told.some((x) => /From the Director's dashboard: push locked again/.test(x)));
+});
+
+test('a Director from before 0.16.0 gets no rules from a Mac, and its orders table takes the new kinds once updated (D196)', () => {
+  // The Mac sends rules only to a Director that said its version, 0.16.0 or later; an older one says none.
+  assert.equal(atLeast(undefined, '0.16.0'), false);
+  assert.equal(atLeast('0.15.9', '0.16.0'), false);
+  assert.equal(atLeast('0.16.0', '0.16.0'), true);
+  assert.equal(atLeast('1.0.0', '0.16.0'), true);
+  const home = mkdtempSync(join(tmpdir(), 'jerome-director-old-'));
+  const dir = join(home, '.local', 'share', 'jerome-director');
+  mkdirSync(dir, { recursive: true });
+  const old = new DatabaseSync(join(dir, 'director.db'));
+  old.exec(`CREATE TABLE orders (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, project TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action')), ref INTEGER, action TEXT, text TEXT,
+      created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed', 'lapsed')),
+      result TEXT, done_at TEXT);
+    INSERT INTO orders (machine, project, kind, text, created_at) VALUES ('m', 'p', 'note', 'kept', '2026-10-31T00:00:00Z');`);
+  old.close();
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    const { openDirectorDb } = await import(${JSON.stringify(join(import.meta.dirname, '..', 'src', 'director.js'))});
+    const db = openDirectorDb({ HOME: ${JSON.stringify(home)} });
+    db.prepare("INSERT INTO orders (machine, project, kind, action, text, created_at) VALUES ('m', 'p', 'push', 'go', 'abc', 'x')").run();
+    console.log(JSON.stringify(db.prepare('SELECT kind, text FROM orders ORDER BY id').all()));`], { encoding: 'utf8', env: { ...process.env, HOME: home, XDG_DATA_HOME: '' } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout.trim().split('\n').pop()), [{ kind: 'note', text: 'kept' }, { kind: 'push', text: 'abc' }]);
 });

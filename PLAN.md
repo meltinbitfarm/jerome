@@ -366,6 +366,8 @@ Then (0.14.0, D194): `jerome rules` lists what Jérôme blocks per project, and 
 
 Then (0.15.0, D195): the other groups of `jerome rules` unlock too, as ask rules: Claude Code asks the user each time in a session, and heartbeats are refused them by the hook. Next: the lists in the viewer and on the Director, with the push button and locking from the dashboard.
 
+Then (0.16.0, D196): the lists in `jerome view` and on the Director's dashboard, with the push's buttons and locking again from the dashboard; unlocking stays at the Mac.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:

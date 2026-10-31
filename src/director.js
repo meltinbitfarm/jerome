@@ -114,10 +114,23 @@ export function openDirectorDb(env = process.env) {
     CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS boards (machine TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (machine, key));
     CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, project TEXT NOT NULL,
-      kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action')), ref INTEGER, action TEXT, text TEXT,
+      kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action', 'push', 'lock')), ref INTEGER, action TEXT, text TEXT,
       created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed', 'lapsed')),
       result TEXT, done_at TEXT);
     CREATE INDEX IF NOT EXISTS orders_open ON orders (machine, status);`);
+  // The push and the locking from the dashboard (D196): a table from before them is copied into one that takes them.
+  if (!/'push'/.test(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'orders'").get()?.sql ?? "'push'")) {
+    db.exec(`BEGIN;
+      CREATE TABLE orders_new (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, project TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action', 'push', 'lock')), ref INTEGER, action TEXT, text TEXT,
+        created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed', 'lapsed')),
+        result TEXT, done_at TEXT);
+      INSERT INTO orders_new SELECT id, machine, project, kind, ref, action, text, created_at, status, result, done_at FROM orders;
+      DROP TABLE orders;
+      ALTER TABLE orders_new RENAME TO orders;
+      CREATE INDEX IF NOT EXISTS orders_open ON orders (machine, status);
+      COMMIT;`);
+  }
   // Added with the dashboard in the user's language (D163).
   if (!db.prepare('PRAGMA table_info(machines)').all().some((c) => c.name === 'language')) db.exec('ALTER TABLE machines ADD COLUMN language TEXT');
   return db;
@@ -160,6 +173,8 @@ const SHAPES = {
       overLimit: 'boolean',
       'lastHeartbeat?': { at: 'string:40', status: 'string:20', reason: 'string:300' },
       usage: { today: USAGE, week: USAGE },
+      // What the user unlocked in the project, and the push asked and not answered (D194-D196).
+      'rules?': { unlocked: ['string:20', 20], 'push?': { head: 'string:12', branch: 'string:60', count: 'number', subjects: ['string:120', 5] } },
     }, 100],
     runs: [{
       project: 'string:120', id: 'number', kind: 'string:10', 'model?': 'string:60', startedAt: 'string:40', 'endedAt?': 'string:40',
@@ -310,7 +325,8 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
     }
     // Step 1: the Director only sees. Permits come with step 3. The dashboard's orders for this Mac go with the answer
     // (D169, D191): data the Mac checks and runs under its own rules, never a command.
-    return { status: 200, body: { ok: true, mode: 'observing', permits: [], orders: ordersFor(id) } };
+    // Its version tells the Mac which fields it knows (D196).
+    return { status: 200, body: { ok: true, mode: 'observing', permits: [], orders: ordersFor(id), version: VERSION } };
   };
 
   // The orders waiting for a Mac, given again at each beat until it reports them; older than ORDER_MS they lapse.

@@ -9,6 +9,9 @@ import { openDb } from './db.js';
 import { stores } from './store.js';
 import { addNote } from './notes.js';
 import { ACTIONS, runAction } from './unblock.js';
+import { answerPush } from './push.js';
+import { lockGroup } from './rules.js';
+import { GROUPS } from './limits.js';
 import { enqueue } from './telegram.js';
 import { scrub } from './scrub.js';
 import { t, lang } from './i18n.js';
@@ -76,6 +79,17 @@ function runOne(o, { env, now, say }) {
     // runAction checks again that the block is open and offers this action, and that no run holds the project.
     const r = runAction(dir, o.ref, o.action, { origin: 'director', env, now });
     return { ok: r.ok, dir, text: `${project}: ${r.text}`, echo: r.ok ? say('order.echoAction', { action: say(`action.${o.action}`), text: r.text }) : null };
+  }
+  if (o.kind === 'push') {
+    // answerPush checks again that the push is unlocked here, that the branch is the one asked, and no run holds it.
+    if (!['go', 'no'].includes(o.action) || !/^[0-9a-f]{12}$/.test(text)) return { ok: false, text: say('order.bad') };
+    const r = answerPush(dir, text, o.action, { origin: 'director', env, now });
+    return { ok: r.ok, dir, text: `${project}: ${r.text}`, echo: say('order.echoPush', { text: r.text }) };
+  }
+  if (o.kind === 'lock') {
+    if (!GROUPS[text]) return { ok: false, text: say('order.bad') };
+    const r = lockGroup(dir, text, { now });
+    return { ok: r.ok, dir, text: `${project}: ${r.ok ? say('rules.locked', { group: text }) : r.text}`, echo: r.ok ? say('order.echoLock', { text: say('rules.locked', { group: text }) }) : null };
   }
   return { ok: false, text: say('order.bad') };
 }

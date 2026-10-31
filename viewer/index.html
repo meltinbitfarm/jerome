@@ -30,6 +30,7 @@
   <section id="cards"></section>
   <section id="areas" hidden></section>
   <section id="requests"></section>
+  <section id="rules"></section>
   <section id="team"></section>
   <section id="runs"></section>
   <section id="usage"></section>
@@ -212,6 +213,18 @@ function renderRequests(d) {
   fill('requests', prompt('jerome state --json | jq .requests', meta('decision requests')), items.length ? items : el('div', { class: 'muted' }, 'None open.'), assumed);
 }
 
+// What Jérôme blocks for the model here, and what the user unlocked (D194-D196): changed only at a terminal on the Mac.
+function renderRules(d) {
+  if (!d.rules) return;
+  const open = d.rules.groups.filter((g) => g.unlocked);
+  const push = d.rules.push;
+  fill('rules', prompt('jerome rules', meta('what the model may not do')),
+    open.length ? open.map((g) => el('div', {}, el('span', { class: 'warn' }, 'unlocked  '), el('span', { class: 'cyan' }, g.name.padEnd(18)), g.name === 'push' ? 'Jérôme asks you on Telegram, then pushes the main branch' : `${g.what}: Claude Code asks you each time in a session; refused in heartbeats`))
+      : el('div', { class: 'muted' }, 'Everything is locked: pushing, publishing, deploying and email.'),
+    push ? el('div', {}, el('span', { class: 'warn' }, 'push asked  '), `${push.count} ${push.count === 1 ? 'commit' : 'commits'} on ${push.branch} not pushed yet: answer on Telegram or the Director's dashboard`) : null,
+    el('div', { class: 'muted' }, `locked: ${d.rules.groups.filter((g) => !g.unlocked).map((g) => g.name).join(', ') || 'none'} · change at a terminal: jerome rules unlock|lock <name>`));
+}
+
 function renderTeam(d) {
   const week = new Map(d.agents.map((a) => [a.agent, a]));
   const replies = new Map((d.replies ?? []).map((r) => [r.agent, r]));
@@ -363,7 +376,7 @@ function renderReplies(d) {
 }
 
 function render(d) {
-  renderHeader(d); renderCards(d); renderAreas(d); renderRequests(d); renderTeam(d); renderRuns(d); renderUsage(d); renderReplies(d);
+  renderHeader(d); renderCards(d); renderAreas(d); renderRequests(d); renderRules(d); renderTeam(d); renderRuns(d); renderUsage(d); renderReplies(d);
   fill('footer', `# Dollar amounts are API equivalents at the list prices of ${d.pricesDate}: a subscription is not billed per token. Read-only: the viewer never writes anything.`);
 }
 

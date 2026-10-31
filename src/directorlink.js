@@ -23,6 +23,8 @@ import { createHash } from 'node:crypto';
 import { projectStatus, projectOver } from './budget.js';
 import { lockHolder, cacheDir } from './runstate.js';
 import { runOrders } from './orders.js';
+import { unlocked } from './unlocked.js';
+import { pushPending } from './push.js';
 
 export function linkPath(env = process.env) {
   return join(env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'jerome', 'director.json');
@@ -164,6 +166,14 @@ export async function disconnect({ env = process.env } = {}) {
 }
 
 const cut = (text, n) => scrub(text).slice(0, n);
+// Whether version a is at least b, as 0.16.0.
+export function atLeast(a, b) {
+  const x = String(a ?? '').split('.').map(Number);
+  const y = b.split('.').map(Number);
+  if (x.length !== 3 || x.some((n) => !Number.isInteger(n))) return false;
+  for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] > y[i];
+  return true;
+}
 // A board is sent again after this, even unchanged; the boards of one beat stay under this many characters.
 const BOARD_RESEND_MS = 30 * 60_000;
 const BOARD_BYTES = 150_000;
@@ -211,6 +221,10 @@ function projectBeat(s, filled, cursors, now) {
       lastHeartbeat: last ? { at: last.started_at, status: cut(last.status, 20), reason: cut(last.reason, 200) } : null,
       usage: { today: { tokens: status.daily.tokens, usd: status.daily.usd }, week: { tokens: status.weekly.tokens, usd: status.weekly.usd } },
     };
+    // What the user unlocked here, and the push asked (D194-D196), for a Director that knows them.
+    const open = Object.keys(unlocked(dir)).slice(0, 20).map((g) => cut(g, 20));
+    const push = pushPending(dir);
+    if (open.length) project.rules = { unlocked: open, ...(push ? { push: { head: push.head, branch: cut(push.branch, 60), count: push.count, subjects: push.subjects.slice(0, 5).map((x) => cut(x, 120)) } } : {}) };
     return { project, runs };
   } finally {
     db.close();
@@ -297,6 +311,8 @@ async function beat({ env, now, log }) {
       log(`director: ${s.key} left out of the beat: ${err.message}`);
     }
   }
+  // A Director from before 0.16.0 refuses a field it does not know, and says no version: rules only to a newer one.
+  if (!atLeast(state.directorVersion, '0.16.0')) for (const p of projects) delete p.rules;
   const sendQuota = quota && quota.readAt !== state.quotaReadAt;
   const sending = [];
   let size = 0;
@@ -333,6 +349,7 @@ async function beat({ env, now, log }) {
   // An order is remembered a day, so one given again is reported rather than run twice.
   const day = now.getTime() - 86_400_000;
   for (const [id, x] of Object.entries(state.orders.done)) if (Date.parse(x.at) < day) delete state.orders.done[id];
-  writeState({ ...state, status: 'approved', lastOk: now.toISOString(), lastError: null, lastErrorAt: null, quotaReadAt: sendQuota ? quota.readAt : state.quotaReadAt });
+  writeState({ ...state, status: 'approved', lastOk: now.toISOString(), lastError: null, lastErrorAt: null, quotaReadAt: sendQuota ? quota.readAt : state.quotaReadAt,
+    directorVersion: typeof r.data.version === 'string' ? r.data.version.slice(0, 20) : null });
   return r.data;
 }

@@ -14,7 +14,7 @@ import { readAccount, accountPath } from './account.js';
 import { findTranscript, delegations, leadCalls } from './delegations.js';
 import { PRICES_DATE } from './models.js';
 import { notProjectHint, STATE } from './paths.js';
-import { stores } from './store.js';
+import { stores, storeDir } from './store.js';
 import { readProjects } from './projects.js';
 import { liveRun } from './live.js';
 import { projectBoard, boardTexts } from './board.js';
@@ -195,7 +195,9 @@ function etag(dir, token) {
     const agents = existsSync(join(dir, '.claude', 'agents')) ? String(statSync(join(dir, '.claude', 'agents')).mtimeMs) : '';
     const areas = existsSync(join(dir, STATE.areas)) ? String(statSync(join(dir, STATE.areas)).mtimeMs) : '';
     const day = new Date().toDateString();
-    return `"${createHash('sha256').update(JSON.stringify([row, account, agents, areas, day, accountPath(), token])).digest('base64url').slice(0, 16)}"`;
+    // What is unlocked, and the push asked (D196), kept outside the database.
+    const rules = ['unlocked.json', 'push.json'].map((f) => (existsSync(join(storeDir(dir), f)) ? String(statSync(join(storeDir(dir), f)).mtimeMs) : '')).join();
+    return `"${createHash('sha256').update(JSON.stringify([row, account, agents, areas, day, accountPath(), token, rules])).digest('base64url').slice(0, 16)}"`;
   } finally {
     db.close();
   }
