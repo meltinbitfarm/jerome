@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { storeDir } from './store.js';
-import { isUnlocked } from './rules.js';
+import { isUnlocked } from './unlocked.js';
 import { heartbeatConfig } from './heartbeatconfig.js';
 import { lockHolder } from './runstate.js';
 import { openDb } from './db.js';

@@ -7,11 +7,12 @@ import { MARKER } from './template.js';
 import { openDb, prune } from './db.js';
 import { ingestTranscript } from './usage.js';
 import { checkChain, checkStaging, splitCommand, changingGit } from './chain.js';
-import { blacklisted, usersOnly } from './blacklist.js';
+import { blacklisted, sessionsOnly, usersOnly } from './blacklist.js';
 import { projectStatus, projectSummary, globalLimits } from './budget.js';
 import { readAssumptions } from './assumptions.js';
 import { heartbeatConfig } from './heartbeatconfig.js';
-import { isUnlocked } from './rules.js';
+import { isUnlocked, unlocked } from './unlocked.js';
+import { GROUPS } from './limits.js';
 import { lockHolder } from './runstate.js';
 import { openAlerts, alertsContext, lostRuns } from './alerts.js';
 import { claudePid, processStart, sweepLostRuns } from './lostruns.js';
@@ -40,7 +41,7 @@ export async function hook(event, { input = readStdin(), env = process.env } = {
     let verdict;
     try {
       verdict = usersOnly(command) ?? checkChain(command) ?? checkStaging(command) ?? besideHeartbeat(dir, command, env)
-        ?? (heartbeat ? blacklisted(command, { dir, cwd: payload.cwd || dir }) : null);
+        ?? (heartbeat ? blacklisted(command, { dir, cwd: payload.cwd || dir }) ?? sessionsOnly(command, dir) : null);
     } catch (err) {
       // A heartbeat may run any command but the blacklist (D159): when the check itself fails, the command is refused.
       verdict = heartbeat ? { reason: `Refused in a heartbeat: Jérôme could not check this command (${err.message}). Run it another way.` } : null;
@@ -176,7 +177,10 @@ function sessionStart(db, payload, env, dir) {
   // The push unlocked for the project (D194): Jérôme's to ask and do, so the lead agent never asks the user to push.
   const main = heartbeatConfig(dir).config.mainBranch;
   const push = isUnlocked(dir, 'push') ? `The push of ${main} is unlocked in this project (D194): Jérôme asks the user on Telegram once ${main} has commits not pushed, and pushes on their yes. You still cannot push: never ask the user to push ${main}; if they want it at once, they tap that button or run \`! git push\` themselves.` : null;
-  const context = [beside, push, alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
+  // The other groups unlocked (D195): Claude Code asks the user each time, in a session only.
+  const others = Object.keys(unlocked(dir)).filter((g) => g !== 'push' && GROUPS[g]);
+  const asked = others.length ? `Unlocked by the user in this project, for sessions only (D195): ${others.map((g) => GROUPS[g].what).join('; ')}. When the work needs it, say so and run the command: Claude Code asks the user each time.` : null;
+  const context = [beside, push, asked, alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
   const alertLine = alerts.length ? `Jérôme: ${alerts.length} heartbeat ${alerts.length === 1 ? 'alert' : 'alerts'}: ${alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}` : null;
   const message = [alertLine, limitsWarning(db, dir)].filter(Boolean).join('\n');
   return { context: context || null, message: message || null };

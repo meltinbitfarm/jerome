@@ -108,7 +108,7 @@ const USAGE = `Usage:
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
   jerome rules [dir]      what Jérôme blocks for the model in this project, and what you unlocked
-  jerome rules unlock <name> [dir]   unlock one for this project, at a terminal (only push, for now)
+  jerome rules unlock <name> [dir]   unlock one for this project, at a terminal
   jerome rules lock <name> [dir]     lock it again
   jerome limits [dir]     show the usage limits, global and of the project, with the current usage
     --five-hour <n|off>   global limit on the 5-hour window, in % (account.json)

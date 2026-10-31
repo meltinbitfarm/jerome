@@ -24,4 +24,11 @@ A push that fails, for example because the remote has commits this Mac has not, 
 
 `jerome rules lock push` stops the questions; the lead agent goes back to asking you to push.
 
-The other groups cannot be unlocked yet.
+## Unlocking the others
+
+Any other group, such as `deploy-fly` or `publish`, is unlocked the same way, at a terminal with the project's name typed, and while no run is working, on the main branch, with `.claude/settings.json` not changed by you. Its rules move from deny to ask in that file, which is committed on the main branch by itself. Then:
+
+- **In your sessions**, the lead agent may run those commands, and Claude Code asks you each time, with the command in full: you say yes or no there.
+- **In heartbeats**, nobody is there to answer, so they stay refused: the hook says why, and the lead agent opens a decision request instead, as before.
+
+`jerome doctor` keeps them so, and the lead agent is told with a note, which it records as a decision. `jerome rules lock <name>` moves them back to deny, committed the same way.

@@ -9,6 +9,7 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { realpathSync } from 'node:fs';
 import { splitCommand } from './chain.js';
+import { askedRules } from './limits.js';
 
 const HOME = String.raw`(?:~|\$HOME|\$\{HOME\}|/Users/[^/\s'"]+|/home/[^/\s'"]+)`;
 const CREDENTIALS = new RegExp(`${HOME}/(?:\\.ssh|\\.aws|\\.gnupg|\\.netrc|\\.npmrc|\\.pypirc|\\.docker/config\\.json|\\.kube|\\.config/gh|\\.config/gcloud|\\.config/jerome|\\.claude/\\.credentials|Library/Keychains)`);
@@ -51,6 +52,25 @@ const UNLOCK = /\bjerome(\.js)?\s+rules\s+unlock\b|jerome\/projects\/[^\s'"]*\/(
 export function usersOnly(command) {
   if (!UNLOCK.test(String(command ?? ''))) return null;
   return { reason: 'Refused (Jérôme D194): what is unlocked for this project is the user\'s to change, at a terminal with `jerome rules`. Do not try it another way.' };
+}
+
+// A Bash rule's pattern as Claude Code matches it, on one segment: `npm publish *` is the command alone or with
+// arguments, `vercel` the command alone.
+function ruleRegex(pattern) {
+  const esc = (x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return pattern.endsWith(' *') ? new RegExp(`^${esc(pattern.slice(0, -2))}(\\s.*)?$`) : new RegExp(`^${esc(pattern)}$`);
+}
+
+// A group the user unlocked for the project is asked in a session (D195); a heartbeat has nobody to ask, so it is
+// refused here, with why, rather than by Claude Code's permission prompt, which a run would report as a block.
+export function sessionsOnly(command, dir) {
+  const patterns = askedRules(dir).map((r) => r.match(/^Bash\((.*)\)$/)?.[1]).filter(Boolean).map(ruleRegex);
+  if (!patterns.length) return null;
+  for (const segment of splitCommand(String(command ?? ''))) {
+    const s = segment.replace(/^(?:\w+=\S*\s+)*/, '').trim();
+    if (patterns.some((re) => re.test(s))) return { reason: 'Refused in a heartbeat (Jérôme D195): the user unlocked this for their sessions only, where Claude Code asks them each time. Open a decision request saying in plain words what to run and why, and go on with the rest.' };
+  }
+  return null;
 }
 
 // Null when the command may run in a heartbeat, or { reason } for the agent.

@@ -64,8 +64,6 @@ test('push is unlocked per project only at a terminal, with the project\'s name 
   // A session is told the push is Jérôme's, so the lead agent never asks the user to push.
   const start = JSON.parse(p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 'talk', source: 'startup' }), 'hook', 'session-start').stdout);
   assert.match(start.hookSpecificOutput.additionalContext, /The push of main is unlocked in this project/);
-  // The others cannot be unlocked yet.
-  assert.match(p.runWithInput({ JEROME_TEST_TTY: '1' }, 'demo\n', 'rules', 'unlock', 'deploy-fly', p.dir).stderr, /only push can/);
   // Nothing in the repository changed: the choice is kept outside it.
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: p.dir, encoding: 'utf8' }), '');
   // The lead agent hears of it as a note, to record as a decision.
@@ -156,4 +154,46 @@ test('the model is refused unlocking, in a session too, and its run is told the 
   assert.match(unlocked, /The push of main is Jérôme's in this project/);
   assert.match(unlocked, /never open a request about pushing main/);
   assert.match(leadPrompt('a task', null, [], { config: { mainBranch: 'main' } }), /needs a push, a deploy or a release, which only the user does, open a request/);
+});
+
+test('another group unlocked moves from deny to ask, committed on main; a session is asked, a heartbeat refused; locked again it is denied (D195)', () => {
+  const p = pushable();
+  const settings = () => JSON.parse(readFileSync(join(p.dir, '.claude', 'settings.json'), 'utf8')).permissions;
+  const log = () => execFileSync('git', ['log', '-1', '--format=%s'], { cwd: p.dir, encoding: 'utf8' }).trim();
+  assert.ok(settings().deny.includes('Bash(fly deploy *)'));
+  // Not while a change of the user's own to settings.json waits.
+  const s0 = readFileSync(join(p.dir, '.claude', 'settings.json'), 'utf8');
+  writeFileSync(join(p.dir, '.claude', 'settings.json'), s0.replace('"permissions"', '"model": "opus", "permissions"'));
+  const busy = p.runWithInput({ JEROME_TEST_TTY: '1' }, 'demo\n', 'rules', 'unlock', 'deploy-fly', p.dir);
+  assert.equal(busy.status, 1);
+  assert.match(busy.stderr, /changes not committed/);
+  writeFileSync(join(p.dir, '.claude', 'settings.json'), s0);
+
+  const ok = p.runWithInput({ JEROME_TEST_TTY: '1' }, 'demo\n', 'rules', 'unlock', 'deploy-fly', p.dir);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.ok(!settings().deny.includes('Bash(fly deploy *)'));
+  assert.ok(settings().ask.includes('Bash(fly deploy *)') && settings().ask.includes('Bash(flyctl deploy *)'));
+  assert.ok(settings().deny.includes('Bash(vercel deploy *)'), 'the other groups stay denied');
+  assert.equal(log(), 'jerome rules: deploy-fly unlocked, asked each time in sessions (D195)');
+  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: p.dir, encoding: 'utf8' }), '');
+  assert.match(p.run('rules', p.dir).stdout, /deploy-fly +unlocked/);
+  // doctor keeps it so: the rules moved are not missing.
+  const check = p.run('doctor', '--check', p.dir);
+  assert.match(check.stdout, /Default limits — \d+ permission rules in place/, check.stdout);
+  assert.ok(settings().ask.includes('Bash(fly deploy *)'));
+  // A heartbeat is refused it by its hook, a session is not; others are untouched.
+  const hook = (command, kind) => p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir, ...(kind ? { JEROME_RUN_KIND: kind } : {}) }, JSON.stringify({ cwd: p.dir, tool_name: 'Bash', tool_input: { command } }), 'hook', 'pre-tool-use').stdout;
+  assert.match(hook('cd app && FLY_APP=x fly deploy --remote-only', 'heartbeat'), /sessions only/);
+  assert.equal(hook('fly status', 'heartbeat'), '');
+  assert.match(hook('fly deploy', 'heartbeat'), /"permissionDecision":"deny".*D195/);
+  assert.equal(hook('fly deploy'), '');
+  // A session is told what is unlocked.
+  const start = JSON.parse(p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir }, JSON.stringify({ cwd: p.dir, session_id: 's', source: 'startup' }), 'hook', 'session-start').stdout);
+  assert.match(start.hookSpecificOutput.additionalContext, /for sessions only \(D195\): deploying on Fly\.io/);
+
+  assert.equal(p.run('rules', 'lock', 'deploy-fly', p.dir).status, 0);
+  assert.ok(settings().deny.includes('Bash(fly deploy *)') && !settings().ask.includes('Bash(fly deploy *)'));
+  assert.equal(log(), 'jerome rules: deploy-fly locked again (D195)');
+  assert.equal(hook('fly deploy', 'heartbeat'), '', 'denied again by the rule, not the hook');
+  assert.match(p.run('rules', p.dir).stdout, /deploy-fly +locked/);
 });

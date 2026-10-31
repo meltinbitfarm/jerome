@@ -12,7 +12,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { MARKER, readMarker } from './template.js';
 import { openDb, dbPath } from './db.js';
 import { isTrusted } from './limits.js';
-import { isUnlocked } from './rules.js';
+import { isUnlocked } from './unlocked.js';
 import { isProvisional } from './brief.js';
 import { runDoctor } from './doctor.js';
 import { readAccount, recordWindows, WINDOWS } from './account.js';
