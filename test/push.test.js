@@ -126,6 +126,8 @@ test('with push unlocked, main\'s new commits are asked on Telegram once, "not n
   p.commit('three');
   p.tick();
   const third = p.idOf(/Shall I push main/);
+  // After a push, the question says its commits are new since then (D197).
+  assert.match(third.call.params.text, /^(<b>[^<]+<\/b>\n)?1 new commit on main since the push at \d\d:\d\d:\n• Add three/m);
   const h3 = p.head().slice(0, 12);
   p.git('remote', 'set-url', 'origin', join(p.root, 'gone.git'));
   p.tap(third.id, `p:${h3}:go`);

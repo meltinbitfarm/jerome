@@ -247,7 +247,7 @@ export function overview(db, now = new Date()) {
       // The push the Mac asked on Telegram too (D196), with the same two choices.
       ...projects.filter((p) => p.rules?.push).map((p) => ({ kind: 'push', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode,
         head: p.rules.push.head, branch: p.rules.push.branch, count: p.rules.push.count, subjects: p.rules.push.subjects,
-        text: t('push.ask', { count: p.rules.push.count, branch: p.rules.push.branch, subjects: p.rules.push.subjects.map((x) => `• ${x}`).join('\n') }, spoken),
+        text: t('push.ask', { count: p.rules.push.count, branch: p.rules.push.branch, after: p.rules.push.after ?? null, subjects: p.rules.push.subjects.map((x) => `• ${x}`).join('\n') }, spoken),
         choices: [{ name: 'go', label: t('push.go', { branch: p.rules.push.branch }, spoken) }, { name: 'no', label: t('push.no', {}, spoken) }] })),
       ...projects.flatMap((p) => p.blocks.filter((b) => b.lasting).map((b) => ({ kind: 'block', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode, id: b.id,
         text: b.text, since: b.since, actions: b.actions }))),

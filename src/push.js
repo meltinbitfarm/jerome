@@ -18,6 +18,16 @@ const git = (dir, ...args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8
 const out = (r) => (r.status === 0 ? r.stdout.trim() : null);
 const statePath = (dir) => join(storeDir(dir), 'push.json');
 export const short = (sha) => String(sha ?? '').slice(0, 12);
+const pad = (x) => String(x).padStart(2, '0');
+
+// When the last push by a button was, on this Mac's clock, so the next question reads as new commits (D197): the time
+// that day, else the day and the time.
+function lastPushed(state, now) {
+  const d = new Date(state.pushed?.at ?? NaN);
+  if (Number.isNaN(d.getTime())) return null;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toDateString() === now.toDateString() ? { time } : { day: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, time };
+}
 
 function readState(dir) {
   try {
@@ -58,20 +68,22 @@ export function proposePush(dir, { env = process.env, now = new Date(), enqueue 
   if (lockHolder(dir) !== null) return null;
   if (state.asked?.head === s.head || state.declined === s.head) return null;
   const code = lang(env);
-  const text = t('push.ask', { count: s.ahead, branch: s.branch, subjects: s.subjects.map((x) => `• ${x.slice(0, 100)}`).join('\n') }, code);
+  const text = t('push.ask', { count: s.ahead, branch: s.branch, after: lastPushed(state, now), subjects: s.subjects.map((x) => `• ${x.slice(0, 100)}`).join('\n') }, code);
   const item = { dir, text, push: { head: short(s.head), branch: s.branch }, now };
   enqueue(item);
   writeState(dir, { ...state, asked: { head: s.head, at: now.toISOString() } });
   return item;
 }
 
-// The question asked and not answered yet, for the Director's dashboard (D196): { head, branch, count, subjects }.
-export function pushPending(dir) {
-  const asked = readState(dir).asked?.head;
+// The question asked and not answered yet, for the Director's dashboard (D196): { head, branch, count, subjects,
+// after }, after being when the last push was, if any (D197).
+export function pushPending(dir, { now = new Date() } = {}) {
+  const state = readState(dir);
+  const asked = state.asked?.head;
   if (!asked) return null;
   const s = pushStatus(dir);
   if (!s?.ahead || s.head !== asked) return null;
-  return { head: short(s.head), branch: s.branch, count: s.ahead, subjects: s.subjects };
+  return { head: short(s.head), branch: s.branch, count: s.ahead, subjects: s.subjects, after: lastPushed(state, now) };
 }
 
 // Whether the question with this head is still the one to answer: the bridge takes the buttons off the others.

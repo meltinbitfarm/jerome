@@ -16,7 +16,7 @@ By default every group is locked: pushing, merging or releasing on GitHub, publi
 
 Unlocked, the push is still not the model's: its `git push` stays denied. Instead:
 
-1. Once the main branch has commits not pushed, and no run is working in the project, Jérôme asks you on Telegram: how many commits, the first lines of each, and two buttons, **Push main** and **Not now**.
+1. Once the main branch has commits not pushed, and no run is working in the project, Jérôme asks you on Telegram: how many commits, the first lines of each, and two buttons, **Push main** and **Not now**. After a push by a button, the next question says its commits are new since that push, with its time, so it does not read as the same push again (D197).
 2. **Push main** pushes that branch, and only it, to its own remote, never with force, if it has not changed since the question. Its commits are what the lead agent merged after the tests passed, and what you committed yourself. The push may start a deploy, if the project has one.
 3. **Not now** is not asked again until the branch has new commits. A question whose branch has changed loses its buttons, and a new one comes with the new commits.
 

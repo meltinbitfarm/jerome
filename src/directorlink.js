@@ -224,7 +224,7 @@ function projectBeat(s, filled, cursors, now) {
     // What the user unlocked here, and the push asked (D194-D196), for a Director that knows them.
     const open = Object.keys(unlocked(dir)).slice(0, 20).map((g) => cut(g, 20));
     const push = pushPending(dir);
-    if (open.length) project.rules = { unlocked: open, ...(push ? { push: { head: push.head, branch: cut(push.branch, 60), count: push.count, subjects: push.subjects.slice(0, 5).map((x) => cut(x, 120)) } } : {}) };
+    if (open.length) project.rules = { unlocked: open, ...(push ? { push: { head: push.head, branch: cut(push.branch, 60), count: push.count, subjects: push.subjects.slice(0, 5).map((x) => cut(x, 120)), ...(push.after ? { after: push.after } : {}) } } : {}) };
     return { project, runs };
   } finally {
     db.close();
@@ -313,6 +313,8 @@ async function beat({ env, now, log }) {
   }
   // A Director from before 0.16.0 refuses a field it does not know, and says no version: rules only to a newer one.
   if (!atLeast(state.directorVersion, '0.16.0')) for (const p of projects) delete p.rules;
+  // When the last push was (D197): only to a Director from 0.16.1.
+  if (!atLeast(state.directorVersion, '0.16.1')) for (const p of projects) delete p.rules?.push?.after;
   const sendQuota = quota && quota.readAt !== state.quotaReadAt;
   const sending = [];
   let size = 0;

@@ -436,6 +436,14 @@ test('the dashboard shows what is unlocked and the push asked: a tap pushes main
   assert.equal(after.orders[0].status, 'done', JSON.stringify(after.orders[0]));
   assert.match(after.orders[0].result, /Pushed: main, 1 commit/);
   assert.ok(!after.attention.some((a) => a.kind === 'push'));
+  // New commits after it: the page says they are new since that push, in the Mac's words (D197).
+  writeFileSync(join(m.dir, 'page.md'), 'y\n');
+  m.git('commit', '-q', '-am', 'Change the page');
+  m.beat();
+  m.beat();
+  const again = (await overview()).attention.find((a) => a.kind === 'push');
+  assert.ok(again, 'asked again');
+  assert.match(again.text, /^1 new commit on main since the push at \d\d:\d\d:\n• Change the page/);
 
   // Lock again from the page: the Mac locks it, and the page shows it locked.
   assert.equal((await send({ ...where, kind: 'lock', group: 'push' })).status, 201);

@@ -368,6 +368,8 @@ Then (0.15.0, D195): the other groups of `jerome rules` unlock too, as ask rules
 
 Then (0.16.0, D196): the lists in `jerome view` and on the Director's dashboard, with the push's buttons and locking again from the dashboard; unlocking stays at the Mac.
 
+Then (0.16.1, D197): the push question says its commits are new since the last push, with its time, on Telegram and on the dashboard.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
