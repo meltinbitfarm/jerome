@@ -10,10 +10,13 @@
 <body>
 <main>
   <header>
-    <div>
-      <h1><span class="muted">jerome view ·</span> <span id="project">Jérôme</span></h1>
-      <div class="muted" id="updated">loading…</div>
-      <div id="back" hidden><a id="back-link">← $ jerome projects</a></div>
+    <div class="brand">
+      <img id="icon" alt="" width="40" height="40">
+      <div>
+        <h1><span class="muted">jerome view ·</span> <span id="project">Jérôme</span></h1>
+        <div class="muted" id="updated">loading…</div>
+        <div id="back" hidden><a id="back-link">← $ jerome projects</a></div>
+      </div>
     </div>
     <div>
       <button type="button" id="help-toggle" class="help-toggle" aria-controls="help" aria-expanded="false">?</button>
@@ -44,6 +47,7 @@
 const token = new URLSearchParams(location.search).get('t') || '';
 // Relative to the page: at `/` for `jerome view`, under `/p/<key>/` for a project opened from `jerome projects --view`.
 const api = (path) => `.${path}?t=${encodeURIComponent(token)}`;
+document.getElementById('icon').src = api('/icon.png');
 const REPLY_LIMIT = 150;
 const BAR = 24;
 const state = { data: null, open: new Set(), details: new Map(), period: 'week', kind: 'all', area: 'all' };

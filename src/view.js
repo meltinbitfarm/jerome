@@ -20,11 +20,13 @@ import { liveRun } from './live.js';
 import { projectBoard, boardTexts } from './board.js';
 import { queuePlain } from './plain.js';
 import { lang } from './i18n.js';
+import { readLink, readState as readDirectorState, directorMode } from './directormode.js';
 
 const PAGE = join(import.meta.dirname, '..', 'viewer', 'index.html');
 const PROJECTS_PAGE = join(import.meta.dirname, '..', 'viewer', 'projects.html');
 const STYLE = join(import.meta.dirname, '..', 'viewer', 'style.css');
 const BOARD_SCRIPT = join(import.meta.dirname, '..', 'viewer', 'board.js');
+const ICON = join(import.meta.dirname, '..', 'viewer', 'director-icon.png');
 const RUNS = 50;
 
 export async function view(dirArg, { port = 0, open = true } = {}) {
@@ -90,7 +92,8 @@ export function startViewer(dir, { port = 0, token = randomBytes(18).toString('b
 export function startProjectsViewer({ port = 0, token = randomBytes(18).toString('base64url') } = {}) {
   return listen(port, token, (url, req, res) => {
     if (url.pathname === '/') return sendPage(res, PROJECTS_PAGE);
-    if (url.pathname === '/api/projects') return send(res, 200, { ...readProjects(), pricesDate: PRICES_DATE });
+    if (url.pathname === '/api/projects') return send(res, 200, { ...readProjects(), director: directorLink(), pricesDate: PRICES_DATE });
+    if (url.pathname === '/icon.png') return sendIcon(res);
     const m = url.pathname.match(/^\/p\/([^/]+)(\/.*)?$/);
     if (!m) return send(res, 404, { error: 'not found' });
     const store = stores().find((s) => s.key === m[1] && !s.orphan);
@@ -140,6 +143,7 @@ function authorize(token, server, req, res) {
 
 function routeProject(dir, token, path, req, res) {
   if (path === '/') return sendPage(res, PAGE);
+  if (path === '/icon.png') return sendIcon(res);
   if (path === '/api/state') {
     const tag = etag(dir, token);
     if (req.headers['if-none-match'] === tag) {
@@ -171,6 +175,23 @@ function sendPage(res, page) {
     .replace('<script src="board.js"></script>', () => `<script>\n${readFileSync(BOARD_SCRIPT, 'utf8')}</script>`);
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
   return res.end(html);
+}
+
+// Jérôme's face for the pages' header, behind the token like everything else.
+function sendIcon(res) {
+  res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=86400' });
+  return res.end(readFileSync(ICON));
+}
+
+// This Mac's link to Jérôme Director (D145, D149), for the overview: not connected, waiting for approval, only
+// watched, directed, or on its own since the Director went silent. Nothing of the Director's address goes to the page.
+export function directorLink(now = new Date()) {
+  const link = readLink();
+  if (!link) return { state: 'none' };
+  const s = readDirectorState();
+  if (s.status !== 'approved') return { state: s.status === 'revoked' ? 'revoked' : 'pending', name: link.name ?? null };
+  const m = directorMode(process.env, now);
+  return { state: m ? m.mode : 'watched', name: link.name ?? null, lastOk: s.lastOk ?? null, telegram: s.telegram === true };
 }
 
 function send(res, status, body, headers = {}) {

@@ -48,6 +48,8 @@ A project with no database yet does not appear: `jerome doctor` in its folder cr
 
 `jerome projects --view` serves the overview on `127.0.0.1`, with the same safety as `jerome view`: a token that changes at every start, `GET` only, nothing written. Each project's name opens its own viewer at `/p/<key>/`, the key being its database's name in the registry: no folder path ever goes in the address, and a database without a project is not served. That page has a link back to the overview.
 
+It is laid out like [the Director's dashboard](../director.md#the-dashboard), for one Mac (D203). At the top, side by side, this Mac's link to the Director (not connected, waiting for approval, watched, directed, or on its own since the Director went silent, and whether the Telegram bot is on the Director) and the account's limits with the governor's verdict. Then what needs you, and a card for each project, in the same order as the list: its state, why it needs you, its last heartbeat and reason, its schedule and areas, its requests, assumptions and week of tokens, and its folder, with a filter (all, need you, working) when there is more than one kind.
+
 ## Commands about one project
 
 `jerome state` and `jerome view` show one project. Outside a project they stop and point here:

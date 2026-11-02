@@ -10,9 +10,12 @@
 <body>
 <main>
   <header>
-    <div>
-      <h1><span class="muted">jerome projects ·</span> <span id="count">…</span></h1>
-      <div class="muted" id="updated">loading…</div>
+    <div class="brand">
+      <img id="icon" alt="" width="40" height="40">
+      <div>
+        <h1><span class="muted">jerome projects ·</span> <span id="count">…</span></h1>
+        <div class="muted" id="updated">loading…</div>
+      </div>
     </div>
     <div>
       <label class="muted" for="theme">theme</label>
@@ -20,7 +23,10 @@
     </div>
   </header>
   <div id="error" class="error" hidden></div>
-  <section id="windows"></section>
+  <div class="dash-top">
+    <section id="link"></section>
+    <section id="windows"></section>
+  </div>
   <section id="attention"></section>
   <section id="projects"></section>
   <section id="orphans" hidden></section>
@@ -30,6 +36,7 @@
 'use strict';
 const token = new URLSearchParams(location.search).get('t') || '';
 const api = (path) => `${path}?t=${encodeURIComponent(token)}`;
+document.getElementById('icon').src = api('/icon.png');
 
 // Elements are built with textContent only: a reason or a question can hold anything, and none of it is read as HTML.
 function el(tag, attrs = {}, ...children) {
@@ -42,7 +49,7 @@ function el(tag, attrs = {}, ...children) {
   for (const c of children.flat(Infinity)) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
   return node;
 }
-const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat(Infinity));
+const fill = (id, ...children) => document.getElementById(id).replaceChildren(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
 // A section's title, written as the command that prints the same data in a terminal.
 const prompt = (command, ...meta) => el('h2', {}, el('span', { class: 'ps' }, '$'), el('span', { class: 'cmd' }, command), ...meta);
 const meta = (...children) => el('span', { class: 'meta' }, ...children);
@@ -91,7 +98,9 @@ function render(d) {
     windows.length
       ? el('div', {}, windows.map(([name, w], i) => [i ? ' · ' : '', `${name === 'five_hour' ? '5h' : '7d'} `,
         w.stale ? el('span', { class: 'muted' }, 'no reading since its reset') : el('span', { class: w.level || '' }, `${w.used}%${w.limit !== null ? ` / ${w.limit}%` : ''}`)]))
-      : el('div', { class: 'muted' }, 'no reading of the subscription windows yet'));
+      : el('div', { class: 'muted' }, 'no reading of the subscription windows yet'),
+    d.governor ? el('div', { class: { go: 'ok', hold: 'warn' }[d.governor.verdict] ?? 'muted' }, `governor: ${d.governor.why}`) : null);
+  renderLink(d.director);
 
   const attention = d.projects.filter((p) => p.attention.length);
   const section = document.getElementById('attention');
@@ -100,24 +109,7 @@ function render(d) {
     attention.map((p) => el('div', { class: 'request' }, el('strong', {}, link(p)), el('span', { class: 'muted path' }, `  ${p.path}`),
       p.attention.map((r) => el('div', { class: 'warn' }, `! ${r}`)))));
 
-  const rows = d.projects.map((p) => {
-    const h = p.lastHeartbeat;
-    return el('tr', {},
-      el('td', {}, p.attention.length ? el('span', { class: 'warn' }, '! ') : '  ', link(p)),
-      el('td', {}, p.error ? '—' : p.areasImplicit ? el('span', { class: 'muted' }, '—') : p.areas.map((a, i) => [i ? ', ' : '', a.name, el('span', { class: 'cyan' }, a.milestone ? ` ${a.milestone}` : ''), a.pace === 'paused' ? el('span', { class: 'muted' }, ' paused') : ''])),
-      el('td', { class: 'num' }, p.error ? '—' : el('span', { class: p.requests.length ? 'warn' : 'muted' }, String(p.requests.length))),
-      el('td', { class: 'num' }, p.error ? '—' : el('span', { class: p.assumptions ? null : 'muted' }, String(p.assumptions))),
-      el('td', {}, p.error ? el('span', { class: 'error' }, 'unreadable') : h ? [el('span', { class: 'muted' }, `${ago(h.startedAt)} `), el('span', { class: h.status, title: h.reason || null }, h.status)] : el('span', { class: 'muted' }, p.schedule ? 'none yet' : 'not scheduled')),
-      el('td', { class: 'num' }, p.error ? '—' : n(p.week.tokens)),
-      el('td', { class: 'num' }, p.error ? '—' : usd(p.week)),
-      el('td', { class: 'muted' }, p.path));
-  });
-  fill('projects', prompt('jerome projects', meta('newest activity first, after what needs you')),
-    d.projects.length
-      ? el('div', { class: 'scroll' }, el('table', {},
-        el('thead', {}, el('tr', {}, ['project', 'areas', 'requests', 'assumed', 'last heartbeat', '7d tokens', '7d API', 'folder'].map((t, i) => el('th', { class: [2, 3, 5, 6].includes(i) ? 'num' : null }, t)))),
-        el('tbody', {}, rows)))
-      : el('div', { class: 'muted' }, 'No project on this machine yet: `jerome new <name>` creates one, `jerome init` brings Jérôme into an existing one.'));
+  renderProjects(d);
 
   const orphans = document.getElementById('orphans');
   orphans.hidden = !d.orphans.length;
@@ -126,6 +118,66 @@ function render(d) {
     el('div', { class: 'muted' }, 'If the project moved, run `jerome doctor` in its new folder to relink it; if it is gone, `jerome forget <key>` removes the database after a backup.'));
 
   fill('footer', `# Dollar amounts are API equivalents at the list prices of ${d.pricesDate}: a subscription is not billed per token. Read-only: the viewer never writes anything.`);
+}
+
+// This Mac's link to Jérôme Director (D145, D149): what it means for the runs here, in one or two lines.
+function renderLink(link) {
+  const since = link?.lastOk ? ` since ${new Date(link.lastOk).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+  const said = {
+    none: ['muted', 'not connected to a Director: this Mac works on its own.', 'With several Macs on one Claude account, `jerome connect` links this one to Jérôme Director.'],
+    pending: ['warn', 'connected, waiting for approval: on the server, `jerome director approve`.', null],
+    revoked: ['high', 'revoked on the Director: `jerome disconnect`, then `jerome connect` if it should come back.', null],
+    watched: ['ok', 'connected: the Director watches, and this Mac fills its spare quota on its own.', null],
+    directed: ['ok', 'directed: the Director gives the fill runs and the slots their turn.', null],
+    local: ['warn', `on its own${since}: the Director is silent, so this Mac goes on at a reduced pace.`, null],
+  }[link?.state ?? 'none'];
+  fill('link', prompt('jerome connect status', meta(link?.name ? `this mac: ${link.name}` : 'this mac')),
+    el('div', { class: said[0] }, said[1]),
+    said[2] ? el('div', { class: 'muted small' }, said[2]) : null,
+    link?.telegram ? el('div', { class: 'muted small' }, 'Telegram: the bot is on the Director, for every Mac.') : null);
+}
+
+// The projects as a grid of cards, in the server's order (what needs you first, then the newest activity), with a
+// filter kept across refreshes.
+const view = { filter: 'all' };
+const stateOf = (p) => (p.error ? 'error' : p.alerts.length ? 'stuck' : p.requests.length ? 'asking' : p.lastHeartbeat?.status === 'running' ? 'running' : p.attention.length ? 'stuck' : 'idle');
+const STATE = { error: ['high', 'unreadable'], stuck: ['high', 'needs you'], asking: ['warn', 'waits for your answer'], running: ['running', 'working now'], idle: ['muted', 'waiting for its next turn'] };
+const FILTER = { all: () => true, 'need you': (p) => p.attention.length > 0, working: (p) => stateOf(p) === 'running' };
+let lastData = null;
+function renderProjects(d) {
+  lastData = d;
+  if (!d.projects.length) return fill('projects', prompt('jerome projects'), el('div', { class: 'muted' }, 'No project on this machine yet: `jerome new <name>` creates one, `jerome init` brings Jérôme into an existing one.'));
+  if (view.filter !== 'all' && !d.projects.some(FILTER[view.filter])) view.filter = 'all';
+  const tabs = Object.keys(FILTER).filter((k) => k === 'all' || d.projects.some(FILTER[k])).map((k) => {
+    const b = el('button', { type: 'button', class: view.filter === k ? 'on' : null }, `${k} ${d.projects.filter(FILTER[k]).length}`);
+    b.addEventListener('click', () => { view.filter = k; renderProjects(lastData); });
+    return b;
+  });
+  const shown = d.projects.filter(FILTER[view.filter]);
+  fill('projects', prompt('jerome projects', meta('what needs you first, then the newest activity')),
+    tabs.length > 1 ? el('div', { class: 'pfilters' }, tabs) : null,
+    el('div', { class: 'pcards' }, shown.map(projectCard)));
+}
+function projectCard(p) {
+  const state = stateOf(p);
+  const h = p.lastHeartbeat;
+  const facts = p.error ? [] : [
+    el('span', { class: p.requests.length ? 'warn' : 'muted' }, `${p.requests.length} requests`),
+    el('span', { class: 'muted' }, `${p.assumptions} assumed`),
+    el('span', {}, `7d ${n(p.week.tokens)} tokens`),
+    el('span', { class: 'muted' }, usd(p.week)),
+  ];
+  return el('article', { class: `pcard ${state === 'error' ? 'stuck' : state}` },
+    el('div', { class: 'phead' }, el('strong', {}, link(p)), el('span', { class: STATE[state][0] }, STATE[state][1])),
+    p.attention.map((r) => el('div', { class: 'warn small' }, `! ${r}`)),
+    p.error ? null : el('div', { class: 'small' }, h
+      ? [el('span', { class: 'muted' }, `last heartbeat ${ago(h.startedAt)} `), el('span', { class: h.status }, h.status)]
+      : el('span', { class: 'muted' }, p.schedule ? 'no heartbeat yet' : 'not scheduled')),
+    h?.reason ? el('div', { class: 'muted small clip', title: h.reason }, h.reason) : null,
+    p.schedule ? el('div', { class: 'muted small' }, p.schedule.text) : null,
+    !p.error && !p.areasImplicit ? el('div', { class: 'small' }, p.areas.map((a, i) => [i ? ', ' : '', a.name, el('span', { class: 'cyan' }, a.milestone ? ` ${a.milestone}` : ''), a.pace === 'paused' ? el('span', { class: 'muted' }, ' paused') : ''])) : null,
+    facts.length ? el('div', { class: 'pfacts small' }, facts) : null,
+    el('div', { class: 'muted small clip' }, p.path));
 }
 
 let last = '';

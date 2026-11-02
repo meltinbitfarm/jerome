@@ -143,13 +143,13 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
 .dash .unlocked .choice { padding: 3px 8px; font-size: 13px; }
 .dash .row-head { display: flex; flex-wrap: wrap; gap: 2px 1.5ch; align-items: baseline; }
 .dash .row-head .name { font-weight: 700; }
-.dash .clip { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.dash .clip, .pcard .clip { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .dash > details { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 .dash > details > summary { cursor: pointer; color: var(--muted); }
 .dash h3 { font: inherit; font-weight: 700; margin: 14px 0 6px; }
 .dash header select { font: inherit; }
-.dash .brand { display: flex; align-items: center; gap: 12px; }
-.dash .brand img { width: 40px; height: 40px; border-radius: 8px; image-rendering: pixelated; flex: none; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand img { width: 40px; height: 40px; border-radius: 8px; image-rendering: pixelated; flex: none; }
 
 /* The top of the dashboard: the network on the left, the quota on the right; one under the other on a narrow screen. */
 .dash-top { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0 32px; }
@@ -211,6 +211,10 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
 .pcard.stuck { border-left: 3px solid var(--red); }
 .pcard.asking { border-left: 3px solid var(--yellow); }
 .pcard.lit { border-color: var(--cyan); background: var(--hl); }
+.pcard .small { font-size: 12px; }
+.pcard > * + * { margin-top: 3px; }
+.phead { display: flex; flex-wrap: wrap; gap: 2px 1.5ch; align-items: baseline; }
+.pfacts { display: flex; flex-wrap: wrap; gap: 2px 1.5ch; }
 .pcard .pmac { margin-left: auto; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); }
 
 /* A project's board (D177), on the dashboard and in the project's viewer: plain lines, the IDs as small tags. */

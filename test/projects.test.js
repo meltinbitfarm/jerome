@@ -138,6 +138,10 @@ test('--view serves the overview and each project\'s viewer under /p/<key>/, by 
   assert.doesNotMatch(page.body, /innerHTML|insertAdjacentHTML|outerHTML/);
   const data = JSON.parse((await get('/api/projects')).body);
   assert.equal(data.projects.length, 12);
+  assert.deepEqual(data.director, { state: 'none' }, 'a Mac not connected says so, and nothing of a Director');
+  const icon = await get('/icon.png');
+  assert.equal(icon.status, 200);
+  assert.equal((await get('/icon.png', { token: null })).status, 403, 'the icon is behind the token too');
   const calm = data.projects.find((x) => x.name === 'calm');
   const redirect = await get(`/p/${calm.key}`);
   assert.equal(redirect.status, 302);
