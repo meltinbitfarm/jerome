@@ -10,7 +10,7 @@ Jérôme turns Claude Code into the lead of each of your projects. A project is 
 
 The name is a nod to Saint Jerome, patron saint of translators: the lead agent translates ideas into tasks.
 
-> **Status: early development.** Everything below is in place and used every day on real projects, on one Mac. It has not yet been tried on a clean machine. See the [roadmap](docs/roadmap.md).
+> **Status: early development.** Everything below is in place and used every day on real projects. The Director, which coordinates several Macs, is newer and has seen less use. Jérôme has not yet been tried on a clean machine. See the [roadmap](docs/roadmap.md).
 
 ## What it does for you
 

@@ -90,6 +90,10 @@ Once on (D148, D149), the Director is the one governor of every Mac, and the loc
 
 `jerome director status` shows the pace, the permits going and the queued slots; `jerome connect status` on a Mac shows whether it is directed or on its own; the dashboard shows each Mac's mode and, under details, what the Director decides.
 
+## The dashboard
+
+At the top, what waits for you. Then, side by side, the **network** and the **week's quota**. The network is drawn from the Macs' beats at every refresh: the Director, with its Telegram bot when it has one, and each Mac with its projects inside, linked by a wire in the colour of its state (green directed, yellow on its own, dashed red silent, dashed grey waiting for approval), on which a dash flows while the Mac beats. Each project has a dot for its state; tap it to reach its card. Below, a **card for each project**: its state, its last work, its turns, what is unlocked, its board and a box for a note, those that need you first. With several Macs, filter the cards by state or group them by Mac. On a phone everything is one column, and the Macs hang from a line under the Director (D203).
+
 ## Acting from the dashboard
 
 What you send from the dashboard is an **order**, and an order is data, never a command (D169, D191):

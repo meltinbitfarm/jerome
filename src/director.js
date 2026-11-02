@@ -453,7 +453,7 @@ export async function serve({ listen = null, env = process.env } = {}) {
     }
     if (req.method === 'GET') {
       try {
-        serveDashboard(req, res, { db: app.db, token: readDirectorConfig(env)?.dashboardToken });
+        serveDashboard(req, res, { db: app.db, token: readDirectorConfig(env)?.dashboardToken, telegram: Boolean(readBotConfig(directorHome(env))) });
       } catch (err) {
         log(`dashboard error: ${err.message}`);
         res.writeHead(500).end();

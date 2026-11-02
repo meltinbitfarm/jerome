@@ -62,7 +62,7 @@ The fixed limits stay in force as a ceiling: the global % thresholds of [`jerome
 
 ## What a run costs
 
-While the governor is on, each run of the lead agent saves the 5-hour and 7-day readings from before and after it, with its model. `jerome governor status` shows the average 7-day points per run and per model over the last week. Phase 2 will use these figures to size permits.
+While the governor is on, each run of the lead agent saves the 5-hour and 7-day readings from before and after it, with its model. `jerome governor status` shows the average 7-day points per run and per model over the last week. The Director does not use these figures yet: a permit takes its size from the project's model and its longest run, and the Director gives one fill run at a time, five minutes apart, each after a fresh reading.
 
 ## One Mac only
 

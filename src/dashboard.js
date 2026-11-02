@@ -41,7 +41,7 @@ function authorized(req, token) {
 
 // Answers a GET: the page, or the overview with the token. Returns false for anything else, which is not the
 // dashboard's.
-export function serveDashboard(req, res, { db, token, now = new Date() }) {
+export function serveDashboard(req, res, { db, token, telegram = false, now = new Date() }) {
   if (req.method !== 'GET') return false;
   const path = new URL(req.url, 'http://director').pathname;
   if (path === '/') {
@@ -71,7 +71,7 @@ export function serveDashboard(req, res, { db, token, now = new Date() }) {
       json(res, 403, { error: 'missing or wrong token: open the address `jerome director dashboard` prints' });
       return true;
     }
-    json(res, 200, overview(db, now));
+    json(res, 200, overview(db, now, { telegram }));
     return true;
   }
   json(res, 404, { error: 'not found' });
@@ -164,7 +164,7 @@ export function spokenLanguage(db) {
   return db.prepare("SELECT language FROM machines WHERE status = 'approved' AND language IS NOT NULL ORDER BY last_beat DESC").all().find((m) => LANGUAGES[m.language])?.language ?? 'en';
 }
 
-export function overview(db, now = new Date()) {
+export function overview(db, now = new Date(), { telegram = false } = {}) {
   const machines = db.prepare("SELECT id, name, status, last_beat, version, language FROM machines WHERE status != 'revoked' ORDER BY name").all();
   const spoken = spokenLanguage(db);
   const names = new Map(machines.map((m) => [m.id, m.name]));
@@ -251,6 +251,8 @@ export function overview(db, now = new Date()) {
     at: now.toISOString(),
     version: VERSION,
     language: spoken,
+    // Whether the Telegram bot is on the Director (D202), for the network's drawing.
+    telegram,
     // What waits for the user, first: the open decision requests, then the blocks that have lasted.
     attention: [
       ...projects.flatMap((p) => (p.requests ?? []).map((r) => ({ kind: 'request', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode, id: r.id,

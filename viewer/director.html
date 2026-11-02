@@ -15,9 +15,12 @@
 <body>
 <main class="dash">
   <header>
-    <div>
-      <h1 id="headline">Jérôme</h1>
-      <div class="muted" id="updated">…</div>
+    <div class="brand">
+      <img src="/icon.png" alt="" width="40" height="40">
+      <div>
+        <h1 id="headline">Jérôme</h1>
+        <div class="muted" id="updated">…</div>
+      </div>
     </div>
     <div>
       <button type="button" id="help-toggle" class="help-toggle" aria-controls="help" aria-expanded="false">?</button>
@@ -27,8 +30,11 @@
   <section id="help" class="help" hidden></section>
   <div id="error" class="error" hidden></div>
   <section id="todo" hidden></section>
+  <div class="dash-top">
+    <section id="network"></section>
+    <section id="quota"></section>
+  </div>
   <section id="projects"></section>
-  <section id="quota"></section>
   <details id="details"><summary id="details-title"></summary><div id="details-body"></div></details>
   <footer id="footer"></footer>
 </main>
@@ -68,6 +74,17 @@ const WORDS = {
     silent: (mac, since) => `The Mac ${mac} has not been heard from since ${since}. Is it on and connected?`,
     pending: (mac) => `The Mac ${mac} waits for your approval: \`jerome director approve\` on the server.`,
     projects: 'Projects',
+    network: 'Network',
+    netMeta: (macs, projects, running) => `${macs} ${macs === 1 ? 'Mac' : 'Macs'} · ${projects} ${projects === 1 ? 'project' : 'projects'}${running ? ` · ${running} working` : ''}`,
+    deciding: 'decides', watching: 'watches',
+    directedCount: (n, all) => `${n}/${all} Macs directed`, connectedCount: (n, all) => `${n}/${all} Macs connected`,
+    telegram: 'Telegram', bot: 'the bot of every Mac', botHere: 'Telegram bot here',
+    dashboard: 'Dashboard', thisPage: 'this page',
+    beat: (a) => `beat ${a}`, noProjectHere: 'no project',
+    dot: { running: 'working', idle: 'waiting', asking: 'asks you', stuck: 'stopped', queued: 'queued' },
+    wire: { ok: 'directed', local: 'on its own', off: 'silent' },
+    filter: { all: 'all', running: 'working', asking: 'ask you', stuck: 'stopped', paused: 'paused' },
+    byMac: 'group by Mac', noneHere: 'No project here.',
     board: 'work: now, to do, done',
     noProjects: 'No project yet: connect a Mac with `jerome connect`.',
     state: { running: 'working now', stuck: 'stopped, needs you', retrying: 'hit a snag, trying again by itself', asking: 'waiting for your answer', paused: 'paused at its limit', idle: 'waiting for its next turn' },
@@ -119,6 +136,17 @@ const WORDS = {
     silent: (mac, since) => `Il Mac ${mac} non si sente da ${since}. È acceso e in rete?`,
     pending: (mac) => `Il Mac ${mac} aspetta la tua approvazione: \`jerome director approve\` sul server.`,
     projects: 'Progetti',
+    network: 'La rete',
+    netMeta: (macs, projects, running) => `${macs} Mac · ${projects} ${projects === 1 ? 'progetto' : 'progetti'}${running ? ` · ${running} al lavoro` : ''}`,
+    deciding: 'decide', watching: 'guarda',
+    directedCount: (n, all) => `${n}/${all} Mac guidati`, connectedCount: (n, all) => `${n}/${all} Mac collegati`,
+    telegram: 'Telegram', bot: 'il bot di tutti i Mac', botHere: 'bot Telegram qui',
+    dashboard: 'Dashboard', thisPage: 'questa pagina',
+    beat: (a) => `battito ${a}`, noProjectHere: 'nessun progetto',
+    dot: { running: 'al lavoro', idle: 'aspetta il turno', asking: 'ti chiede', stuck: 'fermo', queued: 'in coda' },
+    wire: { ok: 'guidato', local: 'da solo', off: 'non risponde' },
+    filter: { all: 'tutti', running: 'al lavoro', asking: 'ti chiedono', stuck: 'fermi', paused: 'in pausa' },
+    byMac: 'raggruppa per Mac', noneHere: 'Nessun progetto qui.',
     board: 'lavoro: adesso, da fare, fatto',
     noProjects: 'Ancora nessun progetto: collega un Mac con `jerome connect`.',
     state: { running: 'sta lavorando', stuck: 'fermo, serve te', retrying: 'ha trovato un intoppo, riprova da solo', asking: 'aspetta una tua risposta', paused: 'in pausa al suo limite', idle: 'aspetta il prossimo turno' },
@@ -279,7 +307,7 @@ function writeBox(key, placeholder, onSend) {
 // An order for a Mac (D191): the Director keeps it, the Mac takes it with its next beat. The buttons of the card are
 // held while it is sent; the outcome shows in "Sent from here".
 async function order(button, body) {
-  const card = button.closest('.card, .row-card');
+  const card = button.closest('.card, .pcard');
   const buttons = card ? [...card.querySelectorAll('button')] : [button];
   for (const b of buttons) b.disabled = true;
   const label = button.textContent;
@@ -304,28 +332,146 @@ function flash(card, text, tone) {
   card.append(el('div', { class: `flash small ${tone}` }, text));
 }
 
+// The network: the Director with its bot and this page on the left, each Mac on the right with its projects inside,
+// a wire from the Director to each Mac in the colour of its state. Drawn again from the data at every refresh, so a
+// Mac or a project that comes or goes shows at once; the wires follow the boxes wherever the layout puts them.
+const DOT = { running: 'running', stuck: 'stuck', retrying: 'stuck', asking: 'asking', paused: 'paused', idle: 'idle' };
+const cardId = (p) => `project-${p.machineCode}-${p.key}`.replace(/[^\w-]/g, '_');
+const isQueued = (p) => (data.direction?.queued ?? []).some((q) => q.machine === p.machine && q.project === p.name);
+function wireOf(m) {
+  if (m.status === 'pending') return 'pending';
+  if (!m.reachable) return 'off';
+  return m.mode === 'local' ? 'local' : 'ok';
+}
+function renderNetwork() {
+  const macs = data.machines;
+  const running = data.projects.filter((p) => p.state === 'running').length;
+  const live = macs.filter((m) => m.status !== 'pending');
+  const d = data.direction;
+  const dir = el('div', { class: 'net-node net-dir', id: 'net-dir' },
+    el('strong', {}, `Director ${data.version}`),
+    el('div', { class: 'muted small' }, d?.on ? W.deciding : W.watching, data.telegram ? el('span', { class: 'net-narrow' }, ` · ${W.botHere}`) : null),
+    el('div', { class: 'muted small' }, d?.on ? W.directedCount(live.filter((m) => wireOf(m) === 'ok').length, live.length) : W.connectedCount(live.filter((m) => m.reachable).length, live.length)));
+  const hub = el('div', { class: 'net-hub' },
+    data.telegram ? el('div', { class: 'net-node net-side', id: 'net-tg' }, el('strong', {}, W.telegram), el('div', { class: 'muted small' }, W.bot)) : null,
+    dir,
+    el('div', { class: 'net-node net-side', id: 'net-dash' }, el('strong', {}, W.dashboard), el('div', { class: 'muted small' }, W.thisPage)));
+  const boxes = macs.map((m) => {
+    const mine = data.projects.filter((p) => p.machineCode === m.code);
+    const wire = wireOf(m);
+    const tone = { ok: 'ok', local: 'warn', off: 'high', pending: 'warn' }[wire];
+    const said = m.status === 'pending' ? W.approval : !m.reachable ? W.unreachable(when(m.lastBeat)) : W.modes[m.mode] || W.connected;
+    return el('div', { class: `net-mac ${wire}`, 'data-wire': wire },
+      el('div', { class: 'net-mac-head' }, el('strong', {}, m.name), el('span', { class: tone }, said),
+        el('span', { class: 'muted small' }, [m.lastBeat ? W.beat(ago(m.lastBeat)) : null, m.version].filter(Boolean).join(' · '))),
+      el('div', { class: 'net-chips' }, mine.length
+        ? mine.map((p) => {
+          const dot = p.state === 'idle' && isQueued(p) ? 'queued' : DOT[p.state];
+          return el('button', { type: 'button', class: 'net-chip', title: W.state[p.state], onclick: () => showCard(p) }, el('i', { class: `net-dot ${dot}` }), p.name);
+        })
+        : el('span', { class: 'muted small' }, W.noProjectHere)));
+  });
+  const legend = el('div', { class: 'net-legend muted small' },
+    ['running', 'idle', 'asking', 'stuck', 'queued'].map((k) => el('span', {}, el('i', { class: `net-dot ${k}` }), W.dot[k])),
+    Object.entries(W.wire).map(([k, w]) => el('span', { class: { ok: 'ok', local: 'warn', off: 'high' }[k] }, `${k === 'off' ? '┄' : '—'} ${w}`)));
+  fill('network', title(W.network, el('span', { class: 'meta' }, W.netMeta(macs.length, data.projects.length, running))),
+    el('div', { class: 'net', id: 'net' }, svg('svg', { class: 'net-wires', id: 'net-wires', 'aria-hidden': 'true' }), hub,
+      el('div', { class: 'net-macs' }, boxes.length ? boxes : el('div', { class: 'muted' }, W.noProjects))),
+    legend);
+  requestAnimationFrame(drawWires);
+}
+
+// The wires, from the boxes where they ended up: curves to the side on a wide screen, a trunk down the left on a phone.
+function drawWires() {
+  const net = document.getElementById('net');
+  const wires = document.getElementById('net-wires');
+  if (!net || !wires) return;
+  const base = net.getBoundingClientRect();
+  const box = (node) => {
+    const r = node.getBoundingClientRect();
+    return { l: r.left - base.left, r: r.right - base.left, t: r.top - base.top, b: r.bottom - base.top, cx: (r.left + r.right) / 2 - base.left, cy: (r.top + r.bottom) / 2 - base.top, shown: r.width > 0 };
+  };
+  const d = box(document.getElementById('net-dir'));
+  const paths = [];
+  const tg = document.getElementById('net-tg');
+  const dash = box(document.getElementById('net-dash'));
+  const wide = dash.shown;
+  if (wide && tg) paths.push(['ext', `M${d.cx},${box(tg).b} V${d.t}`]);
+  if (wide) paths.push(['ext', `M${d.cx},${d.b} V${dash.t}`]);
+  // On the trunk the wires overlap: the farthest first, so each Mac's colour shows on its own stretch.
+  const nodes = [...net.querySelectorAll('.net-mac')];
+  for (const node of wide ? nodes : nodes.reverse()) {
+    const m = box(node);
+    const wire = node.dataset.wire;
+    const path = wide
+      ? `M${d.r},${d.cy} C${(d.r + m.l) / 2},${d.cy} ${(d.r + m.l) / 2},${m.cy} ${m.l},${m.cy}`
+      : `M${m.l - 10},${d.b} V${m.t + 14} H${m.l}`;
+    paths.push([wire, path]);
+    // The beat, flowing on the wire of a Mac that beats.
+    if (wire === 'ok' || wire === 'local') paths.push([`${wire} beat`, path]);
+  }
+  wires.replaceChildren(...paths.map(([c, p]) => svg('path', { class: `wire ${c}`, d: p })));
+}
+let wiresWatched = false;
+function watchWires() {
+  if (wiresWatched || !window.ResizeObserver) return;
+  wiresWatched = true;
+  new ResizeObserver(() => drawWires()).observe(document.getElementById('network'));
+}
+
+// The projects as a grid of cards: what needs the user first, then what works, then the rest. A filter and a grouping
+// by Mac, kept across refreshes, for when there are many.
+const view = { filter: 'all', byMac: false };
+try { view.byMac = localStorage.getItem('jerome-by-mac') === '1'; } catch { /* not remembered */ }
+const FILTER = { all: () => true, running: (p) => p.state === 'running', asking: (p) => p.state === 'asking', stuck: (p) => p.state === 'stuck' || p.state === 'retrying', paused: (p) => p.state === 'paused' };
+function showCard(p) {
+  if (!FILTER[view.filter](p)) { view.filter = 'all'; renderProjects(); }
+  const card = document.getElementById(cardId(p));
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.add('lit');
+  setTimeout(() => card.classList.remove('lit'), 1500);
+}
 function renderProjects() {
   if (!data.projects.length) return fill('projects', title(W.projects), el('div', { class: 'muted' }, W.noProjects));
   const order = { stuck: 0, asking: 1, retrying: 2, running: 3, paused: 4, idle: 5 };
-  const rows = [...data.projects].sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name)).map((p) => {
-    const h = p.lastDone;
-    // A run that resumed has the runner's why for a reason, not a task.
-    const last = h ? W.lastWork(ago(h.at), !h.plain && /^resume:/.test(h.reason ?? '') ? W.resumed : h.reason) : W.noWork;
-    // A snag it is retrying: the sentence for a person, not the runner's reason.
-    const snag = p.state === 'retrying' && p.blocks.length ? el('div', { class: 'warn small' }, p.blocks[0].text) : null;
-    return el('div', { class: 'row-card' },
-      el('div', { class: 'row-head' },
-        el('span', { class: 'name' }, p.name),
-        el('span', { class: STATE_CLASS[p.state] }, W.state[p.state]),
-        data.machines.length > 1 ? el('span', { class: 'muted small' }, p.machine) : null),
-      snag,
-      el('div', { class: 'muted small clip' }, last),
-      p.slots.length ? el('div', { class: 'muted small' }, W.next(p.slots.map((s) => s.at).join(' · '))) : null,
-      unlockedLine(p),
-      board(p),
-      noteBox(p));
-  });
-  fill('projects', title(W.projects), rows);
+  const many = data.machines.length > 1;
+  if (!FILTER[view.filter] || (view.filter !== 'all' && !data.projects.some(FILTER[view.filter]))) view.filter = 'all';
+  const tabs = Object.keys(FILTER).filter((k) => k === 'all' || data.projects.some(FILTER[k])).map((k) =>
+    el('button', { type: 'button', class: view.filter === k ? 'on' : null, onclick: () => { view.filter = k; renderProjects(); } }, `${W.filter[k]} ${data.projects.filter(FILTER[k]).length}`));
+  const group = many ? el('button', { type: 'button', class: view.byMac ? 'on' : null, onclick: () => {
+    view.byMac = !view.byMac;
+    try { localStorage.setItem('jerome-by-mac', view.byMac ? '1' : '0'); } catch { /* not remembered */ }
+    renderProjects();
+  } }, W.byMac) : null;
+  const shown = data.projects.filter(FILTER[view.filter]).sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
+  const cards = view.byMac && many
+    ? data.machines.flatMap((m) => {
+      const mine = shown.filter((p) => p.machineCode === m.code);
+      return mine.length ? [el('div', { class: 'pgroup muted' }, `── ${m.name}`), ...mine.map(projectCard)] : [];
+    })
+    : shown.map(projectCard);
+  fill('projects', title(W.projects, el('span', { class: 'meta' }, W.netMeta(data.machines.length, data.projects.length, 0))),
+    tabs.length > 1 || group ? el('div', { class: 'pfilters' }, tabs.length > 1 ? tabs : null, el('span', { class: 'grow' }), group) : null,
+    el('div', { class: 'pcards' }, cards.length ? cards : el('div', { class: 'muted' }, W.noneHere)));
+}
+function projectCard(p) {
+  const h = p.lastDone;
+  // A run that resumed has the runner's why for a reason, not a task.
+  const last = h ? W.lastWork(ago(h.at), !h.plain && /^resume:/.test(h.reason ?? '') ? W.resumed : h.reason) : W.noWork;
+  // A snag it is retrying: the sentence for a person, not the runner's reason.
+  const snag = p.state === 'retrying' && p.blocks.length ? el('div', { class: 'warn small' }, p.blocks[0].text) : null;
+  return el('article', { class: `pcard ${DOT[p.state]}`, id: cardId(p) },
+    el('div', { class: 'row-head' },
+      el('span', { class: 'name' }, p.name),
+      el('span', { class: STATE_CLASS[p.state] }, W.state[p.state]),
+      data.machines.length > 1 ? el('span', { class: 'pmac small' }, p.machine) : null),
+    snag,
+    el('div', { class: 'muted small clip', title: last }, last),
+    p.slots.length ? el('div', { class: 'muted small' }, W.next(p.slots.map((s) => s.at).join(' · '))) : null,
+    unlockedLine(p),
+    board(p),
+    noteBox(p));
 }
 
 // What the user unlocked in the project (D196), each with a button to lock it again: unlocking is only at the Mac.
@@ -513,8 +659,10 @@ function render() {
   headline.className = items.length ? 'warn' : 'ok';
   document.getElementById('updated').textContent = `Jérôme · ${W.updated(clock(data.at))}`;
   renderTodo(items);
-  renderProjects();
+  renderNetwork();
+  watchWires();
   renderQuota();
+  renderProjects();
   fill('help', helpView(data.language, el, 'director'));
   helpButton(document.getElementById('help-toggle'), document.getElementById('help'), data.language);
   // The details keep their state, open or closed, across refreshes.

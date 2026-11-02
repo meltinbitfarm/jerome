@@ -139,8 +139,6 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
 .dash .card.stop { border-left-color: var(--red); }
 .dash .card-head { font-weight: 700; margin-bottom: 2px; }
 .dash .card-text { margin: 2px 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.dash .row-card { padding: 6px 0; border-bottom: 1px dashed var(--line); }
-.dash .row-card:last-child { border-bottom: 0; }
 .dash .unlocked { margin: 4px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .dash .unlocked .choice { padding: 3px 8px; font-size: 13px; }
 .dash .row-head { display: flex; flex-wrap: wrap; gap: 2px 1.5ch; align-items: baseline; }
@@ -150,6 +148,70 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
 .dash > details > summary { cursor: pointer; color: var(--muted); }
 .dash h3 { font: inherit; font-weight: 700; margin: 14px 0 6px; }
 .dash header select { font: inherit; }
+.dash .brand { display: flex; align-items: center; gap: 12px; }
+.dash .brand img { width: 40px; height: 40px; border-radius: 8px; image-rendering: pixelated; flex: none; }
+
+/* The top of the dashboard: the network on the left, the quota on the right; one under the other on a narrow screen. */
+.dash-top { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0 32px; }
+.dash-top > section { min-width: 0; }
+@media (max-width: 900px) { .dash-top { grid-template-columns: minmax(0, 1fr); } }
+.dash h2 .meta { margin-left: auto; color: var(--muted); font-weight: 400; }
+
+/* The network: the Director's side on the left, the Macs on the right, the wires drawn over them from where the
+   boxes are. A wire's colour is its Mac's state; a dash flows on it while the Mac beats. */
+.net { position: relative; display: grid; grid-template-columns: minmax(130px, 190px) minmax(0, 1fr); gap: 14px 56px; align-items: center; margin-top: 4px; }
+.net-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.net-hub { display: grid; gap: 22px; }
+.net-node, .net-mac { position: relative; z-index: 1; border: 1px solid var(--line); background: var(--bg); padding: 6px 8px; border-radius: 6px; min-width: 0; }
+.net-dir { border-color: var(--green); }
+.net-macs { display: grid; gap: 12px; min-width: 0; }
+.net-mac.local { border-color: var(--yellow); }
+.net-mac.off { border-color: var(--red); border-style: dashed; }
+.net-mac.pending { border-style: dashed; }
+.net-mac-head { display: flex; flex-wrap: wrap; gap: 0 1ch; align-items: baseline; }
+.net-mac-head > .small { margin-left: auto; }
+.net-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.net-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--hl); border-radius: 4px; padding: 0 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.net-chip:hover { border-color: var(--cyan); }
+.net-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+.net-dot.running { background: var(--cyan); animation: net-pulse 1.4s ease-in-out infinite; }
+.net-dot.asking { background: var(--yellow); }
+.net-dot.stuck { background: var(--red); }
+.net-dot.paused { background: var(--track); }
+.net-dot.queued { background: transparent; border: 1px solid var(--muted); }
+@keyframes net-pulse { 50% { opacity: .25; } }
+.wire { fill: none; stroke-width: 1.4; }
+.wire.ok { stroke: var(--green); }
+.wire.local { stroke: var(--yellow); }
+.wire.off { stroke: var(--red); stroke-dasharray: 3 5; }
+.wire.pending, .wire.ext { stroke: var(--muted); }
+.wire.pending { stroke-dasharray: 3 5; }
+.wire.beat { stroke-width: 2.4; stroke-dasharray: 2 10; animation: net-beat 1.2s linear infinite; }
+@keyframes net-beat { to { stroke-dashoffset: -24; } }
+@media (prefers-reduced-motion: reduce) { .wire.beat, .net-dot.running { animation: none; } }
+.net-legend { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 10px; }
+.net-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.net-narrow { display: none; }
+/* On a phone: the Director on top and the Macs on a trunk under it; the bot goes in the Director's line. */
+@media (max-width: 600px) {
+  .net { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .net-side { display: none; }
+  .net-narrow { display: inline; }
+  .net-macs { margin-left: 18px; }
+}
+
+/* The projects as a grid of cards, the ones that need the user first. */
+.pfilters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.pfilters .grow { flex: 1; }
+.pfilters button { padding: 2px 8px; }
+.pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 10px; align-items: start; }
+.pgroup { grid-column: 1 / -1; margin-top: 4px; }
+.pcard { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; transition: border-color .3s, background .3s; }
+.pcard.running { border-left: 3px solid var(--cyan); }
+.pcard.stuck { border-left: 3px solid var(--red); }
+.pcard.asking { border-left: 3px solid var(--yellow); }
+.pcard.lit { border-color: var(--cyan); background: var(--hl); }
+.pcard .pmac { margin-left: auto; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); }
 
 /* A project's board (D177), on the dashboard and in the project's viewer: plain lines, the IDs as small tags. */
 .tag { display: inline-block; font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; line-height: 1.3; cursor: help; vertical-align: 1px; }
