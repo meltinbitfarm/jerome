@@ -90,6 +90,11 @@ export function takeOrder({ db, token, headers, body, now = new Date() }) {
   } catch {
     return { status: 400, body: { error: 'the body is not JSON' } };
   }
+  return placeOrder(db, o, { now });
+}
+
+// An order, from the dashboard or from the Director's Telegram bot (`via`, D202), checked and kept for its Mac.
+export function placeOrder(db, o, { now = new Date(), via = 'dashboard' } = {}) {
   const bad = (error) => ({ status: 400, body: { error } });
   if (typeof o !== 'object' || o === null) return bad('the body is not an order');
   const row = typeof o.machine === 'string' && typeof o.project === 'string'
@@ -133,8 +138,8 @@ export function takeOrder({ db, token, headers, body, now = new Date() }) {
   if (order.kind !== 'note' && db.prepare("SELECT 1 FROM orders WHERE machine = ? AND project = ? AND kind = ? AND coalesce(ref, -1) = coalesce(?, -1) AND (ref IS NOT NULL OR text = ?) AND status = 'pending'").get(o.machine, o.project, order.kind, order.ref, order.text)) {
     return { status: 409, body: { error: 'already sent: the Mac takes it within a minute' } };
   }
-  const id = Number(db.prepare('INSERT INTO orders (machine, project, kind, ref, action, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(o.machine, o.project, order.kind, order.ref, order.action, order.text, at).lastInsertRowid);
+  const id = Number(db.prepare('INSERT INTO orders (machine, project, kind, ref, action, text, created_at, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(o.machine, o.project, order.kind, order.ref, order.action, order.text, at, via).lastInsertRowid);
   return { status: 201, body: { id, kind: order.kind, project: project.name } };
 }
 
@@ -154,10 +159,14 @@ const parse = (text) => {
 
 // Everything the page shows, from the Director's database: the quota and its week, the Macs, their projects, the
 // runs, and the past weeks.
+// The user's language (D163): the one of the Mac that beat last, as it says it.
+export function spokenLanguage(db) {
+  return db.prepare("SELECT language FROM machines WHERE status = 'approved' AND language IS NOT NULL ORDER BY last_beat DESC").all().find((m) => LANGUAGES[m.language])?.language ?? 'en';
+}
+
 export function overview(db, now = new Date()) {
   const machines = db.prepare("SELECT id, name, status, last_beat, version, language FROM machines WHERE status != 'revoked' ORDER BY name").all();
-  // The user's language (D163): the one of the Mac that beat last, as it says it.
-  const spoken = machines.filter((m) => m.status === 'approved' && LANGUAGES[m.language]).sort((a, b) => String(b.last_beat).localeCompare(String(a.last_beat)))[0]?.language ?? 'en';
+  const spoken = spokenLanguage(db);
   const names = new Map(machines.map((m) => [m.id, m.name]));
   const readings = db.prepare('SELECT machine, read_at, data FROM readings ORDER BY read_at').all().map((r) => ({ machine: r.machine, at: r.read_at, ...parse(r.data) }));
   const latest = readings.at(-1) ?? null;

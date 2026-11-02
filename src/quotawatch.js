@@ -7,7 +7,7 @@ import { dirname } from 'node:path';
 import { cacheDir } from './runstate.js';
 import { refreshQuota } from './quota.js';
 import { governorSettings } from './governor.js';
-import { readConfig } from './telegram.js';
+import { telegramOn } from './telegram.js';
 import { notify } from './notify.js';
 import { t, lang, dayName } from './i18n.js';
 
@@ -49,7 +49,7 @@ export function burnWarning(readings, { now = new Date(), target = 90, code = la
 
 // Every minute, from the watchdog.
 export async function quotaWatch({ env = process.env, now = new Date(), log = () => {} } = {}) {
-  if (!readConfig()) return null;
+  if (!telegramOn()) return null;
   const account = await refreshQuota({ env, now });
   const week = account.windows?.seven_day;
   const h = readHistory();

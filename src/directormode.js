@@ -16,6 +16,8 @@ export function linkPath(env = process.env) {
 }
 export const statePath = () => cacheDir('director', 'state.json');
 export const permitsPath = () => cacheDir('director', 'permits.json');
+// What waits to go to Telegram through the Director (D202), sent with the next beat.
+export const directorOutboxPath = () => cacheDir('director', 'outbox.jsonl');
 
 export function readLink(env = process.env) {
   try {
@@ -40,6 +42,14 @@ export function directorMode(env = process.env, now = new Date()) {
   if (s.status !== 'approved' || s.mode !== 'directing') return null;
   const fresh = Boolean(s.lastOk) && now.getTime() - Date.parse(s.lastOk) <= SILENT_MS;
   return { mode: fresh ? 'directed' : 'local', settings: { ...GOVERNOR_DEFAULTS, ...s.settings }, since: fresh ? null : s.lastOk ?? null };
+}
+
+// Whether the Director has the Telegram bot (D155, D202): then this Mac's messages go to it with the beat, and the
+// Mac's own bridge stays quiet, since one bot is polled by one machine only.
+export function directorTelegram(env = process.env) {
+  if (!readLink(env)) return false;
+  const s = readState();
+  return s.status === 'approved' && s.telegram === true;
 }
 
 // The permits this Mac accepted (D148), by id, with the project's folder, which never leaves the Mac.

@@ -57,13 +57,15 @@ async function freePort() {
 const servers = [];
 after(() => { for (const s of servers) s.kill('SIGTERM'); });
 
-async function startDirector() {
+// `extra` adds to the Director's environment; `before(home)` runs once it is set up, before it serves.
+async function startDirector({ extra = {}, before = null } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'jerome-director-'));
   const port = await freePort();
-  const env = { PATH: process.env.PATH, HOME: home };
+  const env = { PATH: process.env.PATH, HOME: home, ...extra };
   const cli = (...args) => spawnSync(process.execPath, [BIN, 'director', ...args], { env, encoding: 'utf8' });
   const init = cli('init', '--listen', `127.0.0.1:${port}`);
   assert.equal(init.status, 0, init.stderr);
+  before?.(home);
   const child = spawn(process.execPath, [BIN, 'director', 'serve'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   servers.push(child);
   let out = '';
@@ -623,4 +625,68 @@ test('a Mac directed by the Director runs its permit as a fill run, a slot at th
   m.beat();
   assert.match(m.watchdogLog(), /director: no answer for 5 minutes: local mode/);
   assert.match(m.jerome('connect', 'status').stdout, /mode {5}local since/);
+});
+
+// Step 5 (D155, D202): one bot, on the Director, for every Mac.
+test('with the bot on the Director, a Mac\'s question reaches Telegram with its beat, a tap goes back as an order the Mac runs, and its own bridge stays quiet (D202)', async () => {
+  const fake = mkdtempSync(join(tmpdir(), 'jerome-tg-'));
+  const d = await startDirector({ extra: { JEROME_TELEGRAM_FAKE: fake }, before: (home) => {
+    writeFileSync(join(home, '.local', 'share', 'jerome-director', 'telegram.json'), JSON.stringify({ token: '1:x', chatId: 7, chat: 'Fabio', bot: 'jerome_test_bot' }), { mode: 0o600 });
+  } });
+  // The Mac had its own bridge, on a bot of its own: it goes quiet.
+  const own = mkdtempSync(join(tmpdir(), 'jerome-tg-mac-'));
+  const m = mac('mini', { JEROME_TELEGRAM_FAKE: own });
+  mkdirSync(join(m.root, '.config', 'jerome'), { recursive: true });
+  writeFileSync(join(m.root, '.config', 'jerome', 'telegram.json'), JSON.stringify({ token: '2:y', chatId: 7, chat: 'Fabio', bot: 'old_bot' }));
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  m.beat();
+  assert.match(m.watchdogLog(), /director: Telegram is on the Director/);
+  assert.match(d.cli('telegram', 'status').stdout, /Telegram: @jerome_test_bot, heard only from Fabio · for every Mac's projects/);
+
+  const calls = () => (existsSync(join(fake, 'calls.jsonl')) ? readFileSync(join(fake, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
+  const sent = () => calls().filter((c) => c.method === 'sendMessage').map((c) => c.params);
+  const until = async (what, check) => {
+    for (let i = 0; i < 100 && !check(); i += 1) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(check(), `${what}; the Director said: ${d.log()}`);
+  };
+  assert.equal(m.runIn(m.dir, 'request', 'open', '--question', 'Which host?', '--options', 'A) Fly.io / B) Render', '--recommendation', 'A').status, 0);
+  m.beat();
+  await until('the question sent by the Director', () => sent().some((x) => /Which host/.test(x.text)));
+  const question = sent().find((x) => /Which host/.test(x.text));
+  assert.deepEqual(question.reply_markup.inline_keyboard.map((r) => r[0].text), ['A) Fly.io', 'B) Render']);
+  assert.match(question.text, /^<b>demo<\/b>/);
+  const db = d.db();
+  const { message_id: mid, request } = db.prepare('SELECT message_id, request FROM tg_sent WHERE request IS NOT NULL').get();
+  db.close();
+
+  // A tap on B: an order for the Mac, told as sent, its buttons taken off.
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 1, callback_query: { id: 'q1', data: `a:${request}:1`, message: { message_id: mid, chat: { id: 7, type: 'private' } } } }]));
+  await until('the tap told as sent', () => sent().some((x) => /demo: sent to mini, which does it within a minute/.test(x.text)));
+  assert.ok(calls().some((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === mid));
+  // The Mac's next beat runs it, and the Director tells the result.
+  m.beat();
+  const project = m.db();
+  assert.equal(project.prepare('SELECT status FROM requests WHERE id = ?').get(request).status, 'answered');
+  project.close();
+  await until('the result told', () => sent().some((x) => /demo: R\d+ answered: B\) Render/.test(x.text)));
+  assert.ok(!sent().some((x) => /From the Director's dashboard/.test(x.text)), 'no echo for the user\'s own tap');
+
+  // A note by the project's name, then /status.
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([
+    { update_id: 2, message: { message_id: 50, chat: { id: 7, type: 'private' }, text: '#demo the pricing page needs the free plan' } },
+    { update_id: 3, message: { message_id: 51, chat: { id: 7, type: 'private' }, text: '/status' } },
+    { update_id: 4, message: { message_id: 52, chat: { id: 99, type: 'private' }, text: '#demo from a stranger' } },
+  ]));
+  await until('the status told', () => sent().some((x) => /Nothing waits for you in 1 project/.test(x.text)));
+  m.beat();
+  const notes = m.db();
+  assert.deepEqual(notes.prepare('SELECT text FROM notes').all().map((n) => n.text), ['the pricing page needs the free plan']);
+  notes.close();
+  // The Mac's own bot was never called: one bot, one machine.
+  assert.ok(!existsSync(join(own, 'calls.jsonl')));
+  // Off on the Director: the Mac's own bridge speaks again.
+  assert.match(d.cli('telegram', 'off').stdout, /Telegram is off on the Director/);
+  m.beat();
+  assert.match(m.watchdogLog(), /director: Telegram is not on the Director/);
 });

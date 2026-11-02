@@ -1,6 +1,6 @@
 # Jérôme Director: spec (phase 2)
 
-Status: approved by Fabio on 2026-10-28, with Telegram moved onto the Director (step 5). Steps 1-4 are in place; step 3 (0.19.0) decides only once turned on with `jerome director settings on` (D201), and the beat carries each project's model and longest run for its permits. It follows [quota-governor.md](quota-governor.md), the brief of the quota governor, whose phase 1 (the governor on one Mac, D140-D144) is in place. The sections S1-S10 are recorded as decisions D145-D154, and Telegram on the Director as D155.
+Status: approved by Fabio on 2026-10-28, with Telegram moved onto the Director (step 5). All five steps are in place. Step 3 (0.19.0) decides only once turned on with `jerome director settings on` (D201), and the beat carries each project's model and longest run for its permits. Step 5 (0.20.0, D202) works once `jerome director telegram setup` has run: a Mac's messages go with its beat, and what the user sends becomes an order, taken by the Mac at its next beat. It follows [quota-governor.md](quota-governor.md), the brief of the quota governor, whose phase 1 (the governor on one Mac, D140-D144) is in place. The sections S1-S10 are recorded as decisions D145-D154, and Telegram on the Director as D155.
 
 ## Goal
 

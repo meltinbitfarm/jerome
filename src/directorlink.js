@@ -5,7 +5,7 @@
 // code, prompts, transcripts or paths; and, since D177, each project's board: the texts of its work items and runs.
 // Step 3 (D148, D149): the permits in the Director's answer, checked here and run as this Mac would run its own work,
 // and the slots' question before they run (askDirector).
-import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -18,7 +18,7 @@ import { readAccount } from './account.js';
 import { refreshQuota, readingTime } from './quota.js';
 import { governorSettings, fillBlock, launchRun } from './governor.js';
 import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
-import { linkPath, statePath, permitsPath, readLink, readState, readPermits, SILENT_MS } from './directormode.js';
+import { linkPath, statePath, permitsPath, directorOutboxPath, readLink, readState, readPermits, SILENT_MS } from './directormode.js';
 import { openAlerts } from './alerts.js';
 import { scrub } from './scrub.js';
 import { lang } from './i18n.js';
@@ -326,10 +326,13 @@ async function beat({ env, now, log }) {
   // Results of the dashboard's orders whose quick report did not get through go with the beat (D191).
   state.orders ??= { done: {}, unsent: [] };
   const unsent = state.orders.unsent.slice(0, 50);
+  // What waits for Telegram, when the Director has the bot (D202).
+  const messages = takeMessages();
   const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), language: code, quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50),
     // Only when there is one: a Director from before 0.13.0 refuses a field it does not know.
-    boards: sending.map((b) => b.board), ...(unsent.length ? { results: unsent } : {}) });
+    boards: sending.map((b) => b.board), ...(unsent.length ? { results: unsent } : {}), ...(messages.items.length ? { messages: messages.items } : {}) });
   const problem = r.error ?? (r.status >= 400 ? r.data.error : null);
+  messages.settle(!problem);
   if (problem) {
     if (problem !== state.lastError) log(`director: ${problem}`);
     const status = r.status === 403 ? (/revoked/.test(problem) ? 'revoked' : 'pending') : state.status;
@@ -341,6 +344,8 @@ async function beat({ env, now, log }) {
   }
   if (state.lastError || state.status !== 'approved') log('director: beat answered');
   const mode = r.data.mode === 'directing' ? 'directing' : 'observing';
+  const telegram = r.data.telegram === true;
+  if (telegram !== (state.telegram === true)) log(telegram ? 'director: Telegram is on the Director: this Mac\'s messages go with its beat, and its own bridge stays off' : 'director: Telegram is not on the Director: this Mac\'s own bridge, if set up, speaks again');
   if (mode !== (state.mode ?? 'observing')) log(mode === 'directing' ? 'director: directing this Mac: fill runs and slots on its permits' : 'director: only observing: this Mac keeps phase 1');
   else if (state.local && mode === 'directing') log('director: answering again: directed');
   for (const run of runs.slice(0, 50)) state.cursors[run.project] = Math.max(state.cursors[run.project] ?? 0, run.id);
@@ -359,11 +364,51 @@ async function beat({ env, now, log }) {
   const day = now.getTime() - 86_400_000;
   for (const [id, x] of Object.entries(state.orders.done)) if (Date.parse(x.at) < day) delete state.orders.done[id];
   writeState({ ...state, status: 'approved', lastOk: now.toISOString(), lastError: null, lastErrorAt: null, quotaReadAt: sendQuota ? quota.readAt : state.quotaReadAt,
-    directorVersion: typeof r.data.version === 'string' ? r.data.version.slice(0, 20) : null, mode, local: false,
+    directorVersion: typeof r.data.version === 'string' ? r.data.version.slice(0, 20) : null, mode, local: false, telegram,
     // Kept for local mode (D149): the Director's settings, and its pace to show.
     settings: mode === 'directing' ? pick(r.data.settings, ['target', 'reserve', 'fiveHourCap']) : null,
     pace: mode === 'directing' ? pick(r.data.pace, ['verdict', 'why', 'target']) : null });
   return r.data;
+}
+
+// A text for Telegram leaves the Mac with no path, its lines kept.
+const lines = (text, n) => String(text ?? '').split('\n').map((l) => scrub(l)).join('\n').slice(0, n);
+
+// Up to 20 queued messages for the beat, as the Director takes them (D202): the project's key, the text, and a
+// request's, a block's or a push's own fields, never a folder. `settle(sent)` drops them once the Director has them,
+// or puts them back for the next beat.
+function takeMessages() {
+  const file = directorOutboxPath();
+  const sending = `${file}.sending`;
+  // A beat that died while sending left its batch: it goes first.
+  if (!existsSync(sending) && existsSync(file)) renameSync(file, sending);
+  const all = existsSync(sending) ? readFileSync(sending, 'utf8').split('\n').filter(Boolean) : [];
+  const items = [];
+  for (const line of all.slice(0, 20)) {
+    let m;
+    try {
+      m = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const request = m.request && Number.isInteger(m.request.id) ? { id: m.request.id, question: lines(m.request.question, 600), ...(m.request.options ? { options: lines(m.request.options, 600) } : {}), ...(m.request.recommendation ? { recommendation: lines(m.request.recommendation, 600) } : {}) } : null;
+    const alert = m.alert && Number.isInteger(m.alert.id) ? { id: m.alert.id, actions: (m.alert.actions ?? []).slice(0, 10).map((a) => String(a).slice(0, 20)) } : null;
+    const push = m.push && /^[0-9a-f]{12}$/.test(m.push.head ?? '') ? { head: m.push.head, branch: cut(m.push.branch, 60) } : null;
+    items.push({ at: String(m.at ?? '').slice(0, 40), ...(m.project ? { project: String(m.project).slice(0, 120) } : {}), text: lines(m.text, 1500), ...(request ? { request } : {}), ...(alert ? { alert } : {}), ...(push ? { push } : {}) });
+  }
+  return {
+    items,
+    settle(sent) {
+      if (!all.length) return;
+      const left = sent ? all.slice(20) : all;
+      rmSync(sending, { force: true });
+      if (left.length) {
+        // The ones still waiting go before those queued meanwhile.
+        const later = existsSync(file) ? readFileSync(file, 'utf8') : '';
+        writeFileSync(file, `${left.join('\n')}\n${later}`);
+      }
+    },
+  };
 }
 
 const pick = (o, keys) => (o && typeof o === 'object' ? Object.fromEntries(keys.filter((k) => ['number', 'string'].includes(typeof o[k])).map((k) => [k, typeof o[k] === 'string' ? o[k].slice(0, 300) : o[k]])) : null);

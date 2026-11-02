@@ -9,6 +9,8 @@ jerome telegram test     # send a test message
 jerome telegram off      # delete the token and the queue
 ```
 
+With the bot on [Jérôme Director](../telegram.md#on-the-director-for-every-mac) (`jerome director telegram setup` on the server), this Mac's bridge stays off and its messages go with its beat; `status` says so.
+
 `setup` reads the token from standard input without echoing it, checks it with Telegram, waits up to 2 minutes for your `/start`, and asks you to confirm the chat. It then runs [`jerome watchdog install`](watchdog.md).
 
 | Code | Meaning |

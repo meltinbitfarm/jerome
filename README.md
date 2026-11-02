@@ -159,7 +159,7 @@ jerome heartbeat status      # a project's runs, its jobs and any problem
 
 ### Several Macs
 
-If your projects are spread over more than one Mac on the same Claude account, **Jérôme Director** coordinates them from a server of yours, reached over your VPN, with a dashboard for the phone. Once you let it decide, it shares the spare quota among the Macs: fill runs one at a time across them, and slots that wait for room instead of running into each other. It is optional: each Mac works fully on its own. See [docs/director.md](docs/director.md).
+If your projects are spread over more than one Mac on the same Claude account, **Jérôme Director** coordinates them from a server of yours, reached over your VPN, with a dashboard for the phone. Once you let it decide, it shares the spare quota among the Macs: fill runs one at a time across them, and slots that wait for room instead of running into each other; and one Telegram bot for every Mac's projects. It is optional: each Mac works fully on its own. See [docs/director.md](docs/director.md).
 
 ### Keeping up to date
 

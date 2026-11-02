@@ -10,7 +10,7 @@ It is built in five steps:
 | 2 | **Shows:** a dashboard, also on the iPhone, in your language | in place, 0.5.1; simpler in 0.8.0; each project's [board](board.md) and a legend in 0.11.0; a **?** button with help, the legend and the guides in 0.12.3; answers, notes and a block's buttons in 0.13.0 |
 | 3 | **Decides:** permits for fill runs, slots that queue, a fallback when it cannot be reached | in place, 0.19.0, once turned on with `jerome director settings on`; see [Deciding](#deciding) |
 | 4 | Setup on your server, step by step | in place: the Dockerfile and compose.yaml in 0.5.0, with Coolify since 2026-10-28; see [Setting it up](#setting-it-up) |
-| 5 | Telegram on the Director, one bot for every Mac | to do |
+| 5 | Telegram on the Director, one bot for every Mac | in place, 0.20.0, once set up with `jerome director telegram setup`; see [Telegram](telegram.md#on-the-director-for-every-mac) |
 
 Until you turn on step 3 with `jerome director settings on`, each Mac keeps working as in phase 1: run the [quota governor](quota-governor.md) on one Mac only.
 

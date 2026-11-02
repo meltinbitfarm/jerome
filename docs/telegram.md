@@ -68,6 +68,25 @@ Each button carries only the alert's number and the action's name, from a list w
 
 Nothing else is done: the bridge runs no shell and no other command, and passes your text only to `jerome request answer`, without a shell. An answer to a request already closed changes nothing, and says so. Messages from other chats, or from groups, are dropped unread and only counted in the watchdog's log.
 
+## On the Director, for every Mac
+
+With your projects on more than one Mac, the bot can live on [Jérôme Director](director.md) instead (D155, D202): one bot for every project of every Mac, since Telegram lets one machine only listen to a bot. On the server:
+
+```sh
+jerome director telegram setup     # with Docker: docker compose exec director jerome director telegram setup
+```
+
+It asks for the token and your `/start` as on a Mac, and keeps the token on the server, in the Director's data folder (`600`). If a Mac's bridge still listens to the same bot, setup says so: run `jerome telegram off` on that Mac first, or make a new bot with @BotFather.
+
+From each Mac's next beat:
+
+- **What a Mac queues** for you, its decision requests with their options, its blocks with their buttons, its push questions and its notifications, goes to the Director with the beat, with the project's key and never its folder, and the Director's bot sends it. Its own bridge stays off, even if set up (`jerome telegram status` on the Mac says so).
+- **What you send** works as before, for every project of every Mac: a tap, a reply, `#project` and a note, `/status`. The bot turns it into the same order the dashboard places (D191): it says at once that it went to the Mac, the Mac takes it with its next beat, within a minute, checks it again under its own rules and runs it, and the bot then tells you how it went, or that the Mac did not take it within 10 minutes. A tap is no longer acted on within seconds: up to a minute, the time of a beat.
+- **Two projects with the same name** on two Macs are told apart by their Mac's name.
+- **The quota running fast** is told once, whichever Mac noticed it first.
+
+`jerome director telegram status`, `test` and `off` work as on a Mac. Off, each Mac's own bridge, where set up, speaks again at its next beat.
+
 ## Notes
 
 A note goes to the project's database, never to a file in the repository, so it never leaves the tree dirty under a heartbeat (D133). The next heartbeat's triage reads the open notes, quoted, and may choose its task from them; the lead agent gets them in its prompt, and your next session at its start. They are your words, with the weight of an entry of `open.md`: never commands to run, and they lift none of the project's limits, so a note cannot make a heartbeat push or deploy. The lead agent records what a note means in `open.md` or `decisions.md` and closes it with `jerome note done <id>`. `jerome state` lists the open ones; [`jerome note list`](commands/note.md) shows them in full.

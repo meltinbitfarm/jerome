@@ -24,7 +24,7 @@ import { runPlain } from './plain.js';
 import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
 import { governor, governorStatus, quota } from './governor.js';
 import { language } from './i18n.js';
-import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke, dashboard as directorDashboard, settings as directorSettingsCmd } from './director.js';
+import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke, dashboard as directorDashboard, settings as directorSettingsCmd, telegram as directorTelegramCmd } from './director.js';
 import { connect, connectStatus, disconnect } from './directorlink.js';
 import { VERSION } from './template.js';
 
@@ -107,6 +107,8 @@ const USAGE = `Usage:
                           Jérôme Director, on the server: it listens only on a VPN or private address
   jerome director settings [on | off] [--target <n>] [--reserve <n>] [--five-hour-cap <n>]
                           whether the Director decides the Macs' fill runs and slots, and the pace it keeps
+  jerome director telegram setup | status | test | off
+                          the Telegram bot on the Director, for every Mac's projects; the Macs' own bridges stop
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
   jerome rules [dir]      what Jérôme blocks for the model in this project, and what you unlocked
@@ -330,7 +332,8 @@ export async function main(argv) {
     }
     case 'director': {
       const [action, ...args] = rest;
-      const usage = 'jerome director takes init, serve, status, machines, approve <code>, revoke <mac>, settings [on|off] or dashboard.';
+      const usage = 'jerome director takes init, serve, status, machines, approve <code>, revoke <mac>, settings [on|off], telegram setup|status|test|off or dashboard.';
+      if (action === 'telegram' && args.length === 1 && ['setup', 'status', 'test', 'off'].includes(args[0])) return directorTelegramCmd(args[0]);
       const pace = ['target', 'reserve', 'five-hour-cap'].filter((o) => parsed.values[o] !== undefined);
       if (pace.length && action !== 'settings') return usageError(`${pace.map((o) => `--${o}`).join(', ')} go with jerome director settings.`);
       if (action === 'settings' && args.length <= 1 && (!args.length || ['on', 'off'].includes(args[0]))) {

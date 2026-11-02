@@ -18,7 +18,7 @@ import { missedStarts, missedText } from './missed.js';
 import { raiseAlert } from './alerts.js';
 import { announceAlerts } from './announce.js';
 import { announceLost, tidyStale } from './heartbeat.js';
-import { bridgeTick, enqueue, readConfig, startListener } from './telegram.js';
+import { bridgeTick, enqueue, readConfig, startListener, telegramOn } from './telegram.js';
 import { proposePush } from './push.js';
 import { governorTick } from './governor.js';
 import { directorBeat } from './directorlink.js';
@@ -84,7 +84,7 @@ export async function watchdogRun({ env = process.env, now = new Date() } = {}) 
       // Every minute, the blocks that have lasted reach the user (D160), even with no heartbeat running.
       announceAlerts(dir, { env, config, now, log: say });
       // The push of the main branch, when the user unlocked it (D194): asked on Telegram once for each new head.
-      if (readConfig() && proposePush(dir, { env, now, enqueue })) say('push asked on Telegram');
+      if (telegramOn() && proposePush(dir, { env, now, enqueue })) say('push asked on Telegram');
     } catch (err) {
       log(`${s.key} watchdog error: ${err.message}`);
     }

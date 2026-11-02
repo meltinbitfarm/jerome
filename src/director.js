@@ -3,8 +3,8 @@
 // approved Mac's watchdog sends a signed beat with the quota it read, its projects and its finished runs, which the
 // Director keeps. Step 3: it decides, once turned on (src/permits.js, D148, D201): permits for fill runs and slots in
 // the beat's answer, and slots that ask first. It never reaches a Mac: it only answers, and every answer is signed
-// (D146). It listens on one VPN or private address, never on a public one (D145), and holds no credential of
-// anyone's (D139, D147).
+// (D146). Step 5: the Telegram bot, once set up here, speaks for every Mac (src/directorbot.js, D155, D202). It listens
+// on one VPN or private address, never on a public one (D145), and holds no credential of any Mac (D139, D147).
 import { createServer } from 'node:http';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -17,6 +17,7 @@ import { VERSION } from './template.js';
 import { serveDashboard, takeOrder, ORDER_BODY } from './dashboard.js';
 import { createPermitTables, directorSettings, saveSettings, directorPace, decide, followPermits, permitsFor, askSlot, decisions } from './permits.js';
 import { GOVERNOR_DEFAULTS } from './pacing.js';
+import { createBotTables, takeMessages, readBotConfig, runBot, botCommand } from './directorbot.js';
 
 export const DEFAULT_PORT = 7788;
 // A beat with boards (D177) is larger than one without.
@@ -139,6 +140,8 @@ export function openDirectorDb(env = process.env) {
   if (!db.prepare('PRAGMA table_info(machines)').all().some((c) => c.name === 'language')) db.exec('ALTER TABLE machines ADD COLUMN language TEXT');
   // Step 3 (D148, D201): permits, queued slots, settings.
   createPermitTables(db);
+  // Step 5 (D202): the bot's queue, its messages, its state.
+  createBotTables(db);
   return db;
 }
 
@@ -158,6 +161,13 @@ const BOARD = {
   'pending?': 'number',
 };
 const RESULT = { id: 'number', ok: 'boolean', text: 'string:300' };
+// A message for Telegram (D202): the project's key, the text, and a request's, a block's or a push's own fields.
+const MESSAGE = {
+  at: 'string:40', 'project?': 'string:120', text: 'string:1500',
+  'request?': { id: 'number', question: 'string:600', 'options?': 'string:600', 'recommendation?': 'string:600' },
+  'alert?': { id: 'number', actions: ['string:20', 10] },
+  'push?': { head: 'string:12', branch: 'string:60' },
+};
 const SHAPES = {
   hello: { name: 'string:60', publicKey: 'string:400', version: 'string:20' },
   beat: {
@@ -191,6 +201,8 @@ const SHAPES = {
     'boards?': [BOARD, 100],
     // What the Mac did with the dashboard's orders (D191), when its quick report did not get through.
     'results?': [RESULT, 50],
+    // What waits for Telegram, once the bot is here (D202).
+    'messages?': [MESSAGE, 20],
   },
   results: { results: [RESULT, 50] },
   ask: { project: 'string:120', slot: 'string:40' },
@@ -325,6 +337,7 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
       for (const r of body.runs) db.prepare('INSERT OR REPLACE INTO runs (machine, project, run_id, ended_at, data) VALUES (?, ?, ?, ?, ?)').run(id, r.project, r.id, r.endedAt ?? null, JSON.stringify(r));
       record(id, body.results ?? [], at);
       followPermits(db, id, body.projects, now());
+      takeMessages(db, directorHome(env), id, body.messages, at);
       const old = new Date(now() - KEEP_DAYS * 86_400_000).toISOString();
       db.prepare('DELETE FROM readings WHERE read_at < ?').run(old);
       db.prepare('DELETE FROM runs WHERE ended_at < ?').run(old);
@@ -337,7 +350,8 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
     // permits; off, it only sees, and each Mac keeps phase 1. The dashboard's orders for this Mac go with the answer
     // (D169, D191): data the Mac checks and runs under its own rules, never a command. Its version tells the Mac which
     // fields it knows (D196).
-    return { status: 200, body: { ok: true, ...direction(id), orders: ordersFor(id), version: VERSION } };
+    // `telegram` tells the Mac the bot is here (D202): its messages come with the beat, and its own bridge stays off.
+    return { status: 200, body: { ok: true, ...direction(id), orders: ordersFor(id), telegram: Boolean(readBotConfig(directorHome(env))), version: VERSION } };
   };
 
   // The mode, this Mac's permits, the pace and the settings, for the Mac to fall back on when the Director is silent (D149).
@@ -364,8 +378,8 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
   const ordersFor = (machine) => {
     const at = now();
     db.prepare("UPDATE orders SET status = 'lapsed', done_at = ? WHERE status = 'pending' AND created_at < ?").run(new Date(at).toISOString(), new Date(at - ORDER_MS).toISOString());
-    return db.prepare("SELECT id, project, kind, ref, action, text, created_at FROM orders WHERE machine = ? AND status = 'pending' ORDER BY id LIMIT 20").all(machine)
-      .map((o) => ({ id: o.id, project: o.project, kind: o.kind, ref: o.ref ?? null, action: o.action ?? null, text: o.text ?? null, at: o.created_at }));
+    return db.prepare("SELECT id, project, kind, ref, action, text, created_at, via FROM orders WHERE machine = ? AND status = 'pending' ORDER BY id LIMIT 20").all(machine)
+      .map((o) => ({ id: o.id, project: o.project, kind: o.kind, ref: o.ref ?? null, action: o.action ?? null, text: o.text ?? null, at: o.created_at, ...(o.via === 'telegram' ? { via: 'telegram' } : {}) }));
   };
   // What a Mac did with its orders: only its own, and only once.
   const record = (machine, results, at) => {
@@ -478,6 +492,8 @@ export async function serve({ listen = null, env = process.env } = {}) {
     throw new Error(`cannot listen on ${wanted}: ${err.message}`);
   });
   writeFileSync(pidFile(env), String(process.pid));
+  // The Telegram bot (D202), in the same process, once `jerome director telegram setup` has given it a token.
+  runBot({ db: app.db, home: directorHome(env), env, log });
   log(`Jérôme Director ${VERSION} listening on ${where.host}:${server.address().port}${env.DIRECTOR_ADDRESS ? `, published on ${env.DIRECTOR_ADDRESS}` : ''}`);
   const stop = () => {
     rmSync(pidFile(env), { force: true });
@@ -596,6 +612,17 @@ export async function settings(action, { target, reserve, fiveHourCap } = {}, { 
     return 0;
   } catch (err) {
     return fail(err.message, 2);
+  } finally {
+    db.close();
+  }
+}
+
+// `jerome director telegram setup | status | test | off` (D202).
+export async function telegram(action, { env = process.env } = {}) {
+  if (!readDirectorConfig(env)) return fail('The Director is not set up here: `jerome director init --listen <VPN address>`.');
+  const db = openDirectorDb(env);
+  try {
+    return await botCommand(action, { home: directorHome(env), env, db });
   } finally {
     db.close();
   }

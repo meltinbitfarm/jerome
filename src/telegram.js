@@ -3,6 +3,8 @@
 // answer to a decision request (a button, or a reply to its message), a note for a project, /status and /help.
 // Nothing else: the bridge runs no shell, passes no text as arguments to anything but `jerome request answer`, and
 // calls no model. The token stays on this machine, in a file only the user can read, never in a project.
+// Once the Director has the bot (D155, D202), what is queued here goes to it with the beat instead, and this Mac's
+// listener stays off: the Director's bot (src/directorbot.js) speaks for every Mac.
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -10,7 +12,7 @@ import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
-import { stores } from './store.js';
+import { stores, storeKey, cloneRoot } from './store.js';
 import { addNote } from './notes.js';
 import { t } from './i18n.js';
 import { readAccount } from './account.js';
@@ -20,6 +22,7 @@ import { VERSION } from './template.js';
 import { cacheDir } from './runstate.js';
 import { optionList } from './options.js';
 import { answerPush, pushAsked } from './push.js';
+import { directorTelegram, directorOutboxPath } from './directormode.js';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'jerome.js');
 // Telegram refuses longer messages.
@@ -64,6 +67,12 @@ export function writeConfig(config) {
 // Queues a message for the user (D131), when the bridge is set up: { dir, text, request? }.
 // A push question (D194) has `push`: { head, branch }.
 export function enqueue({ dir = null, text, request = null, alert = null, push = null, now = new Date() }) {
+  // Through the Director (D202): the project's key, never its folder, which stays on the Mac.
+  if (directorTelegram()) {
+    mkdirSync(dirname(directorOutboxPath()), { recursive: true });
+    appendFileSync(directorOutboxPath(), `${JSON.stringify({ at: now.toISOString(), project: dir ? storeKey(cloneRoot(dir)) : null, text, request, alert, ...(push ? { push } : {}) })}\n`);
+    return;
+  }
   if (!readConfig()) return;
   mkdirSync(dataDir(), { recursive: true });
   appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: dir ? basename(dir) : null, text, request, alert, ...(push ? { push } : {}) })}\n`);
@@ -124,6 +133,11 @@ export function telegramApi(token, env = process.env) {
   };
 }
 
+// Whether what is queued reaches Telegram: this Mac's bridge, or the Director's bot (D202).
+export function telegramOn() {
+  return Boolean(readConfig()) || directorTelegram();
+}
+
 // The projects of this machine, by name: the registry's, with their folder.
 function knownProjects() {
   return stores().filter((s) => !s.orphan && s.record?.path).map((s) => ({ name: basename(s.record.path), dir: s.record.path }));
@@ -138,7 +152,7 @@ const clip = (text) => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}
 // Director at once (D193), so the dashboard does not show the question open for up to a minute more.
 export async function bridgeTick({ env = process.env, now = new Date(), api = null, until = null, acted = null } = {}) {
   const config = readConfig();
-  if (!config) return { configured: false };
+  if (!config || directorTelegram(env)) return { configured: false };
   const call = api ?? telegramApi(config.token, env);
   const state = readState();
   const done = { configured: true, received: 0, ignored: 0, sent: 0, errors: [] };
@@ -262,7 +276,7 @@ async function sendQueue(state, call, config, done, now) {
 // A message's text, laid out for the phone: the project's name in bold on its own line, then the text; a request with
 // its question, each option on its own line, the recommendation, and how to answer in italics. `html` gives it in
 // Telegram's HTML, every text escaped, else as plain text, the same lines without the marks.
-export function layout(item, html = true) {
+export function layout(item, html = true, code = undefined) {
   const esc = (x) => (html ? String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : String(x ?? ''));
   const b = (x) => (html ? `<b>${x}</b>` : x);
   const i = (x) => (html ? `<i>${x}</i>` : x);
@@ -272,35 +286,41 @@ export function layout(item, html = true) {
   if (!r) return `${head}\n${esc(item.text)}`;
   const options = optionList(r.options);
   const lines = [head, `❓ ${b(`R${r.id}`)} ${esc(r.question)}`];
-  if (options.length) lines.push('', b(t('request.options')), ...options.map(esc));
-  else if (r.options) lines.push('', `${b(t('request.options'))}: ${esc(r.options)}`);
-  if (r.recommendation) lines.push('', `💡 ${b(`${t('request.recommended')}:`)} ${esc(r.recommendation)}`);
-  lines.push('', i(esc(t(options.length ? 'request.how' : 'request.howReply'))));
+  if (options.length) lines.push('', b(t('request.options', {}, code)), ...options.map(esc));
+  else if (r.options) lines.push('', `${b(t('request.options', {}, code))}: ${esc(r.options)}`);
+  if (r.recommendation) lines.push('', `💡 ${b(`${t('request.recommended', {}, code)}:`)} ${esc(r.recommendation)}`);
+  lines.push('', i(esc(t(options.length ? 'request.how' : 'request.howReply', {}, code))));
   return lines.join('\n');
 }
 
 // A queued message, with a request's options as buttons, and remembered, so a button or a reply answers it. Sent in
 // Telegram's HTML; should Telegram refuse its marks, the same message goes as plain text, so nothing is lost.
 async function send(item, state, call, config) {
+  const { message, actions, push, keyboard } = await sendItem(item, call, config.chatId);
+  state.sent[message.message_id] = { dir: item.dir, project: item.project, request: item.request?.id ?? null, alert: actions.length ? item.alert.id : null, ...(push ? { push: push.head } : {}), buttons: keyboard.length > 0 };
+}
+
+// One message with its buttons, here and on the Director (D202): a request's options, a push's two choices, or a
+// block's actions (D166), each button only an id and a name from a closed list. Sent in Telegram's HTML; should
+// Telegram refuse its marks, the same message goes as plain text, so nothing is lost.
+export async function sendItem(item, call, chatId, code = undefined) {
   const r = item.request;
   const options = r ? optionList(r.options) : [];
-  // A block's actions (D166), one button each: the alert's id and the action's name, nothing else.
   const actions = !r && item.alert?.actions?.length ? item.alert.actions.filter((a) => ACTIONS.includes(a)) : [];
-  // A push question (D194): its head and the choice, nothing else.
   const push = !r && /^[0-9a-f]{12}$/.test(item.push?.head ?? '') ? item.push : null;
   const keyboard = options.length ? options.map((o, i) => [{ text: o, callback_data: `a:${r.id}:${i}` }])
-    : push ? [[{ text: t('push.go', { branch: push.branch }), callback_data: `p:${push.head}:go` }], [{ text: t('push.no'), callback_data: `p:${push.head}:no` }]]
-      : actions.map((a) => [{ text: t(`action.${a}`), callback_data: `x:${item.alert.id}:${a}` }]);
+    : push ? [[{ text: t('push.go', { branch: push.branch }, code), callback_data: `p:${push.head}:go` }], [{ text: t('push.no', {}, code), callback_data: `p:${push.head}:no` }]]
+      : actions.map((a) => [{ text: t(`action.${a}`, {}, code), callback_data: `x:${item.alert.id}:${a}` }]);
   const markup = keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {};
-  const html = layout(item);
+  const html = layout(item, true, code);
   let message;
   try {
-    message = await call('sendMessage', { chat_id: config.chatId, text: html.length > MAX_TEXT ? clip(layout(item, false)) : html, ...(html.length > MAX_TEXT ? {} : { parse_mode: 'HTML' }), ...markup });
+    message = await call('sendMessage', { chat_id: chatId, text: html.length > MAX_TEXT ? clip(layout(item, false, code)) : html, ...(html.length > MAX_TEXT ? {} : { parse_mode: 'HTML' }), ...markup });
   } catch (err) {
     if (!/parse entities|can't parse/i.test(err.message)) throw err;
-    message = await call('sendMessage', { chat_id: config.chatId, text: clip(layout(item, false)), ...markup });
+    message = await call('sendMessage', { chat_id: chatId, text: clip(layout(item, false, code)), ...markup });
   }
-  state.sent[message.message_id] = { dir: item.dir, project: item.project, request: r?.id ?? null, alert: actions.length ? item.alert.id : null, ...(push ? { push: push.head } : {}), buttons: keyboard.length > 0 };
+  return { message, actions, push, keyboard };
 }
 
 async function reply(call, config, text, extra = {}) {
@@ -455,7 +475,7 @@ function statusText(p) {
 
 // `jerome telegram setup`: the token, checked; the user's chat, from the first message they send the bot; the
 // watchdog job that runs the bridge; a test message.
-export async function setup({ env = process.env, input = process.stdin, output = process.stdout, wait = 120_000 } = {}) {
+export async function setup({ env = process.env, input = process.stdin, output = process.stdout, wait = 120_000, where = 'this machine', save = null, helpKey = 'bot' } = {}) {
   const rl = createInterface({ input, output, terminal: Boolean(input.isTTY) });
   // Lines are queued as they come, so piped answers are not lost between two questions.
   const lines = [];
@@ -480,7 +500,7 @@ export async function setup({ env = process.env, input = process.stdin, output =
     });
   };
   try {
-    console.log('Create a bot with @BotFather in Telegram (/newbot), then paste its token here. It stays on this machine, in a file only you can read.');
+    console.log(`Create a bot with @BotFather in Telegram (/newbot), then paste its token here. It stays on ${where}, in a file only you can read.`);
     const token = await ask('Bot token: ', true);
     if (!/^\d+:[\w-]{20,}$/.test(token)) {
       console.error('That does not look like a bot token (digits, a colon, then letters).');
@@ -499,7 +519,17 @@ export async function setup({ env = process.env, input = process.stdin, output =
     let chat = null;
     const until = Date.now() + wait;
     while (!chat && Date.now() < until) {
-      const updates = await call('getUpdates', { offset, timeout: env.JEROME_TELEGRAM_FAKE ? 0 : 10, allowed_updates: ['message'] });
+      let updates;
+      try {
+        updates = await call('getUpdates', { offset, timeout: env.JEROME_TELEGRAM_FAKE ? 0 : 10, allowed_updates: ['message'] });
+      } catch (err) {
+        // One bot is polled by one machine only: a Mac's bridge still listening to it takes the messages.
+        if (/conflict|terminated by other getUpdates/i.test(err.message)) {
+          console.error('Another machine is listening to this bot, such as a Mac\'s Telegram bridge: run `jerome telegram off` there first, or make a new bot with @BotFather.');
+          return 1;
+        }
+        throw err;
+      }
       for (const u of updates) {
         offset = u.update_id + 1;
         if (u.message?.chat?.type === 'private') chat = u.message.chat;
@@ -516,10 +546,16 @@ export async function setup({ env = process.env, input = process.stdin, output =
       console.log('Nothing saved.');
       return 1;
     }
-    writeConfig({ token, chatId: chat.id, chat: who, bot: me.username, at: new Date().toISOString() });
-    writeState({ ...readState(), offset });
-    console.log(`✓ Saved in ${configPath()}, readable by you only.`);
-    await call('sendMessage', { chat_id: chat.id, text: `${t('bot.connected')}\n\n${t('bot.help')}` });
+    const config = { token, chatId: chat.id, chat: who, bot: me.username, at: new Date().toISOString() };
+    let file;
+    if (save) file = save(config, offset);
+    else {
+      writeConfig(config);
+      writeState({ ...readState(), offset });
+      file = configPath();
+    }
+    console.log(`✓ Saved in ${file}, readable by you only.`);
+    await call('sendMessage', { chat_id: chat.id, text: `${t(`${helpKey}.connected`)}\n\n${t(`${helpKey}.help`)}` });
     return 0;
   } finally {
     rl.close();
@@ -535,6 +571,10 @@ export function off() {
 }
 
 export function telegramStatus() {
+  if (directorTelegram()) {
+    console.log(`Telegram: on Jérôme Director, one bot for every Mac's projects (D202): this Mac's messages go with its beat${readConfig() ? ', and its own bridge stays off' : ''}. On the server: jerome director telegram status.`);
+    return 0;
+  }
   const c = readConfig();
   if (!c) {
     console.log('Telegram: not set up. `jerome telegram setup` connects a bot.');
@@ -579,6 +619,11 @@ export function listenerRunning() {
 // Starts the listener apart, its lines in the watchdog's log, when the bridge is set up and none runs. True when
 // started.
 export function startListener(env = process.env) {
+  // The Director has the bot (D202): this Mac's listener would take its messages.
+  if (directorTelegram(env)) {
+    if (listenerRunning()) stopListener();
+    return false;
+  }
   if (!readConfig() || listenerRunning()) return false;
   const log = cacheDir('logs', 'watchdog.log');
   mkdirSync(dirname(log), { recursive: true });
@@ -610,7 +655,7 @@ export async function listen({ env = process.env, maxMs = LISTENER_MS } = {}) {
   writeFileSync(listenerPid(), String(process.pid));
   const end = Date.now() + maxMs;
   try {
-    while (Date.now() < end && installedVersion() === VERSION) {
+    while (Date.now() < end && installedVersion() === VERSION && !directorTelegram(env)) {
       const done = await bridgeTick({ env, now: new Date(), until: Math.min(end, Date.now() + 60_000), acted: () => beatNow(env) });
       if (!done.configured) break;
       if (done.received || done.sent || done.ignored || done.errors.length) {
