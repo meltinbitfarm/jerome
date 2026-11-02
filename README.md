@@ -25,7 +25,7 @@ Most ways of running AI agents on your projects ask you to choose between doing 
 
 - **The subscription, not an API key.** The cost is the one you already pay. The quota of the week, lost if unused, is spent on your backlog instead, while a reserve stays yours.
 - **On your Mac, where your code and your login already are.** Code, prompts, transcripts and credentials never leave the machine. Nothing on it listens on the internet.
-- **Small context by design.** A session starts at about 12k tokens instead of 29k. A cheap check decides whether there is work before the expensive model starts, and usage is counted by hooks, outside the model.
+- **Small context by design.** A session starts at about 12k tokens instead of 29k. Each agent starts from its own context and gets file paths, not the lead agent's conversation, so delegating does not pay for that context again. A cheap check decides whether there is work before the expensive model starts, and usage is counted by hooks, outside the model.
 - **State in files, not in a service.** Decisions, open items and the brief are Markdown in the repository: versioned, readable, and yours to edit.
 - **Nothing fails silently.** No run is skipped without a reason, half-done work is resumed before anything new, and every run is checked when it ends. A problem reaches you as one sentence with one button.
 - **Built on Claude Code, not beside it.** It uses Claude Code's own subagents, skills, hooks and permissions, and lists what it depends on, so a Claude Code update does not break it unseen.
@@ -62,7 +62,7 @@ You start from a brief. The lead agent keeps the project's state, proposes a tea
 ## Requirements
 
 - macOS (scheduled runs use launchd; the rest also works on Linux)
-- Node.js 24 or later
+- Node.js 24 or later, and nothing else from npm: Jérôme has no dependencies
 - git
 - Claude Code, logged in with a Claude subscription (`claude auth login`), not an API key
 
