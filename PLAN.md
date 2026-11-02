@@ -373,6 +373,8 @@ Then (0.17.0, D198): the push question at most every 4 hours, sooner only for a 
 Then (0.18.0, D199): wrap-up at 80% of the token cap, the first stop resumed without asking, the answer to a capped request given to the run after it, recipes kept in .jerome/notes/recipes/.
 Then (0.18.1, D200): archive.md's `## Closed` section named in the lead agent's instructions, and the projects' archives put in that shape.
 
+Next: step 3 of the Director (docs/specs/director.md): permits for fill runs, slots that queue, a slower pace when the Director cannot be reached, and a Mac that goes off leaving its slots to the other; then step 4 (setup on the server) and step 5 (Telegram on the Director). Still to check: how to see whether the week's quota reached the governor's 90% target at each reset, a success criterion of docs/specs/quota-governor.md that no doc measures; whether the code keeps it is unchecked.
+
 ## Before the public release
 
 Checks to do before announcing Jérôme or publishing it on npm:
