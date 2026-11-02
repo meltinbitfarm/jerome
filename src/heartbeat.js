@@ -34,7 +34,7 @@ import { transcriptMeter, capTokens } from './meter.js';
 import { checkPages, saveHashes, watchedPages } from './watch.js';
 import { n } from './state.js';
 import { heartbeatConfig, runAllowed } from './heartbeatconfig.js';
-import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE, isOwnFile, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday } from './runstate.js';
+import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE, isOwnFile, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday, readCapped, writeCapped, clearCapped, markBudget, clearBudget, WRAP_UP_AT, unmergedWorkBranches } from './runstate.js';
 import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, lostRuns } from './alerts.js';
 import { announceAlerts } from './announce.js';
 import { t, lang, leadLanguageLine } from './i18n.js';
@@ -81,6 +81,8 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
       record.exitCode !== null ? `exit ${record.exitCode}` : null, record.outcome ? `end check ${record.outcome.ok ? 'ok' : 'failed'}` : null].filter(Boolean);
     log(`${status} [${flags.join(', ')}]: ${reason}${ended.request ? ` (decision request R${ended.request})` : ''}`);
     if (ended.request) notify(env, dir, t('request.notice', { id: ended.request, question: request.question }, lang(env)), { outbox: false });
+    // A task stopped twice by its caps waits for the user's answer (D199): its runs do nothing meanwhile.
+    if (ended.request && request.capped) writeCapped(dir, { task: request.capped, waiting: ended.request, at: new Date().toISOString() });
     // No silent skips (D121): a broken state is an alert at once, any other block or failure on its second time. The
     // user hears of it only when it lasts (D160), from announceAlerts.
     const db = openDb(dir);
@@ -176,8 +178,22 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
     // RESUME (D119): half-done work is finished or dropped before anything new, with no triage.
     if (start.mode === 'resume') {
-      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, openRequests(dir), { config, slot, resume: start.why, notes: projectNotes(dir), answers: answersToRecord(dir), push: isUnlocked(dir, 'push') }) }, caps, given, model, env, config, stopper, record, slot, governed);
-      return finish(lead.status, `resume: ${start.why} → ${lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules });
+      // Work stopped twice by its caps (D199): no run until the user answers, then the answer goes with the next.
+      let stopped = readCapped(dir);
+      let told = null;
+      if (stopped?.waiting) {
+        if (openRequests(dir).some((r) => r.id === stopped.waiting)) return finish('blocked', `waiting for the answer to R${stopped.waiting} before resuming: ${start.why}${note}`, { pause: true });
+        told = cappedAnswer(dir, stopped.waiting);
+        clearCapped(dir);
+        stopped = null;
+      }
+      const lead = await leadRun(dir, run, { label: `resume: ${start.why}`, prompt: leadPrompt(null, null, openRequests(dir), { config, slot, resume: start.why, capped: stopped?.task ?? null, cappedAnswer: told, notes: projectNotes(dir), answers: answersToRecord(dir), push: isUnlocked(dir, 'push') }) }, caps, given, model, env, config, stopper, record, slot, governed);
+      let request = null;
+      if (lead.status === 'stopped' && capStop(lead.reason) && !caps.once) {
+        if (stopped) request = { ...(await cappedRequest(stopped.task, lead.reason, lang(env), { twice: true })), capped: stopped.task };
+        else writeCapped(dir, { task: start.why, at: new Date().toISOString() });
+      } else if (lead.status === 'done') clearCapped(dir);
+      return finish(lead.status, `resume: ${start.why} → ${lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules, request });
     }
 
     // Areas (D100): those paused, held up by an open request, or whose pace has not come round are left out here,
@@ -220,8 +236,12 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     if (lead.status === 'done' && area.watch) saveHashes(jobLabel(dir), area.name, area.watch.pending);
     // A task stopped by its caps is not tried again by itself (D182): the user is asked at once, and while the request
     // is open the triage leaves the task, which depends on it. Caps given for one run only are a trial, not asked.
+    // Since D199, the first stop is not asked when the run left work to go on from: the next run resumes it, told so.
     const capped = lead.status === 'stopped' && capStop(lead.reason) && !caps.once;
-    const request = capped ? await cappedRequest(triage.task, lead.reason, lang(env)) : null;
+    let request = null;
+    if (capped && (readResume(dir) || unmergedWorkBranches(dir, config).length)) writeCapped(dir, { task: triage.task, at: new Date().toISOString() });
+    else if (capped) request = await cappedRequest(triage.task, lead.reason, lang(env));
+    else if (lead.status === 'done') clearCapped(dir);
     return finish(lead.status, `${lead.status === 'done' ? `${plan.implicit ? '' : `${area.name}: `}${triage.task}` : lead.reason}${note}`, { alert: lead.alert, alertKey: lead.alertKey, rules: lead.rules, request });
   } finally {
     process.removeListener('SIGINT', onSignal);
@@ -275,14 +295,26 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
 }
 
 // The request for a task stopped by its caps (D182): what stopped, in plain words, and the ways on.
-async function cappedRequest(task, reason, code) {
+async function cappedRequest(task, reason, code, { twice = false } = {}) {
   task = (await plainNow(task, code)) ?? task;
   const cap = reason.match(/^(token|turn) cap: ([\d,]+ tokens over [\d,]+|\d+ turns)/);
   return {
-    question: t('capped.question', { task: String(task).slice(0, 300), cap: cap?.[1] === 'turn' ? t('capped.turns', { n: cap[2].split(' ')[0] }, code) : t('capped.tokens', { n: cap?.[2].split(' over ')[1] ?? '' }, code) }, code),
+    question: t('capped.question', { twice, task: String(task).slice(0, 300), cap: cap?.[1] === 'turn' ? t('capped.turns', { n: cap[2].split(' ')[0] }, code) : t('capped.tokens', { n: cap?.[2].split(' over ')[1] ?? '' }, code) }, code),
     options: t('capped.options', {}, code),
     recommendation: t('capped.recommendation', {}, code),
   };
+}
+
+// The user's answer to the request of a task stopped twice by its caps, for the run that resumes it (D199): the request
+// is not in open.md, so the lead agent hears of it only here. Null when it was dropped.
+function cappedAnswer(dir, id) {
+  const db = openDb(dir);
+  try {
+    const r = db.prepare("SELECT question, answer FROM requests WHERE id = ? AND status = 'answered'").get(id);
+    return r ? { id, question: r.question, answer: r.answer } : null;
+  } finally {
+    db.close();
+  }
 }
 
 // Whether an interactive session of the project was open while this heartbeat ran (D122).
@@ -677,7 +709,7 @@ ${notesBlock(notes)}` : ''}`;
 // The lead agent's prompt (D73, D125): project-agnostic, shipped with Jérôme, and the same invariants in both modes.
 // In RESUME mode (D119) the task is the half-done work; otherwise the triage's task, in its area. A slot's text and
 // the project's own `heartbeat.prompt` are appended.
-export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, notes = [], fill = false, answers = [], push = false } = {}) {
+export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, capped = null, cappedAnswer: told = null, notes = [], fill = false, answers = [], push = false } = {}) {
   const main = config?.mainBranch ?? 'main';
   const branch = (config?.workBranch ?? 'agent/*').replace('*', '<short-name>');
   const where = area ? `
@@ -695,7 +727,9 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
   const spoken = language ? `\n- ${language}` : '';
   const what = resume
     ? `RESUME mode: an earlier run left work half done: ${resume}.
-- Finish that work or drop it, and nothing else in this run but asking the open questions (below). Read open.md, decisions.md and \`git log\` first. Finish: commit on its branch, verify, merge into ${main}. Drop: discard it and delete the branch, and note why in open.md. If it needs the user, open a decision request and leave the branch unmerged, back on ${main}; if a request already asked is about this work (a task stopped by its caps), do only that, without trying it again.`
+- Finish that work or drop it, and nothing else in this run but asking the open questions (below). Read open.md, decisions.md and \`git log\` first. Finish: commit on its branch, verify, merge into ${main}. Drop: discard it and delete the branch, and note why in open.md. If it needs the user, open a decision request and leave the branch unmerged, back on ${main}; if a request already asked is about this work (a task stopped by its caps), do only that, without trying it again.${capped ? `
+- The earlier run on this work ("${capped}") was stopped at its token budget, perhaps near its end. Go on from what it left, never start it over: read its branch, its notes and open.md first, and the recipes in .jerome/notes/recipes/. Give the agents only the part left, one small step each, with the files it already made.` : ''}${told ? `
+- This work stopped twice at its caps, and the user answered R${told.id} "${told.question}": "${told.answer}". Do what the answer says, going on from what the earlier runs left, and record it as a decision.` : ''}`
     : `Task chosen by the triage: ${task}${where}
 - Do this task only. Work on a new branch named ${branch}.${fill ? `
 - This is a fill run, started because the subscription's weekly quota is behind its pace. If the task is an item of the Backlog section of open.md, remove it from there once done.` : ''}`;
@@ -705,6 +739,7 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
 - FIRST, before the task: the open questions of open.md are the user's to answer, and nobody has asked them yet unless one is marked \`(asked: R<n>)\` or is among the requests already asked (below). First check whether what you can read already answers it (the project, the other projects on this machine, the web): then record that answer as an assumption, saying where it comes from, and remove the question instead of asking. Ask each one still open and not asked, each as its own decision request written as below, with options and your recommendation, and mark it \`(asked: R<n>)\` in open.md (a question already asked only gets its mark). Do it now, with your own commands and no agent: a run stopped by its caps halfway through the task has asked them all the same.${answered}
 ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Delegate reading and work to the agents in .claude/agents/, in the foreground: wait for every result before going on, never start one in the background, and never end while one is still working. Keep your own turns few.
+- Recipes (D199): how to do what took effort to work out and will come again (running the project locally, taking screenshots, a test setup) is kept in .jerome/notes/recipes/<topic>.md, a few lines with the commands. Read the ones that fit before you start, give their paths to the agents, and have the agents add or fix one when they work something out.
 - Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "A) … / B) …" --recommendation "…"\`. The user reads it on the phone, each option a button: write it in plain words, with no ticket or item IDs (MEL-151, O4), file names or paths, and no command unless it is one they must run. Then go on with the parts of the task that do not depend on it. ${push ? `The push of ${main} is Jérôme's in this project (D194): once ${main} has commits not pushed, it asks the user with a button, at most every 4 hours, and pushes on their yes, with the deploy the push may start; never open a request about pushing ${main}. Only when a merge into ${main} reaches a milestone of PROJECT.md, or fixes a bug that users see online, end that merge's commit message with a line \`Jerome-Push: <why, in plain words for the user>\`: Jérôme then asks sooner, saying why. Never for other work: each push may start a deploy. A release or any other deploy, which only the user does, is a request, saying in plain words what and the exact command to run, and go on.` : 'When the work is ready and needs a push, a deploy or a release, which only the user does, open a request too, saying in plain words what and the exact command to run, and go on.'} A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${spoken}${asked}
 - Never leave work for an interactive session: the user does not open one. Do it in this run; what only the user can do (a step outside the project, a login, a payment, a choice) is a decision request saying exactly what is needed. An item of open.md marked for an interactive session is done or asked the same way, and the mark goes.
 - When the request of an open question is answered, record the answer as a decision and remove the question. A parked item of open.md that names when to come back to it (a date, \"after 16/12\") is asked the same way once that time has come: take it up now, park it until a new date, or drop it. Ask a parked item with no such time when the area's milestone changes.
@@ -778,6 +813,11 @@ function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, 
       state.tokens = Math.max(streamed, measured.total);
       state.byAgent = measured.total >= streamed ? measured.byAgent : { main: streamed };
       if (state.tokens > caps.maxTokens && !state.capped) stop('capped');
+      // Near the cap, every agent of the run is told to wrap up, by the PreToolUse hook (D199).
+      else if (state.tokens > caps.maxTokens * WRAP_UP_AT && !state.wrapUp) {
+        state.wrapUp = true;
+        markBudget(dir, run.sessionId);
+      }
     };
     const timer = setInterval(() => {
       measured = meter.read();
@@ -824,6 +864,7 @@ function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, 
       state.denied = [...new Set([...denials].map(([id, name]) => deniedRule(calls.get(id) ?? { name })))];
       clearInterval(timer);
       clearTimeout(deadline);
+      clearBudget(dir);
       stopper.stop = null;
       progress.stop();
       done(state);

@@ -91,6 +91,55 @@ export function clearResume(dir) {
   rmSync(resumePath(dir), { force: true });
 }
 
+// A task stopped by its caps (D199): { task, at, waiting? }. The first stop is not asked: the next run goes on from
+// what it left. A second stop on the same work opens the request, and the runs wait for its answer at zero tokens.
+const cappedPath = (dir) => cacheDir('heartbeat', `${jobLabel(dir)}.capped.json`);
+
+export function readCapped(dir) {
+  try {
+    return JSON.parse(readFileSync(cappedPath(dir), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export function writeCapped(dir, data) {
+  mkdirSync(dirname(cappedPath(dir)), { recursive: true });
+  writeFileSync(cappedPath(dir), `${JSON.stringify(data)}\n`);
+}
+
+export function clearCapped(dir) {
+  rmSync(cappedPath(dir), { force: true });
+}
+
+// The run's budget nearly used (D199): the runner marks it with the run's session, and the PreToolUse hook tells each
+// agent of that session once, the lead and every subagent, to wrap up before the cap stops the run.
+export const WRAP_UP_AT = 0.8;
+const budgetPath = (dir) => cacheDir('heartbeat', `${jobLabel(dir)}.budget.json`);
+
+export function markBudget(dir, sessionId) {
+  mkdirSync(dirname(budgetPath(dir)), { recursive: true });
+  writeFileSync(budgetPath(dir), `${JSON.stringify({ sessionId, told: [] })}\n`);
+}
+
+export function clearBudget(dir) {
+  rmSync(budgetPath(dir), { force: true });
+}
+
+// Whether this agent of this session is to be told now: true once per agent.
+export function wrapUpDue(dir, sessionId, agent) {
+  let b;
+  try {
+    b = JSON.parse(readFileSync(budgetPath(dir), 'utf8'));
+  } catch {
+    return false;
+  }
+  if (!sessionId || b.sessionId !== sessionId || b.told.includes(agent)) return false;
+  b.told.push(agent);
+  writeFileSync(budgetPath(dir), `${JSON.stringify(b)}\n`);
+  return true;
+}
+
 // The quota override (D124): for the local calendar day it was set on, the limits do not pause this project's runs.
 const overridePath = (dir) => cacheDir('heartbeat', `${jobLabel(dir)}.override.json`);
 

@@ -13,13 +13,17 @@ import { readAssumptions } from './assumptions.js';
 import { heartbeatConfig } from './heartbeatconfig.js';
 import { isUnlocked, unlocked } from './unlocked.js';
 import { GROUPS } from './limits.js';
-import { lockHolder } from './runstate.js';
+import { lockHolder, wrapUpDue } from './runstate.js';
 import { openAlerts, alertsContext, lostRuns } from './alerts.js';
 import { claudePid, processStart, sweepLostRuns } from './lostruns.js';
 import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 
 export const HOOK_EVENTS = ['session-start', 'subagent-stop', 'stop', 'session-end', 'pre-tool-use'];
 const RUN_KINDS = ['heartbeat', 'service'];
+
+const WRAP_UP = 'Jérôme: this run has used 80% of its token budget, and is stopped when it is all used, whatever is half done. This command was not run: run it again if it serves what follows.';
+export const WRAP_UP_AGENT = `${WRAP_UP} Wrap up now, in a few commands: stop exploring, save what you have made in files, add to the project's recipes in .jerome/notes/recipes/ what you worked out that the next agent would have to work out again, and reply to the lead agent with what is done and what is left.`;
+export const WRAP_UP_LEAD = `${WRAP_UP} Wrap up now, in a few turns, and start no agent: commit what is done on its work branch, without merging what is not verified; write in open.md, under the task, how far it got and what is left; append your digest line; go back to the main branch, clean, and end. The next run goes on from there, so nothing is lost.`;
 
 export async function hook(event, { input = readStdin(), env = process.env } = {}) {
   // Jérôme's own checks, such as doctor's /context, run Claude Code with the hooks off.
@@ -45,6 +49,11 @@ export async function hook(event, { input = readStdin(), env = process.env } = {
     } catch (err) {
       // A heartbeat may run any command but the blacklist (D159): when the check itself fails, the command is refused.
       verdict = heartbeat ? { reason: `Refused in a heartbeat: Jérôme could not check this command (${err.message}). Run it another way.` } : null;
+    }
+    // The run's budget nearly used (D199): each agent is told once to wrap up, on its next command, which waits.
+    if (!verdict && heartbeat && wrapUpDue(dir, env.JEROME_SESSION_ID, payload.agent_id ?? 'main')) {
+      process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: payload.agent_id ? WRAP_UP_AGENT : WRAP_UP_LEAD } })}\n`);
+      return 0;
     }
     if (!verdict) return 0;
     process.stdout.write(`${JSON.stringify({

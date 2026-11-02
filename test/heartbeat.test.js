@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readyProject as project, sandbox, sandboxDb } from './sandbox.js';
 import { globalLimits, leadPrompt } from '../src/heartbeat.js';
+import { jobLabel } from '../src/schedule.js';
 
 test('an untrusted project is skipped with an alert, never a decision request (D160)', () => {
   const p = project();
@@ -135,17 +136,14 @@ test('the token cap stops the lead agent, and so does the turn cap', () => {
   p.run('heartbeat', 'demo');
   assert.equal(p.lastRun().status, 'stopped');
   assert.match(p.lastRun().reason, /^token cap: [\d,]+ tokens over 500,000/);
-  // The user is asked at once, and the task is not tried again by itself while the request is open (D182).
+  // Not asked the first time (D199): the run left work, and the next goes on from it, told so.
   const asked = () => {
     const d = p.db();
-    const r = d.prepare("SELECT question, options, recommendation FROM requests WHERE status = 'open'").all();
+    const r = d.prepare("SELECT id, question, options, recommendation FROM requests WHERE status = 'open'").all();
     d.close();
     return r;
   };
-  assert.equal(asked().length, 1);
-  assert.match(asked()[0].question, /^The work "plain: Big task" stopped at the cap of 500,000 tokens before it was done/);
-  assert.equal(asked()[0].recommendation, 'Split it into smaller steps and try again');
-  // A normal end, which the next run resumes: an alert only when the same work stops three times in a row (D158).
+  assert.equal(asked().length, 0);
   const alerts = () => {
     const d = p.db();
     const n = d.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n;
@@ -154,9 +152,29 @@ test('the token cap stops the lead agent, and so does the turn cap', () => {
   };
   assert.equal(alerts(), 0);
   p.run('heartbeat', 'demo');
+  assert.equal(p.lastRun().mode, 'resume');
+  assert.match(p.calls().split(/^-p /m).filter((x) => /scheduled heartbeat/.test(x)).pop(), /The earlier run on this work \("Big task"\) was stopped at its token budget/);
+  // Stopped again: now the user is asked, and the runs wait for the answer at zero tokens (D182, D199).
+  assert.equal(asked().length, 1);
+  assert.match(asked()[0].question, /^The work "plain: Big task" stopped twice at the cap of 500,000 tokens before it was done, the second time going on from the first/);
+  assert.equal(asked()[0].recommendation, 'Split it into smaller steps and try again');
   assert.equal(alerts(), 0);
+  const leads = () => p.calls().split(/^-p /m).filter((x) => /scheduled heartbeat/.test(x)).length;
+  const calls = leads();
   p.run('heartbeat', 'demo');
-  assert.equal(alerts(), 1);
+  assert.equal(p.lastRun().status, 'blocked');
+  assert.match(p.lastRun().reason, /^waiting for the answer to R\d+ before resuming/);
+  assert.equal(leads(), calls, 'no lead agent');
+  assert.equal(alerts(), 0);
+  // Answered: the next run resumes, with the answer.
+  assert.equal(p.runIn(p.dir, 'request', 'answer', String(asked()[0].id), 'Split it into smaller steps and try again').status, 0);
+  p.run('heartbeat', 'demo');
+  assert.equal(p.lastRun().mode, 'resume');
+  assert.match(p.calls().split(/^-p /m).filter((x) => /scheduled heartbeat/.test(x)).pop(), /Split it into smaller steps and try again/);
+  assert.match(p.calls().split(/^-p /m).filter((x) => /scheduled heartbeat/.test(x)).pop(), /the user answered R\d+ ".*": "Split it into smaller steps and try again"/);
+  // Stopped again after the answer: counted afresh, not asked at once, and no alert, the user having just answered.
+  assert.equal(asked().length, 0);
+  assert.equal(alerts(), 0);
 
   const q = project({ FAKE_TRIAGE: '{"work": true, "task": "Long task"}', FAKE_LEAD_RESULT: 'error_max_turns' });
   q.run('heartbeat', 'demo');
@@ -490,12 +508,14 @@ test('a stopped run goes back to the branch it started from, and the next run re
   assert.equal(p.lastRun().mode, 'resume');
   assert.match(p.lastRun().reason, /→ turn cap: 40 turns; end check: .*; branch task\/some left, 1 commit: kept, back on main; next run resumes$/);
   assert.equal(branch(), start);
+  // Stopped twice on the same work: asked now (D199), and answered so the runs go on.
+  assert.deepEqual(p.requests().map((r) => r.question.slice(0, 54)), ['The work "plain: Half a task" stopped twice at the cap']);
+  assert.equal(p.runIn(p.dir, 'request', 'answer', String(p.requests()[0].id), 'Try it again as it is').status, 0);
   p.runWith({ FAKE_LEAD_BRANCH: 'task/dirty', FAKE_LEAD_DIRTY: '1' }, 'heartbeat', 'demo');
   assert.match(p.lastRun().reason, /ended on branch task\/dirty, not main; .*; changes left on task\/dirty; next run resumes$/);
   assert.equal(branch(), 'task/dirty');
-  // An alert, and the next run takes the branch it left back up, in RESUME mode; the one request is the first run's,
-  // stopped by its turn cap (D182): resumed runs open none of their own.
-  assert.deepEqual(p.requests().map((r) => r.question.slice(0, 48)), ['The work "plain: Half a task" stopped at the cap']);
+  // An alert, and the next run takes the branch it left back up, in RESUME mode.
+  assert.deepEqual(p.requests(), []);
   const d = p.db();
   assert.equal(d.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n, 1);
   d.close();
@@ -575,4 +595,22 @@ test('the token cap weighs the context read again from the cache at a tenth, as 
   assert.equal(run.input + run.output + run.cache_read + run.cache_write_1h, 543_398);
   assert.equal(capTokens(run), 83_127);
   assert.equal(capTokens({ input: 1000, output: 500 }), 1500, 'what is not read again counts whole');
+});
+
+test('near the token cap each agent of the run is told once to wrap up, on its next command; other sessions are not (D199)', () => {
+  const p = project();
+  const file = join(p.root, '.cache', 'jerome', 'heartbeat', `${jobLabel(p.dir)}.budget.json`);
+  mkdirSync(join(p.root, '.cache', 'jerome', 'heartbeat'), { recursive: true });
+  writeFileSync(file, JSON.stringify({ sessionId: 'run-1', told: [] }));
+  const bash = (session, agent) => {
+    const r = p.runWithInput({ CLAUDE_PROJECT_DIR: p.dir, JEROME_RUN_KIND: 'heartbeat', JEROME_SESSION_ID: session },
+      JSON.stringify({ cwd: p.dir, session_id: session, tool_name: 'Bash', tool_input: { command: 'git status' }, ...(agent ? { agent_id: agent } : {}) }), 'hook', 'pre-tool-use');
+    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.permissionDecisionReason : null;
+  };
+  assert.equal(bash('other'), null, 'another run is not told');
+  assert.match(bash('run-1', 'a1'), /80% of its token budget.*reply to the lead agent with what is done and what is left/);
+  assert.equal(bash('run-1', 'a1'), null, 'once');
+  assert.match(bash('run-1'), /80% of its token budget.*commit what is done on its work branch.*The next run goes on from there/);
+  assert.equal(bash('run-1'), null);
+  assert.match(bash('run-1', 'a2'), /reply to the lead agent/);
 });
