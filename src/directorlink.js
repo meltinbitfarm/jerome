@@ -3,18 +3,22 @@
 // at connect, once Fabio has compared its fingerprint, and any response not signed with it is ignored (D146). What
 // the beat carries is listed in D147: percentages, the projects' state and their finished runs, never a credential,
 // code, prompts, transcripts or paths; and, since D177, each project's board: the texts of its work items and runs.
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir, hostname } from 'node:os';
+// Step 3 (D148, D149): the permits in the Director's answer, checked here and run as this Mac would run its own work,
+// and the slots' question before they run (askDirector).
+import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { newKeys, fingerprint, signRequest, verifyResponse } from './sign.js';
-import { VERSION, MARKER } from './template.js';
+import { directorMode } from './directormode.js';
+import { VERSION, MARKER, readMarker } from './template.js';
 import { stores } from './store.js';
 import { openDb } from './db.js';
 import { readAccount } from './account.js';
 import { refreshQuota, readingTime } from './quota.js';
-import { governorSettings } from './governor.js';
+import { governorSettings, fillBlock, launchRun } from './governor.js';
 import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
+import { linkPath, statePath, permitsPath, readLink, readState, readPermits, SILENT_MS } from './directormode.js';
 import { openAlerts } from './alerts.js';
 import { scrub } from './scrub.js';
 import { lang } from './i18n.js';
@@ -26,32 +30,13 @@ import { runOrders } from './orders.js';
 import { unlocked } from './unlocked.js';
 import { pushPending } from './push.js';
 
-export function linkPath(env = process.env) {
-  return join(env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'jerome', 'director.json');
-}
-const statePath = () => cacheDir('director', 'state.json');
-
-export function readLink(env = process.env) {
-  try {
-    return JSON.parse(readFileSync(linkPath(env), 'utf8'));
-  } catch {
-    return null;
-  }
-}
+export { linkPath, readLink };
 
 function writeLink(link, env) {
   const file = linkPath(env);
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   writeFileSync(file, `${JSON.stringify(link, null, 2)}\n`, { mode: 0o600 });
   chmodSync(file, 0o600);
-}
-
-function readState() {
-  try {
-    return JSON.parse(readFileSync(statePath(), 'utf8'));
-  } catch {
-    return { cursors: {} };
-  }
 }
 
 function writeState(state) {
@@ -154,6 +139,12 @@ export async function connectStatus({ env = process.env } = {}) {
   console.log(`director ${link.url} · fingerprint ${link.director.fingerprint}`);
   console.log(`this mac ${link.name} · code ${link.machine} · ${s.status === 'approved' ? 'approved' : s.status === 'revoked' ? 'revoked on the Director' : `waiting for approval: on the server, jerome director approve ${link.machine}`}`);
   console.log(`beat     ${s.lastOk ? `last answered ${minutesAgo(s.lastOk)}` : 'never answered yet'}${s.lastError ? ` · last error ${minutesAgo(s.lastErrorAt)}: ${s.lastError}` : ''}`);
+  const mode = directorMode(env);
+  console.log(`mode     ${!mode ? 'the Director only observes: this Mac keeps phase 1 (its own governor, if on)'
+    : mode.mode === 'directed' ? `directed: fill runs and slots on the Director's permits${s.pace ? ` · pace ${s.pace.verdict}: ${s.pace.why}` : ''}`
+      : `local since ${s.lastOk ?? 'never'}: the Director is silent, so slots run held at the 5-hour cap and the reserve, fill runs at most one every 2 hours`}`);
+  const going = Object.entries(readPermits()).filter(([, p]) => Date.now() - Date.parse(p.at) < 12 * 3_600_000);
+  if (going.length) console.log(`permits  ${going.map(([id, p]) => `${id} ${p.kind === 'slot' ? `slot ${p.slot}` : 'fill'} in ${basename(p.dir)}, ${minutesAgo(p.at)}`).join(' · ')}`);
   return 0;
 }
 
@@ -161,6 +152,7 @@ export async function disconnect({ env = process.env } = {}) {
   const link = readLink(env);
   rmSync(linkPath(env), { force: true });
   rmSync(statePath(), { force: true });
+  rmSync(permitsPath(), { force: true });
   console.log(link ? `✓ Disconnected from ${link.url}. Its key is deleted here; \`jerome director revoke ${link.name}\` on the server removes it there.` : 'Not connected to a Director.');
   return 0;
 }
@@ -220,6 +212,9 @@ function projectBeat(s, filled, cursors, now) {
       overLimit: Boolean(projectOver(status)),
       lastHeartbeat: last ? { at: last.started_at, status: cut(last.status, 20), reason: cut(last.reason, 200) } : null,
       usage: { today: { tokens: status.daily.tokens, usd: status.daily.usd }, week: { tokens: status.weekly.tokens, usd: status.weekly.usd } },
+      // For its permits (D201): the model its heartbeats use and their longest run.
+      model: cut(readMarker(dir).heartbeat?.model ?? 'opus', 60),
+      maxMinutes: config.maxMinutes,
     };
     // What the user unlocked here, and the push asked (D194-D196), for a Director that knows them.
     const open = Object.keys(unlocked(dir)).slice(0, 20).map((g) => cut(g, 20));
@@ -317,6 +312,8 @@ async function beat({ env, now, log }) {
   if (!atLeast(state.directorVersion, '0.16.1')) for (const p of projects) delete p.rules?.push?.after;
   // Why the lead agent asks for the push sooner (D198): only to a Director from 0.17.0.
   if (!atLeast(state.directorVersion, '0.17.0')) for (const p of projects) delete p.rules?.push?.why;
+  // The model and the longest run, for permits (D201): only to a Director from 0.19.0.
+  if (!atLeast(state.directorVersion, '0.19.0')) for (const p of projects) { delete p.model; delete p.maxMinutes; }
   const sendQuota = quota && quota.readAt !== state.quotaReadAt;
   const sending = [];
   let size = 0;
@@ -336,10 +333,16 @@ async function beat({ env, now, log }) {
   if (problem) {
     if (problem !== state.lastError) log(`director: ${problem}`);
     const status = r.status === 403 ? (/revoked/.test(problem) ? 'revoked' : 'pending') : state.status;
-    writeState({ ...state, status, lastError: problem, lastErrorAt: now.toISOString() });
+    // Silent for SILENT_MS while it decided: local mode, said once (D149).
+    const local = state.mode === 'directing' && (!state.lastOk || now.getTime() - Date.parse(state.lastOk) > SILENT_MS);
+    if (local && !state.local) log('director: no answer for 5 minutes: local mode, slots held at the 5-hour cap and the reserve, fill runs at most one every 2 hours');
+    writeState({ ...state, status, lastError: problem, lastErrorAt: now.toISOString(), local: local || state.local === true });
     return { error: problem };
   }
   if (state.lastError || state.status !== 'approved') log('director: beat answered');
+  const mode = r.data.mode === 'directing' ? 'directing' : 'observing';
+  if (mode !== (state.mode ?? 'observing')) log(mode === 'directing' ? 'director: directing this Mac: fill runs and slots on its permits' : 'director: only observing: this Mac keeps phase 1');
+  else if (state.local && mode === 'directing') log('director: answering again: directed');
   for (const run of runs.slice(0, 50)) state.cursors[run.project] = Math.max(state.cursors[run.project] ?? 0, run.id);
   for (const b of sending) state.boards[b.board.key] = { hash: b.sum, at: now.toISOString() };
   state.orders.unsent = state.orders.unsent.slice(unsent.length);
@@ -350,10 +353,83 @@ async function beat({ env, now, log }) {
     const sent = await call(link, '/v1/results', { results: results.slice(0, 50) });
     if (sent.error || sent.status >= 400) state.orders.unsent.push(...results);
   }
+  // The Director's permits (D148): checked, then run as this Mac runs its own work.
+  if (mode === 'directing' && Array.isArray(r.data.permits)) runPermits(r.data.permits, { env, now, log });
   // An order is remembered a day, so one given again is reported rather than run twice.
   const day = now.getTime() - 86_400_000;
   for (const [id, x] of Object.entries(state.orders.done)) if (Date.parse(x.at) < day) delete state.orders.done[id];
   writeState({ ...state, status: 'approved', lastOk: now.toISOString(), lastError: null, lastErrorAt: null, quotaReadAt: sendQuota ? quota.readAt : state.quotaReadAt,
-    directorVersion: typeof r.data.version === 'string' ? r.data.version.slice(0, 20) : null });
+    directorVersion: typeof r.data.version === 'string' ? r.data.version.slice(0, 20) : null, mode, local: false,
+    // Kept for local mode (D149): the Director's settings, and its pace to show.
+    settings: mode === 'directing' ? pick(r.data.settings, ['target', 'reserve', 'fiveHourCap']) : null,
+    pace: mode === 'directing' ? pick(r.data.pace, ['verdict', 'why', 'target']) : null });
   return r.data;
+}
+
+const pick = (o, keys) => (o && typeof o === 'object' ? Object.fromEntries(keys.filter((k) => ['number', 'string'].includes(typeof o[k])).map((k) => [k, typeof o[k] === 'string' ? o[k].slice(0, 300) : o[k]])) : null);
+
+const PERMIT = ['id', 'project', 'kind', 'model', 'maxMinutes', 'expiresAt'];
+const MODELS = ['opus', 'sonnet', 'haiku'];
+
+// Whether this Mac runs a permit (D148): the Director's signature was checked with the answer; here, that it names a
+// project of this Mac (a slot of that project, or a project offered for fill runs), a model it may use, no longer a
+// run than the project's own, that it has not expired and has no other field. Returns { dir, slot } or { why }.
+export function checkPermit(p, { now = new Date(), projects = new Map(), filled = new Set() } = {}) {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return { why: 'not a permit' };
+  const fields = p.kind === 'slot' ? [...PERMIT, 'slot'] : PERMIT;
+  const extra = Object.keys(p).find((k) => !fields.includes(k));
+  if (extra) return { why: `a field it should not have: ${String(extra).slice(0, 40)}` };
+  if (!Number.isInteger(p.id) || !['fill', 'slot'].includes(p.kind) || typeof p.project !== 'string' || typeof p.model !== 'string'
+    || typeof p.maxMinutes !== 'number' || typeof p.expiresAt !== 'string' || (p.kind === 'slot' && typeof p.slot !== 'string')) return { why: 'a field missing or of the wrong kind' };
+  const dir = projects.get(p.project);
+  if (!dir) return { why: 'not a project of this Mac' };
+  const { config } = heartbeatConfig(dir);
+  const own = readMarker(dir).heartbeat?.model ?? 'opus';
+  if (![...MODELS, own].includes(p.model)) return { why: `model ${p.model.slice(0, 40)} not allowed` };
+  if (!(p.maxMinutes > 0) || p.maxMinutes > config.maxMinutes) return { why: `${p.maxMinutes} minutes, longer than the project's ${config.maxMinutes}` };
+  if (!(Date.parse(p.expiresAt) > now.getTime())) return { why: 'expired' };
+  if (p.kind === 'slot' && !config.slots.some((x) => x.name === p.slot)) return { why: `no slot ${p.slot.slice(0, 40)} in the project` };
+  if (p.kind === 'fill' && !filled.has(real(dir))) return { why: 'not offered for fill runs (`jerome governor add`)' };
+  return { dir, slot: p.kind === 'slot' ? p.slot : null };
+}
+
+// Each permit once: checked, kept with its folder for the run to find, and started apart from the watchdog. A fill run
+// also meets this Mac's own reasons not to start one now (D176, D187).
+function runPermits(permits, { env, now, log }) {
+  const kept = readPermits();
+  const projects = new Map(stores().filter((s) => !s.orphan && s.record?.path && existsSync(join(s.record.path, MARKER))).map((s) => [s.key, s.record.path]));
+  const filled = new Set(governorSettings().projects.map(real));
+  for (const p of permits.slice(0, 20)) {
+    if (kept[p?.id]) continue;
+    const ok = checkPermit(p, { now, projects, filled });
+    const why = ok.why ?? (ok.slot ? (lockHolder(ok.dir) ? 'another heartbeat of the project is running' : null) : fillBlock(ok.dir, now));
+    kept[p?.id ?? `bad-${now.getTime()}`] = { kind: p?.kind ?? null, slot: ok.slot ?? null, dir: ok.dir ?? null, model: p?.model ?? null, maxMinutes: p?.maxMinutes ?? null, at: now.toISOString(), dropped: why ?? null };
+    writePermits(kept, now);
+    if (why) {
+      log(`director: permit ${String(p?.id).slice(0, 12)} dropped: ${why}`);
+      continue;
+    }
+    log(`director: permit ${p.id}: ${ok.slot ? `slot ${ok.slot}` : 'fill run'} in ${basename(ok.dir)}`);
+    launchRun(ok.dir, env, ok.slot ? ['heartbeat', 'run', ok.slot, ok.dir, '--permit', String(p.id)] : ['heartbeat', 'fill', ok.dir, '--permit', String(p.id)]);
+  }
+}
+
+// Permits are remembered a day, so one given again is not run twice.
+function writePermits(kept, now) {
+  const day = now.getTime() - 86_400_000;
+  const fresh = Object.fromEntries(Object.entries(kept).filter(([, x]) => Date.parse(x.at) > day));
+  mkdirSync(dirname(permitsPath()), { recursive: true });
+  writeFileSync(permitsPath(), JSON.stringify(fresh));
+}
+
+// A slot's run asks the Director before it starts (S4, 10 seconds at most): { go, permit } or { queued, why }, or
+// { error } when it does not answer, and the run goes on as in local mode.
+export async function askDirector(key, slot, env = process.env) {
+  const link = readLink(env);
+  if (!link) return { error: 'not connected' };
+  const r = await call(link, '/v1/ask', { project: key, slot: String(slot).slice(0, 40) });
+  if (r.error) return { error: r.error };
+  if (r.status >= 400) return { error: r.data.error };
+  if (r.data.go === false) return { queued: true, why: cut(r.data.why ?? 'no room now', 300) };
+  return { go: true, permit: Number.isInteger(r.data.permit) ? r.data.permit : null };
 }

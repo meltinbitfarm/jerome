@@ -1,8 +1,10 @@
 // Jérôme Director, the coordinator of every Mac that runs Jérôme with the same Claude account (docs/specs/director.md,
 // D145-D155). Step 1: it sees. Macs connect with `jerome connect`, Fabio approves each one, and every minute each
 // approved Mac's watchdog sends a signed beat with the quota it read, its projects and its finished runs, which the
-// Director keeps. It never reaches a Mac: it only answers, and every answer is signed (D146). It listens on one VPN or
-// private address, never on a public one (D145), and holds no credential of anyone's (D139, D147).
+// Director keeps. Step 3: it decides, once turned on (src/permits.js, D148, D201): permits for fill runs and slots in
+// the beat's answer, and slots that ask first. It never reaches a Mac: it only answers, and every answer is signed
+// (D146). It listens on one VPN or private address, never on a public one (D145), and holds no credential of
+// anyone's (D139, D147).
 import { createServer } from 'node:http';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -13,6 +15,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { newKeys, fingerprint, sameCode, verifyRequest, signResponse, NONCE_MS } from './sign.js';
 import { VERSION } from './template.js';
 import { serveDashboard, takeOrder, ORDER_BODY } from './dashboard.js';
+import { createPermitTables, directorSettings, saveSettings, directorPace, decide, followPermits, permitsFor, askSlot, decisions } from './permits.js';
+import { GOVERNOR_DEFAULTS } from './pacing.js';
 
 export const DEFAULT_PORT = 7788;
 // A beat with boards (D177) is larger than one without.
@@ -133,6 +137,8 @@ export function openDirectorDb(env = process.env) {
   }
   // Added with the dashboard in the user's language (D163).
   if (!db.prepare('PRAGMA table_info(machines)').all().some((c) => c.name === 'language')) db.exec('ALTER TABLE machines ADD COLUMN language TEXT');
+  // Step 3 (D148, D201): permits, queued slots, settings.
+  createPermitTables(db);
   return db;
 }
 
@@ -171,6 +177,8 @@ const SHAPES = {
       alerts: [{ id: 'number', reason: 'string:300', 'count?': 'number', 'openedAt?': 'string:40' }, 50],
       requests: [{ id: 'number', question: 'string:300', 'options?': 'string:300', 'recommendation?': 'string:300' }, 50],
       overLimit: 'boolean',
+      // The model and the longest run of the project's heartbeats, for its permits (D201).
+      'model?': 'string:60', 'maxMinutes?': 'number',
       'lastHeartbeat?': { at: 'string:40', status: 'string:20', reason: 'string:300' },
       usage: { today: USAGE, week: USAGE },
       // What the user unlocked in the project, and the push asked and not answered (D194-D196).
@@ -185,6 +193,7 @@ const SHAPES = {
     'results?': [RESULT, 50],
   },
   results: { results: [RESULT, 50] },
+  ask: { project: 'string:120', slot: 'string:40' },
 };
 
 export function checkShape(value, shape, at = 'body') {
@@ -315,6 +324,7 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
       db.prepare(`DELETE FROM boards WHERE machine = ? AND key NOT IN (${keys.map(() => '?').join(', ') || "''"})`).run(id, ...keys);
       for (const r of body.runs) db.prepare('INSERT OR REPLACE INTO runs (machine, project, run_id, ended_at, data) VALUES (?, ?, ?, ?, ?)').run(id, r.project, r.id, r.endedAt ?? null, JSON.stringify(r));
       record(id, body.results ?? [], at);
+      followPermits(db, id, body.projects, now());
       const old = new Date(now() - KEEP_DAYS * 86_400_000).toISOString();
       db.prepare('DELETE FROM readings WHERE read_at < ?').run(old);
       db.prepare('DELETE FROM runs WHERE ended_at < ?').run(old);
@@ -323,10 +333,31 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
       db.exec('ROLLBACK');
       throw err;
     }
-    // Step 1: the Director only sees. Permits come with step 3. The dashboard's orders for this Mac go with the answer
-    // (D169, D191): data the Mac checks and runs under its own rules, never a command.
-    // Its version tells the Mac which fields it knows (D196).
-    return { status: 200, body: { ok: true, mode: 'observing', permits: [], orders: ordersFor(id), version: VERSION } };
+    // Step 3 (D148, D201): once on, the Director decides at every beat, from what every Mac said, and this Mac gets its
+    // permits; off, it only sees, and each Mac keeps phase 1. The dashboard's orders for this Mac go with the answer
+    // (D169, D191): data the Mac checks and runs under its own rules, never a command. Its version tells the Mac which
+    // fields it knows (D196).
+    return { status: 200, body: { ok: true, ...direction(id), orders: ordersFor(id), version: VERSION } };
+  };
+
+  // The mode, this Mac's permits, the pace and the settings, for the Mac to fall back on when the Director is silent (D149).
+  const direction = (machine) => {
+    const settings = directorSettings(db);
+    if (!settings.on) return { mode: 'observing', permits: [] };
+    for (const g of decide(db, { now: now(), log })) log(`permit ${g.id}: ${g.kind === 'slot' ? `slot ${g.slot} of ${g.project}, queued until now` : `fill run in ${g.project}, ${g.why}`}`);
+    const { pace: p } = directorPace(db, now(), settings);
+    return { mode: 'directing', permits: permitsFor(db, machine, now()), pace: { verdict: p.verdict, why: p.why, target: p.target },
+      settings: { target: settings.target, reserve: settings.reserve, fiveHourCap: settings.fiveHourCap } };
+  };
+
+  // A slot's run asks before it starts (S4): a go with its permit, or queued, with no alert, until there is room.
+  const ask = (req) => {
+    const id = req.headers['x-jerome-machine'];
+    const machine = id ? db.prepare('SELECT id, public_key, status FROM machines WHERE id = ?').get(id) : null;
+    if (!machine) throw new Refusal(401, 'unknown Mac: run `jerome connect` again');
+    authentic(req, machine.public_key);
+    if (machine.status !== 'approved') throw new Refusal(403, machine.status === 'pending' ? 'waiting for approval' : 'this Mac was revoked');
+    return { status: 200, body: askSlot(db, id, parse(req, SHAPES.ask), { now: now(), log }) };
   };
 
   // The orders waiting for a Mac, given again at each beat until it reports them; older than ORDER_MS they lapse.
@@ -355,7 +386,7 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
     return { status: 200, body: { ok: true } };
   };
 
-  const routes = { 'POST /v1/hello': hello, 'POST /v1/beat': beat, 'POST /v1/results': results };
+  const routes = { 'POST /v1/hello': hello, 'POST /v1/beat': beat, 'POST /v1/results': results, 'POST /v1/ask': ask };
   const handle = (req) => {
     const route = routes[`${req.method} ${req.path}`];
     if (!route) return { status: 404, body: { error: 'not found' } };
@@ -526,7 +557,45 @@ export async function status({ env = process.env } = {}) {
       const w = JSON.parse(r.data).windows;
       console.log(`quota    ${['five_hour', 'seven_day'].filter((x) => w[x]).map((x) => `${x === 'five_hour' ? '5h' : '7d'} ${w[x].used}%`).join(' · ')}, read ${local(r.read_at)} by ${r.name}`);
     } else console.log('quota    no reading yet');
+    const settings = directorSettings(db);
+    if (!settings.on) console.log('decides  no: each Mac keeps phase 1; `jerome director settings on` to direct them');
+    else {
+      const { pace: p } = directorPace(db, Date.now(), settings);
+      const d = decisions(db);
+      console.log(`pace     ${p.verdict}: ${p.why} · target ${settings.target}% · reserve ${settings.reserve}% · 5h cap ${settings.fiveHourCap}%`);
+      console.log(`permits  ${d.permits.length ? d.permits.map((x) => `${x.kind === 'slot' ? `slot ${x.slot}` : 'fill'} in ${x.project} (${x.status})`).join(', ') : 'none going'}${d.queued.length ? ` · queued ${d.queued.map((q) => `${q.slot} of ${q.project}`).join(', ')}` : ''}`);
+    }
     return 0;
+  } finally {
+    db.close();
+  }
+}
+
+// `jerome director settings [on|off] [--target n] [--reserve n] [--five-hour-cap n]` (S4, D201): whether the Director
+// decides, and the pace it keeps; the Macs get them at their next beat.
+export async function settings(action, { target, reserve, fiveHourCap } = {}, { env = process.env } = {}) {
+  if (!readDirectorConfig(env)) return fail('The Director is not set up here: `jerome director init --listen <VPN address>`.');
+  const db = openDirectorDb(env);
+  try {
+    const percent = (v, name, min) => {
+      const x = Number(v);
+      if (!Number.isFinite(x) || x < min || x > 100) throw new Error(`--${name} takes a percentage from ${min} to 100.`);
+      return x;
+    };
+    const changes = {
+      ...(action ? { on: action === 'on' } : {}),
+      ...(target !== undefined ? { target: percent(target, 'target', 1) } : {}),
+      ...(reserve !== undefined ? { reserve: percent(reserve, 'reserve', 0) } : {}),
+      ...(fiveHourCap !== undefined ? { fiveHourCap: percent(fiveHourCap, 'five-hour-cap', 1) } : {}),
+    };
+    saveSettings(db, changes);
+    const s = directorSettings(db);
+    const changed = Object.keys(changes).length > 0;
+    console.log(`${changed ? '✓ ' : ''}${s.on ? 'Deciding: fill runs and slots on permits, within a minute on every Mac' : 'Not deciding: each Mac keeps phase 1 (`jerome director settings on`)'}.`);
+    console.log(`  7d to ${s.target}% by its reset, ${s.reserve}% kept for you, 5h up to ${s.fiveHourCap}%${s.target === GOVERNOR_DEFAULTS.target && s.reserve === GOVERNOR_DEFAULTS.reserve && s.fiveHourCap === GOVERNOR_DEFAULTS.fiveHourCap ? ' (the defaults)' : ''}.`);
+    return 0;
+  } catch (err) {
+    return fail(err.message, 2);
   } finally {
     db.close();
   }

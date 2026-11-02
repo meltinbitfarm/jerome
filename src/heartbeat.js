@@ -5,7 +5,7 @@
 // its caps and its max duration. Every run of the lead agent ends with a check of the state it left (D120), and
 // what goes wrong becomes an alert (D121), notified until it closes (D128); a tool the run was refused is one (D129).
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, fstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, fstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -44,11 +44,13 @@ import { notify } from './notify.js';
 import { openNotes, notesBlock, NOTES_RULE } from './notes.js';
 import { sweepLostRuns, processStart, INTERACTIVE_HOURS } from './lostruns.js';
 import { governorSettings, currentPace } from './governor.js';
+import { directorMode, grantedPermit } from './directormode.js';
+import { storeKey, cloneRoot } from './store.js';
 import { refreshQuota } from './quota.js';
 import { modelFor } from './pacing.js';
 import { answersToRecord } from './answers.js';
 
-export async function heartbeat(dirArg, { env = process.env, now = new Date(), maxTokens = null, maxTurns = null, slot: slotName = null, fill = false } = {}) {
+export async function heartbeat(dirArg, { env = process.env, now = new Date(), maxTokens = null, maxTurns = null, slot: slotName = null, fill = false, permit: permitId = null } = {}) {
   const dir = resolve(dirArg);
   const log = projectLog(dir);
   if (isLegacy(dir) && !existsSync(join(dir, MARKER))) {
@@ -141,15 +143,35 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
     // The quota governor (D141, D142), when on: a fill run starts only on a go, in case the verdict changed since the
     // watchdog asked; any heartbeat holds at the 5-hour cap and at the reserve kept for the user, but a slot's run
     // is not held for being ahead of the pace: it was scheduled on purpose. The fixed limits below stay a ceiling.
+    // With Jérôme Director deciding (D148, D149), its settings take the place of the local governor's; a run on its
+    // permit was decided there, and a slot's run with no permit asks it first: queued, it ends with no alert and the
+    // Director grants it later; with no answer it goes on as in local mode.
     let model = settings.model ?? 'opus';
-    const governed = governorSettings().on;
+    const directed = directorMode(env, now);
+    const permit = permitId !== null ? grantedPermit(permitId) : null;
+    if (permitId !== null && (!permit || permit.dropped || realDir(permit.dir) !== realDir(dir) || (permit.slot ?? null) !== slotName || (permit.kind === 'fill') !== fill)) {
+      return finish('blocked', `director: permit ${permitId} is not one this Mac accepted for this run`, { pause: true });
+    }
+    if (permit) {
+      model = permit.model;
+      config.maxMinutes = Math.min(config.maxMinutes, permit.maxMinutes);
+      note += ` (on the Director's permit ${permitId})`;
+    }
+    const governed = governorSettings().on || Boolean(directed) || Boolean(permit);
     if (governed) {
-      const p = currentPace(readAccount(), now);
-      if (fill && p.verdict !== 'go') return finish('blocked', `governor: ${p.why}`);
-      if (!fill && ['cap', 'reserve'].includes(p.kind) && !overrideToday(dir, now)) {
+      const p = currentPace(readAccount(), now, directed?.settings);
+      if (fill && !permit && p.verdict !== 'go') return finish('blocked', `governor: ${p.why}`);
+      if (slot && !permit && directed?.mode === 'directed' && !overrideToday(dir, now)) {
+        const { askDirector } = await import('./directorlink.js');
+        const a = await askDirector(storeKey(cloneRoot(dir)), slot.name, env);
+        if (a.queued) return finish('blocked', `governor: queued by the Director, ${a.why}; it starts the slot as soon as there is room`, { pause: true });
+        if (a.error) note += ` (the Director did not answer: ${a.error})`;
+        else if (a.permit) note += ` (on the Director's permit ${a.permit})`;
+      }
+      if (!fill && !permit && ['cap', 'reserve'].includes(p.kind) && !overrideToday(dir, now)) {
         return finish('blocked', `governor: ${p.why}`, { pause: true });
       }
-      const other = modelFor(model, p.avoid);
+      const other = permit ? null : modelFor(model, p.avoid);
       if (other) {
         model = other.model;
         note += ` (${other.why})`;
@@ -450,6 +472,14 @@ function setRunArea(dir, run, area) {
     db.close();
   }
 }
+
+const realDir = (p) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+};
 
 // The run's record (D118): status, reason, end, and how it ran: mode, the lead agent's exit code, the end check.
 function endRun(dir, run, status, reason, request, { mode, exitCode, outcome }) {

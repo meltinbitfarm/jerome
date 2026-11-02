@@ -8,11 +8,11 @@ It is built in five steps:
 |---|---|---|
 | 1 | **Sees:** Macs connect and are approved; every minute each one sends what it knows | in place, 0.5.0 |
 | 2 | **Shows:** a dashboard, also on the iPhone, in your language | in place, 0.5.1; simpler in 0.8.0; each project's [board](board.md) and a legend in 0.11.0; a **?** button with help, the legend and the guides in 0.12.3; answers, notes and a block's buttons in 0.13.0 |
-| 3 | **Decides:** permits for fill runs, slots that queue, a fallback when it cannot be reached | to do |
+| 3 | **Decides:** permits for fill runs, slots that queue, a fallback when it cannot be reached | in place, 0.19.0, once turned on with `jerome director settings on`; see [Deciding](#deciding) |
 | 4 | Setup on your server, step by step | in place: the Dockerfile and compose.yaml in 0.5.0, with Coolify since 2026-10-28; see [Setting it up](#setting-it-up) |
 | 5 | Telegram on the Director, one bot for every Mac | to do |
 
-Until step 3, each Mac keeps working as in phase 1: run the [quota governor](quota-governor.md) on one Mac only.
+Until you turn on step 3 with `jerome director settings on`, each Mac keeps working as in phase 1: run the [quota governor](quota-governor.md) on one Mac only.
 
 ## Security
 
@@ -68,6 +68,27 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
    - Its data come only with the token, which the browser never sends in the address: the page passes it in a header.
    - **As an app:** on the iPhone, in Safari, Share → Add to Home Screen; on the Mac, in Safari, File → Add to Dock. It opens with its own icon, the token kept in the saved address.
    - Whoever has the address sees everything the Director knows. If it leaks, `jerome director dashboard --new-token` makes the old one stop working.
+
+## Deciding
+
+Off after an update, so nothing changes until you choose it (D201). On the server:
+
+```sh
+jerome director settings on                 # the Director decides, from the next beat of each Mac
+jerome director settings --reserve 25       # the pace it keeps: --target, --reserve, --five-hour-cap
+jerome director settings off                # back to phase 1 on each Mac
+```
+
+Once on (D148, D149), the Director is the one governor of every Mac, and the local `jerome governor on` settings are not used. The projects offered for fill runs stay those given with `jerome governor add` on their Mac.
+
+- **The pace** is the same as on one Mac: the freshest reading any Mac sent, the Director's target, reserve and 5-hour cap.
+- **Fill runs:** at each beat, while the week is behind its pace, the Director gives at most one permit, at least 5 minutes after the last one on any Mac and on a reading taken since. It goes to the project whose last heartbeat is oldest, on any Mac that beat in the last 5 minutes, skipping a project that is running, has an open block, is at its own limit, or had a heartbeat or a fill run in the last 30 minutes. The model is the project's own, or Sonnet while that model's weekly limit is ahead of its pace.
+- **Slots** still fire on their Mac at their time, and first ask the Director. At the 5-hour cap, at the reserve, or with another run holding the project, the run ends as queued, with no alert, and the Director grants it at a later beat as soon as there is room, before any fill run; a slot still queued after 6 hours is dropped. A slot the Director has not heard of yet just runs.
+- **A permit** carries only its id, the project, the kind (and the slot), the model, the longest run and when it expires. The Mac drops one that names another Mac's project or a slot it does not have, a model other than Opus, Sonnet, Haiku or the project's own, a run longer than the project's, an expired one, or one with any other field, and a fill run when its own checks say no (a slot due before it could end, a session in use). It runs a permit as it runs its own work, under its own limits and rules.
+- **A Mac that goes off** frees its place: a permit not started within 3 minutes lapses, and one started lapses at its longest run plus 10 minutes.
+- **When the Director is silent** for 5 minutes, the Mac goes back to local mode at a reduced pace, said once in the watchdog's log: its slots run, held at the 5-hour cap and the reserve, and it starts a fill run of its own at most every 2 hours, with the Director's last settings. At the first answer it is directed again.
+
+`jerome director status` shows the pace, the permits going and the queued slots; `jerome connect status` on a Mac shows whether it is directed or on its own; the dashboard shows each Mac's mode and, under details, what the Director decides.
 
 ## Acting from the dashboard
 

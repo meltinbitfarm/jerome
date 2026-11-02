@@ -24,7 +24,7 @@ import { runPlain } from './plain.js';
 import { watchdogInstall, watchdogUninstall, watchdogStatus, watchdogRun } from './watchdog.js';
 import { governor, governorStatus, quota } from './governor.js';
 import { language } from './i18n.js';
-import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke, dashboard as directorDashboard } from './director.js';
+import { serve as directorServe, init as directorInit, status as directorStatus, machines as directorMachines, approve as directorApprove, revoke as directorRevoke, dashboard as directorDashboard, settings as directorSettingsCmd } from './director.js';
 import { connect, connectStatus, disconnect } from './directorlink.js';
 import { VERSION } from './template.js';
 
@@ -105,6 +105,8 @@ const USAGE = `Usage:
                           connect this Mac to Jérôme Director, the coordinator of your Macs, over your VPN
   jerome director init --listen <address> | serve | status | machines | approve <code> | revoke <mac> | dashboard [--new-token]
                           Jérôme Director, on the server: it listens only on a VPN or private address
+  jerome director settings [on | off] [--target <n>] [--reserve <n>] [--five-hour-cap <n>]
+                          whether the Director decides the Macs' fill runs and slots, and the pace it keeps
   jerome digest [dir]     what happened recently, at no token cost
     --since <n>d          the period (default 7d)
   jerome rules [dir]      what Jérôme blocks for the model in this project, and what you unlocked
@@ -158,13 +160,14 @@ const OPTIONS = {
   reserve: { type: 'string' },
   'five-hour-cap': { type: 'string' },
   'new-token': { type: 'boolean' },
+  permit: { type: 'string' },
   listen: { type: 'string' },
   name: { type: 'string' },
 };
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], rules: [], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token'], connect: ['name'], disconnect: [], plain: [] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs', 'permit'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], rules: [], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token', 'target', 'reserve', 'five-hour-cap'], connect: ['name'], disconnect: [], plain: [] };
 
 export async function main(argv) {
   let parsed;
@@ -259,7 +262,10 @@ export async function main(argv) {
         if (!Number.isInteger(runs) || runs < 1) return usageError('--runs takes a positive whole number.');
         return heartbeatStatus(dir, { runs });
       }
-      if (only('max-tokens', 'max-turns').length) return usageError(`${only('max-tokens', 'max-turns').map((o) => `--${o}`).join(', ')} not available for jerome heartbeat${sub === 'run' ? ' run' : ''}.`);
+      if (only('max-tokens', 'max-turns', 'permit').length) return usageError(`${only('max-tokens', 'max-turns', 'permit').map((o) => `--${o}`).join(', ')} not available for jerome heartbeat${sub === 'run' ? ' run' : ''}.`);
+      // The Director's permit the watchdog runs (D148): its id, the permit itself kept by the Mac.
+      const permit = v.permit === undefined ? null : Number(v.permit);
+      if (permit !== null && !Number.isInteger(permit)) return usageError('--permit takes the id of a permit from the Director.');
       const slot = sub === 'run' ? args[0] : null;
       if (sub === 'run' && !slot) return usageError('jerome heartbeat run takes the name of a slot.');
       const folders = sub === 'run' ? args.slice(1) : sub === 'fill' ? args : rest;
@@ -273,7 +279,7 @@ export async function main(argv) {
       const maxTokens = cap('max-tokens');
       const maxTurns = cap('max-turns');
       if (Number.isNaN(maxTokens) || Number.isNaN(maxTurns)) return usageError('--max-tokens and --max-turns take positive whole numbers.');
-      return heartbeat(folders[0] ?? '.', { maxTokens, maxTurns, slot, fill: sub === 'fill' });
+      return heartbeat(folders[0] ?? '.', { maxTokens, maxTurns, slot, fill: sub === 'fill', permit });
     }
     case 'request': {
       const [action, ...args] = rest;
@@ -324,7 +330,12 @@ export async function main(argv) {
     }
     case 'director': {
       const [action, ...args] = rest;
-      const usage = 'jerome director takes init, serve, status, machines, approve <code>, revoke <mac> or dashboard.';
+      const usage = 'jerome director takes init, serve, status, machines, approve <code>, revoke <mac>, settings [on|off] or dashboard.';
+      const pace = ['target', 'reserve', 'five-hour-cap'].filter((o) => parsed.values[o] !== undefined);
+      if (pace.length && action !== 'settings') return usageError(`${pace.map((o) => `--${o}`).join(', ')} go with jerome director settings.`);
+      if (action === 'settings' && args.length <= 1 && (!args.length || ['on', 'off'].includes(args[0]))) {
+        return directorSettingsCmd(args[0] ?? null, { target: parsed.values.target, reserve: parsed.values.reserve, fiveHourCap: parsed.values['five-hour-cap'] });
+      }
       if (parsed.values.listen !== undefined && !['init', 'serve'].includes(action)) return usageError('--listen goes with jerome director init or serve.');
       if (parsed.values['new-token'] !== undefined && action !== 'dashboard') return usageError('--new-token goes with jerome director dashboard.');
       if (action === 'dashboard' && !args.length) return directorDashboard({ newToken: parsed.values['new-token'] === true });

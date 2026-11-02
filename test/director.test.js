@@ -486,3 +486,141 @@ test('a Director from before 0.16.0 gets no rules from a Mac, and its orders tab
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout.trim().split('\n').pop()), [{ kind: 'note', text: 'kept' }, { kind: 'push', text: 'abc' }]);
 });
+
+// Step 3 (D148, D149, D201): the Director decides, from one database standing for what the Macs said.
+test('the Director gives fill runs across the Macs, staggered, slots first; a silent Mac gets nothing and its permits lapse (D148, D201)', async () => {
+  const { openDirectorDb } = await import('../src/director.js');
+  const { decide, askSlot, permitsFor, saveSettings, decisions } = await import('../src/permits.js');
+  const db = openDirectorDb({ XDG_DATA_HOME: mkdtempSync(join(tmpdir(), 'jerome-permits-')) });
+  let t = Date.parse('2026-11-02T12:00:00Z');
+  const iso = (ms) => new Date(ms).toISOString();
+  const reading = (used, at = t) => db.prepare('INSERT INTO readings (machine, read_at, data) VALUES (?, ?, ?)')
+    .run('A', iso(at), JSON.stringify({ readAt: iso(at), windows: { seven_day: { used, resetsAt: (t + 3.5 * 24 * H) / 1000 }, five_hour: { used: 10, resetsAt: (t + 2 * H) / 1000 } }, scoped: [], breakdown: [] }));
+  const beat = (machine) => db.prepare('UPDATE machines SET last_beat = ? WHERE id = ?').run(iso(t), machine);
+  for (const id of ['A', 'B']) db.prepare("INSERT INTO machines (id, name, public_key, status, created_at) VALUES (?, ?, 'k', 'approved', ?)").run(id, id === 'A' ? 'mini' : 'm4', iso(t));
+  const project = (machine, key, extra = {}) => db.prepare('INSERT OR REPLACE INTO projects (machine, key, name, data, updated_at) VALUES (?, ?, ?, ?, ?)').run(machine, key, key, JSON.stringify({
+    key, name: key, fill: true, running: false, slots: [{ name: 'morning', at: '09:00' }], alerts: [], requests: [], overLimit: false,
+    lastHeartbeat: null, usage: { today: { tokens: 0, usd: 0 }, week: { tokens: 0, usd: 0 } }, model: 'opus', maxMinutes: 60, ...extra }), iso(t));
+  project('A', 'radar', { lastHeartbeat: { at: iso(t - 5 * H), status: 'done', reason: 'ok' } });
+  project('B', 'climb', { lastHeartbeat: { at: iso(t - 9 * H), status: 'done', reason: 'ok' } });
+  project('B', 'busy', { alerts: [{ id: 1, reason: 'stuck' }] });
+  beat('A');
+  beat('B');
+  reading(20);
+
+  // Off, as after an update: nothing is decided, a slot just runs.
+  assert.deepEqual(decide(db, { now: t }), []);
+  assert.deepEqual(askSlot(db, 'A', { project: 'radar', slot: 'morning' }, { now: t }), { go: true, mode: 'observing' });
+  saveSettings(db, { on: true });
+
+  // Behind the pace: one fill run, in the project whose last heartbeat is oldest, on whichever Mac; never the blocked one.
+  const [first] = decide(db, { now: t });
+  assert.equal(first.project, 'climb');
+  const [permit] = permitsFor(db, 'B', t);
+  assert.deepEqual(Object.keys(permit), ['id', 'project', 'kind', 'model', 'maxMinutes', 'expiresAt']);
+  assert.deepEqual([permit.kind, permit.model, permit.maxMinutes], ['fill', 'opus', 60]);
+  assert.deepEqual(permitsFor(db, 'A', t), []);
+  // Staggered: not within 5 minutes, nor before a reading taken since.
+  t += 2 * 60_000;
+  assert.deepEqual(decide(db, { now: t }), []);
+  t += 4 * 60_000;
+  beat('A');
+  beat('B');
+  assert.deepEqual(decide(db, { now: t }), [], 'no reading since the last fill run');
+  reading(21);
+  assert.equal(decide(db, { now: t })[0].project, 'radar');
+  // The first permit was never started: it lapsed after 3 minutes.
+  assert.equal(db.prepare('SELECT status FROM permits WHERE id = ?').get(permit.id).status, 'lapsed');
+
+  // At the reserve a slot is queued, with no permit, and granted at a beat once there is room, before any fill run.
+  reading(85, t + 1000);
+  const q = askSlot(db, 'B', { project: 'climb', slot: 'morning' }, { now: t + 2000 });
+  assert.equal(q.go, false);
+  assert.match(q.why, /kept for you/);
+  assert.equal(decisions(db, t).queued.length, 1);
+  t += 10 * 60_000;
+  beat('A');
+  beat('B');
+  reading(30);
+  const granted = decide(db, { now: t });
+  assert.deepEqual(granted.map((g) => [g.kind, g.project]), [['slot', 'climb']]);
+  assert.deepEqual(permitsFor(db, 'B', t).map((p) => [p.kind, p.slot]), [['slot', 'morning']]);
+  // A slot asking while its project has a permit going is queued too, then dropped after 6 hours if never granted.
+  assert.equal(askSlot(db, 'B', { project: 'climb', slot: 'morning' }, { now: t }).queued, true);
+  // A Mac silent for over 5 minutes is given nothing; the other goes on.
+  t += 31 * 60_000;
+  beat('A');
+  reading(31);
+  db.prepare("UPDATE permits SET status = 'ended'").run();
+  db.prepare("UPDATE queue SET status = 'dropped'").run();
+  project('A', 'radar', { lastHeartbeat: { at: iso(t - 40 * 60_000), status: 'done', reason: 'ok' } });
+  const given = decide(db, { now: t });
+  assert.deepEqual(given.map((g) => g.project), ['radar']);
+  // A slot that asks with room gets its go at once, as a started permit.
+  t += 6 * 60_000;
+  const go = askSlot(db, 'A', { project: 'radar', slot: 'evening-unknown' }, { now: t });
+  assert.equal(go.go, true, 'a slot the Director has not heard of runs');
+  db.close();
+});
+
+test('a Mac directed by the Director runs its permit as a fill run, a slot at the reserve waits queued with no alert, and with the Director silent it goes back to local mode (D148, D149)', async () => {
+  const d = await startDirector();
+  const m = mac('mini', { FAKE_TRIAGE: '{"work": true, "task": "Add tests for the parser"}', JEROME_FILL_SYNC: '1' });
+  const marker = join(m.dir, '.jerome', 'project.json');
+  const kept = JSON.parse(readFileSync(marker, 'utf8'));
+  writeFileSync(marker, `${JSON.stringify({ ...kept, heartbeat: { ...kept.heartbeat, slots: [{ name: 'morning', at: ['09:00'] }] } }, null, 2)}\n`);
+  m.git('add', '.jerome/project.json');
+  m.git('commit', '-q', '-m', 'settings');
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  assert.equal(m.runIn(m.dir, 'governor', 'add').status, 0);
+  // Two beats: the first tells the Mac the Director's version, so the second carries the project's model and length.
+  m.beat();
+  m.beat();
+  assert.match(m.jerome('connect', 'status').stdout, /mode {5}the Director only observes/);
+  assert.match(d.cli('settings', 'on', '--reserve', '25').stdout, /Deciding[\s\S]*25% kept for you/);
+  m.beat();
+  assert.match(m.watchdogLog(), /director: directing this Mac[\s\S]*director: permit \d+: fill run in demo/);
+  const runs = () => {
+    const db = m.db();
+    const rows = db.prepare('SELECT status, reason, fill, slot FROM runs ORDER BY id').all();
+    db.close();
+    return rows;
+  };
+  assert.equal(runs().length, 1);
+  assert.equal(runs()[0].fill, 1);
+  assert.equal(runs()[0].status, 'done', runs()[0].reason);
+  assert.match(m.jerome('connect', 'status').stdout, /mode {5}directed: fill runs and slots on the Director's permits/);
+  assert.match(d.cli('status').stdout, /pace {5}go: 7d 6% behind its pace[\s\S]*reserve 25%/);
+
+  // At the reserve, the slot's run asks and is queued: no alert, a reason that says so.
+  const endpoint = join(m.root, 'usage.json');
+  writeFileSync(endpoint, JSON.stringify({ five_hour: { utilization: 10, resets_at: new Date(Date.now() + 2 * H).toISOString() }, seven_day: { utilization: 90, resets_at: new Date(Date.now() + 2 * 24 * H).toISOString() }, limits: [], seven_day_breakdown: { rows: [] } }));
+  m.jerome('quota');
+  m.beat();
+  m.jerome('heartbeat', 'run', 'morning', m.dir);
+  const queued = runs().at(-1);
+  assert.equal(queued.status, 'blocked');
+  assert.match(queued.reason, /^governor: queued by the Director, 7d 90% ≥ 75%: the rest is kept for you/);
+  const db = m.db();
+  assert.equal(db.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n, 0);
+  db.close();
+  assert.match(d.cli('status').stdout, /queued morning of demo/);
+  const overview = d.db();
+  assert.equal(overview.prepare("SELECT count(*) n FROM queue WHERE status = 'waiting'").get().n, 1);
+  overview.close();
+
+  // A permit the Mac did not accept is refused by the run itself.
+  const forged = m.jerome('heartbeat', 'fill', m.dir, '--permit', '999');
+  assert.equal(forged.status, 0);
+  assert.match(runs().at(-1).reason, /director: permit 999 is not one this Mac accepted/);
+
+  // The Director silent for more than 5 minutes: local mode, said once.
+  const state = join(m.root, '.cache', 'jerome', 'director', 'state.json');
+  const s = JSON.parse(readFileSync(state, 'utf8'));
+  writeFileSync(state, JSON.stringify({ ...s, lastOk: new Date(Date.now() - 10 * 60_000).toISOString() }));
+  writeFileSync(join(m.root, '.config', 'jerome', 'director.json'), JSON.stringify({ ...m.link(), url: 'http://127.0.0.1:9/' }));
+  m.beat();
+  assert.match(m.watchdogLog(), /director: no answer for 5 minutes: local mode/);
+  assert.match(m.jerome('connect', 'status').stdout, /mode {5}local since/);
+});

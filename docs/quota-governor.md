@@ -66,7 +66,7 @@ While the governor is on, each run of the lead agent saves the 5-hour and 7-day 
 
 ## One Mac only
 
-Every Mac reads the same account. Two governors would both see the week behind and both fill it. Until Jérôme Director coordinates them, turn the governor on on one Mac only. On the others, heartbeats run on their slots.
+Every Mac reads the same account. Two governors would both see the week behind and both fill it. Without [Jérôme Director](director.md), turn the governor on on one Mac only; on the others, heartbeats run on their slots. With the Director deciding (`jerome director settings on`), it is the one governor of every Mac, and the local settings are not used ([Deciding](director.md#deciding)).
 
 ## Where it shows
 

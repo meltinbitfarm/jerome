@@ -84,6 +84,12 @@ const WORDS = {
     details: 'Details: Macs, runs, past weeks',
     macs: 'Macs', mac: 'Mac', stateCol: 'State', lastBeat: 'Last beat', projectsCol: 'Projects', version: 'Version', code: 'Code',
     connected: 'connected', unreachable: (s) => `silent since ${s}`, approval: 'waiting for approval',
+    modes: { directed: 'directed', local: 'on its own', observing: '' },
+    direction: 'What the Director decides',
+    notDeciding: 'Nothing: it watches, and each Mac fills its spare quota on its own. On the server, `jerome director settings on` lets it decide.',
+    noPermits: 'No run on a permit now.',
+    permit: (p) => `${p.kind === 'slot' ? `slot ${p.slot}` : 'fill run'} in ${p.project} on ${p.machine}, ${p.status === 'started' ? 'running' : 'about to start'}`,
+    queuedSlot: (q, since) => `slot ${q.slot} of ${q.project} waits for room since ${since}`,
     runs: 'Runs', started: 'Started', project: 'Project', kind: 'Kind', status: 'Status', points: '7d',
     every: { mac: 'every Mac', project: 'every project' },
     weeks: 'Past weeks', noWeeks: 'None yet: the first shows after this week\'s reset.',
@@ -129,6 +135,12 @@ const WORDS = {
     details: 'Dettagli: Mac, run, settimane passate',
     macs: 'Mac', mac: 'Mac', stateCol: 'Stato', lastBeat: 'Ultimo battito', projectsCol: 'Progetti', version: 'Versione', code: 'Codice',
     connected: 'collegato', unreachable: (s) => `muto dal ${s}`, approval: 'aspetta l\'approvazione',
+    modes: { directed: 'guidato', local: 'da solo', observing: '' },
+    direction: 'Cosa decide il Director',
+    notDeciding: 'Niente: guarda, e ogni Mac usa da solo la quota che avanza. Sul server, `jerome director settings on` lo fa decidere.',
+    noPermits: 'Nessuna run con un permesso adesso.',
+    permit: (p) => `${p.kind === 'slot' ? `slot ${p.slot}` : 'run di riempimento'} in ${p.project} su ${p.machine}, ${p.status === 'started' ? 'in corso' : 'sta per partire'}`,
+    queuedSlot: (q, since) => `lo slot ${q.slot} di ${q.project} aspetta spazio dal ${since}`,
     runs: 'Run', started: 'Inizio', project: 'Progetto', kind: 'Tipo', status: 'Esito', points: '7g',
     every: { mac: 'tutti i Mac', project: 'tutti i progetti' },
     weeks: 'Settimane passate', noWeeks: 'Ancora nessuna: la prima compare dopo il reset di questa settimana.',
@@ -438,7 +450,7 @@ function renderDetails() {
     el('thead', {}, el('tr', {}, [W.mac, W.stateCol, W.lastBeat, W.projectsCol, W.version, W.code].map((h, i) => el('th', { class: i === 3 ? 'num' : null }, h)))),
     el('tbody', {}, data.machines.map((m) => el('tr', {},
       el('td', {}, m.name),
-      el('td', { class: m.status === 'pending' ? 'warn' : m.reachable ? 'ok' : 'high' }, m.status === 'pending' ? W.approval : m.reachable ? W.connected : W.unreachable(when(m.lastBeat))),
+      el('td', { class: m.status === 'pending' ? 'warn' : m.reachable ? 'ok' : 'high' }, m.status === 'pending' ? W.approval : `${m.reachable ? W.connected : W.unreachable(when(m.lastBeat))}${W.modes[m.mode] ? ` · ${W.modes[m.mode]}` : ''}`),
       el('td', {}, m.lastBeat ? ago(m.lastBeat) : W.never),
       el('td', { class: 'num' }, String(m.projects)),
       el('td', { class: 'muted' }, m.version ?? ''),
@@ -473,8 +485,14 @@ function renderDetails() {
   const weeks = data.weeks.length
     ? data.weeks.map((w) => el('div', {}, `${when(w.resetAt)}  `, el('span', { class: w.used >= (data.quota?.settings.target ?? 90) ? 'ok' : 'warn' }, `${w.used}%`)))
     : el('div', { class: 'muted' }, W.noWeeks);
+  // The Director's decisions (D148): its permits going and the slots it queued.
+  const d = data.direction;
+  const direction = !d?.on ? el('div', { class: 'muted' }, W.notDeciding)
+    : el('div', {}, d.permits.length ? d.permits.map((p) => el('div', {}, W.permit(p))) : el('div', { class: 'muted' }, W.noPermits),
+      d.queued.map((q) => el('div', { class: 'warn' }, W.queuedSlot(q, when(q.askedAt)))));
   fill('details-body',
     el('h3', {}, W.macs), macs,
+    el('h3', {}, W.direction), direction,
     el('h3', {}, W.runs), el('div', { class: 'filters' }, select('mac', macList), select('project', projectList)), runsBox,
     el('h3', {}, W.weeks), weeks);
 }

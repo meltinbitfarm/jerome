@@ -1,7 +1,8 @@
 // The quota governor, phase 1 (D141-D144): on one Mac, the watchdog reads the real quota every few minutes and, while
 // the week is behind its pace, starts fill runs in the projects given to the governor, one per project at most and
 // staggered. Off by default, and machine-wide: its settings and projects live in account.json, not in a project.
-// `jerome governor on|off|add|remove|status` and `jerome quota`.
+// `jerome governor on|off|add|remove|status` and `jerome quota`. On a Mac the Director directs (D148, D149), the
+// Director decides instead; when it is silent, the Mac fills at a reduced pace with the Director's settings.
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -15,12 +16,15 @@ import { jobLabel, logPath } from './schedule.js';
 import { heartbeatConfig, slotWithin } from './heartbeatconfig.js';
 import { projectStatus, projectOver, projectLimitSettings, limitText } from './budget.js';
 import { activeSession } from './activity.js';
+import { directorMode } from './directormode.js';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 // A project whose last heartbeat started this recently is left alone: it has just looked for work.
 export const FILL_COOLDOWN_MIN = 30;
 // The least time between two fill runs started on the machine, the time of a fresh reading of the quota.
 export const STAGGER_MIN = 5;
+// In local mode, when the Director is silent (D149): at most one fill run in this time.
+export const LOCAL_FILL_MIN = 120;
 const lastVerdictPath = () => cacheDir('governor', 'last.json');
 
 export function governorSettings(account = readAccount()) {
@@ -28,19 +32,22 @@ export function governorSettings(account = readAccount()) {
   return { on: g.on === true, target: g.target ?? GOVERNOR_DEFAULTS.target, reserve: g.reserve ?? GOVERNOR_DEFAULTS.reserve, fiveHourCap: g.fiveHourCap ?? GOVERNOR_DEFAULTS.fiveHourCap, projects: g.projects ?? [] };
 }
 
-// The pacing verdict from what account.json holds now.
-export function currentPace(account = readAccount(), now = new Date()) {
-  return pace({ windows: account.windows, readAt: readingTime(account), scoped: account.quota?.scoped ?? [], settings: governorSettings(account), now });
+// The pacing verdict from what account.json holds now, with the governor's settings or the Director's.
+export function currentPace(account = readAccount(), now = new Date(), settings = governorSettings(account)) {
+  return pace({ windows: account.windows, readAt: readingTime(account), scoped: account.quota?.scoped ?? [], settings, now });
 }
 
 // One pass of the watchdog (D142). Returns the verdict, or null with the governor off.
 export async function governorTick({ env = process.env, now = new Date(), log = () => {} } = {}) {
-  if (!governorSettings().on) return null;
+  // Directed, the Director gives the fill runs (D148); silent, this Mac fills alone at a reduced pace (D149).
+  const directed = directorMode(env, now);
+  if (directed?.mode === 'directed') return null;
+  if (!directed && !governorSettings().on) return null;
   const before = readAccount().quota?.error ?? null;
   const account = await refreshQuota({ env, now });
   const error = account.quota?.error ?? null;
   if (error && error !== before) log(`governor: quota not read: ${error}`);
-  const p = currentPace(account, now);
+  const p = currentPace(account, now, directed?.settings);
   const g = governorSettings(account);
   // The verdict goes to the log when it changes, not every minute.
   let last = {};
@@ -63,13 +70,13 @@ export async function governorTick({ env = process.env, now = new Date(), log = 
   // STAGGER_MIN minutes after the last, and on a reading taken since, so the pace sees what the runs already
   // started are taking before it adds one.
   const started = last.startedAt ? Date.parse(last.startedAt) : 0;
-  if (now.getTime() - started < STAGGER_MIN * 60_000) return p;
+  if (now.getTime() - started < (directed ? LOCAL_FILL_MIN : STAGGER_MIN) * 60_000) return p;
   if (started && (readingTime(account)?.getTime() ?? 0) <= started) return p;
   const dir = pickProject(g.projects, now);
   if (!dir) return p;
-  log(`governor: fill run in ${basename(dir)}: ${p.why}`);
+  log(`governor: fill run in ${basename(dir)}${directed ? ', in local mode' : ''}: ${p.why}`);
   save({ startedAt: now.toISOString() });
-  launchFill(dir, env);
+  launchRun(dir, env);
   return { ...p, started: dir };
 }
 
@@ -77,37 +84,50 @@ export async function governorTick({ env = process.env, now = new Date(), log = 
 // FILL_COOLDOWN_MIN minutes and no slot due before a run started now would end (D176), the one whose last heartbeat
 // is oldest.
 export function pickProject(projects, now = new Date()) {
-  const since = new Date(now.getTime() - FILL_COOLDOWN_MIN * 60_000).toISOString();
   const ready = [];
   for (const dir of projects) {
-    if (!existsSync(join(dir, MARKER)) || !existsSync(dbPath(dir)) || lockHolder(dir)) continue;
-    const { slots, maxMinutes } = heartbeatConfig(dir).config;
-    if (slotWithin(slots, maxMinutes, now)) continue;
-    // A project the user is working in, in a session, is left to them (D187): the fill run goes elsewhere.
-    if (activeSession(dir, { now })) continue;
-    const db = openDb(dir, { readOnly: true, migrate: false });
-    if (!db) continue;
-    try {
-      if (db.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n) continue;
-      // A project at its own daily or weekly limit would only be paused.
-      if (projectOver(projectStatus(dir, db, now))) continue;
-      const last = db.prepare("SELECT max(started_at) at FROM runs WHERE kind = 'heartbeat'").get().at;
-      if (last && last >= since) continue;
-      ready.push({ dir, last: last ?? '' });
-    } catch {
-      // A database from before the alerts is not filled: doctor migrates it at the next heartbeat.
-    } finally {
-      db.close();
-    }
+    const last = fillReady(dir, now);
+    if (typeof last === 'string') ready.push({ dir, last });
   }
   ready.sort((a, b) => a.last.localeCompare(b.last));
   return ready[0]?.dir ?? null;
 }
 
-// `jerome heartbeat fill <dir>`, apart from the watchdog, its output in the project's log. JEROME_FILL_SYNC waits
-// for it, for the tests.
-function launchFill(dir, env) {
-  const args = [BIN, 'heartbeat', 'fill', dir];
+// Why a fill run should not start in the project now, or null; also checked on a Director's permit (D148).
+export function fillBlock(dir, now = new Date()) {
+  const r = fillReady(dir, now);
+  return typeof r === 'string' ? null : r.why;
+}
+
+// The project's last heartbeat ('' for none) when a fill run may start, else { why }.
+function fillReady(dir, now) {
+  if (!existsSync(join(dir, MARKER)) || !existsSync(dbPath(dir))) return { why: 'not a Jérôme project with a database' };
+  if (lockHolder(dir)) return { why: 'another heartbeat of the project is running' };
+  const { slots, maxMinutes } = heartbeatConfig(dir).config;
+  if (slotWithin(slots, maxMinutes, now)) return { why: 'a slot of the project starts before the run could end' };
+  // A project the user is working in, in a session, is left to them (D187): the fill run goes elsewhere.
+  if (activeSession(dir, { now })) return { why: 'a session of the project is in use' };
+  const db = openDb(dir, { readOnly: true, migrate: false });
+  if (!db) return { why: 'no database' };
+  try {
+    if (db.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n) return { why: 'the project has an open block' };
+    // A project at its own daily or weekly limit would only be paused.
+    if (projectOver(projectStatus(dir, db, now))) return { why: 'the project is at its own limit' };
+    const last = db.prepare("SELECT max(started_at) at FROM runs WHERE kind = 'heartbeat'").get().at;
+    if (last && last >= new Date(now.getTime() - FILL_COOLDOWN_MIN * 60_000).toISOString()) return { why: `a heartbeat started in the last ${FILL_COOLDOWN_MIN} minutes` };
+    return last ?? '';
+  } catch {
+    // A database from before the alerts is not filled: doctor migrates it at the next heartbeat.
+    return { why: 'its database needs `jerome doctor`' };
+  } finally {
+    db.close();
+  }
+}
+
+// A heartbeat apart from the watchdog, `jerome heartbeat fill <dir>` unless told otherwise, its output in the
+// project's log. JEROME_FILL_SYNC waits for it, for the tests.
+export function launchRun(dir, env, command = ['heartbeat', 'fill', dir]) {
+  const args = [BIN, ...command];
   if (env.JEROME_FILL_SYNC) {
     spawnSync(process.execPath, args, { env, stdio: 'ignore' });
     return;

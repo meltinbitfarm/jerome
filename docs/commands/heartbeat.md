@@ -70,6 +70,8 @@ It also shows a `resume` line when the next run will resume half-done work, and 
 - **The backlog:** with no task in an area, the triage may take an item from the `## Backlog` section of `open.md`.
 - **Model:** with a model whose own weekly limit is ahead of the curve, it runs on Sonnet.
 - **Caps:** `--max-tokens` and `--max-turns` apply as for a run by hand.
+- **On a Director's permit** (D148): with [Jérôme Director](../director.md#deciding) deciding, the watchdog starts `jerome heartbeat fill <dir> --permit <id>`, or `jerome heartbeat run <slot> <dir> --permit <id>` for a queued slot, once it has checked the permit. The run takes the permit's model and its longest run, and stops as `blocked`, with no alert, on a permit this Mac did not accept for it.
+- **A slot's run with the Director deciding** first asks it whether there is room. Queued, it stops as `blocked` with no alert, and the Director grants it later; with no answer it goes on as in local mode.
 
 ## override
 

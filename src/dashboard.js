@@ -9,7 +9,8 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pace, GOVERNOR_DEFAULTS } from './pacing.js';
+import { pace } from './pacing.js';
+import { directorSettings, decisions } from './permits.js';
 import { VERSION } from './template.js';
 import { scrub } from './scrub.js';
 import { blockMessage, howLong, lasting } from './blocks.js';
@@ -162,7 +163,8 @@ export function overview(db, now = new Date()) {
   const latest = readings.at(-1) ?? null;
   const week = latest?.windows?.seven_day;
   const resetsAt = week?.resetsAt ? week.resetsAt * 1000 : null;
-  const settings = GOVERNOR_DEFAULTS;
+  // The Director's own settings (D201), which its pace keeps once it decides.
+  const settings = directorSettings(db);
   const quota = latest ? {
     readAt: latest.at,
     by: names.get(latest.machine) ?? null,
@@ -261,6 +263,12 @@ export function overview(db, now = new Date()) {
         status: o.status, result: o.result ? scrub(o.result) : null, createdAt: o.created_at, doneAt: o.done_at,
       })),
     quota,
+    // What the Director decided (D148): the permits going and the slots waiting for room.
+    direction: (() => {
+      const d = decisions(db, now.getTime());
+      const named = (x) => ({ ...x, machine: names.get(x.machine) ?? null, project: projects.find((p) => p.machineCode === x.machine && p.key === x.project)?.name ?? x.project });
+      return { on: settings.on, permits: d.permits.map(named), queued: d.queued.map(named) };
+    })(),
     machines: machines.map((m) => ({
       name: m.name,
       code: m.id,
@@ -268,6 +276,8 @@ export function overview(db, now = new Date()) {
       lastBeat: m.last_beat,
       version: m.version,
       reachable: Boolean(m.last_beat) && now.getTime() - Date.parse(m.last_beat) <= UNREACHABLE_MIN * 60_000,
+      // Directed while it beats; a Mac silent for 5 minutes runs alone, in local mode (D149).
+      mode: !settings.on ? 'observing' : Boolean(m.last_beat) && now.getTime() - Date.parse(m.last_beat) <= 5 * 60_000 ? 'directed' : 'local',
       projects: projects.filter((p) => p.machine === m.name).length,
       running: projects.filter((p) => p.machine === m.name && p.running).length,
     })),

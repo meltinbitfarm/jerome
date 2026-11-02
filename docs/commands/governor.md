@@ -16,6 +16,6 @@ jerome governor status          # settings, the quota and the pace, the projects
 | `--reserve` | 20 | % of the week kept for your own use, released evenly over its last 24 hours |
 | `--five-hour-cap` | 90 | no heartbeat starts at or above this % of the 5-hour window |
 
-The options go with `on`, which keeps the values not given. The watchdog runs the governor (`jerome watchdog install`). Turn it on on one Mac only: every Mac reads the same account.
+The options go with `on`, which keeps the values not given. The watchdog runs the governor (`jerome watchdog install`). Turn it on on one Mac only: every Mac reads the same account. With [Jérôme Director](../director.md#deciding) deciding, it decides for every Mac instead, and these settings are not used.
 
 See also [`jerome quota`](quota.md) and [`jerome heartbeat fill`](heartbeat.md#fill).

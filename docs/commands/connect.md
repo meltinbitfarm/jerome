@@ -4,7 +4,7 @@ Connects this Mac to [Jérôme Director](../director.md) (D146-D152).
 
 ```sh
 jerome connect <address> [--name <name>]   # e.g. http://100.101.102.103:7788; the name defaults to the Mac's
-jerome connect status                      # the Director, this Mac's code, approved or not, the last beat
+jerome connect status                      # the Director, this Mac's code, approved or not, the last beat, directed or local
 jerome disconnect                          # forget the Director and this Mac's key
 ```
 
@@ -23,6 +23,6 @@ jerome disconnect                          # forget the Director and this Mac's 
 - **Answers:** any answer not signed with the Director's pinned key is ignored.
 - **The log:** the watchdog's log gets a line only when the outcome changes, such as waiting for approval, answered, or not reachable.
 
-Until step 3 of the Director, connecting changes nothing in how this Mac works: the [quota governor](../quota-governor.md), if on, keeps deciding here.
+Until the Director is told to decide (`jerome director settings on` on the server), connecting changes nothing in how this Mac works: the [quota governor](../quota-governor.md), if on, keeps deciding here. Once it decides, this Mac runs fill runs and queued slots on its permits, its slots ask before they run, and with the Director silent for 5 minutes it goes on alone at a reduced pace ([Deciding](../director.md#deciding), D148, D149).
 
 `jerome disconnect` deletes the key on this Mac. On the server, `jerome director revoke <name>` removes the Mac there.
