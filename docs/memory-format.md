@@ -99,7 +99,7 @@ What was done, one line per piece of work. It is the project's diary: the next r
 
 ## The files around them
 
-- **archive.md**: `# Archive`, then the sections the entries came from (`## Decisions`, `## Assumptions`, …), each entry moved as it was, with its ID and how it ended, e.g. `- A8 (superseded by A17, 30/10): …`. Items of work closed go under a heading that contains `Closed`, with their date as `YYYY-MM-DD` in the text: those are the ones the boards show as done.
+- **archive.md**: `# Archive`, then `## Closed` for the items of work and questions closed, each as `- <ID>: <text> — done YYYY-MM-DD: <how>` (the boards show these as done, newest first by that date, and need the ID; any heading that contains `Closed` is read the same way), and `## Decisions` and `## Assumptions` for the entries superseded or settled, moved as they were with how they ended, e.g. `- A8 (superseded by A17, 30/10): …`.
 - **notes/**: details that do not fit one line: an agent's report as `YYYY-MM-DD-<agent>-<topic>.md`, and recipes, how to do something that took effort to work out, in `notes/recipes/<topic>.md`. Entries point to them by path.
 - **PROJECT.md**: the goal, the success criteria, the areas and `## Project rules`. It changes rarely, only on the user's word.
 

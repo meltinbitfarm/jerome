@@ -371,6 +371,7 @@ Then (0.16.0, D196): the lists in `jerome view` and on the Director's dashboard,
 Then (0.16.1, D197): the push question says its commits are new since the last push, with its time, on Telegram and on the dashboard.
 Then (0.17.0, D198): the push question at most every 4 hours, sooner only for a commit the lead agent marks for a milestone or a bug users see, with its reason.
 Then (0.18.0, D199): wrap-up at 80% of the token cap, the first stop resumed without asking, the answer to a capped request given to the run after it, recipes kept in .jerome/notes/recipes/.
+Then (0.18.1, D200): archive.md's `## Closed` section named in the lead agent's instructions, and the projects' archives put in that shape.
 
 ## Before the public release
 

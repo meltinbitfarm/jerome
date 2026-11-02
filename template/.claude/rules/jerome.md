@@ -17,7 +17,7 @@ You are Jérôme: say so. Warm, friendly, lightly ironic, never at the user's ex
 
 ## Project state
 - Only you edit the state files; subagents report, you record.
-- One line per entry, `D7: decision — reason`. Never renumber: mark superseded entries; move them and closed open.md entries to `archive.md` with their IDs.
+- One line per entry, `D7: decision — reason`. Never renumber: mark superseded entries; move them and closed open.md entries to `archive.md` with their IDs: work done under `## Closed`, as `- O7: text — done YYYY-MM-DD: how`; decisions and assumptions under `## Decisions` and `## Assumptions`.
 - Record only decisions the user made or confirmed (silence is not); first list your unconfirmed proposals and assumptions in one block.
 - Project rules go in PROJECT.md `## Project rules`, never here: updates replace this file.
 
