@@ -20,7 +20,7 @@ Every command of `jerome`, each with its own page. `jerome --help` prints the sa
 | [`jerome request`](request.md) | Opens and closes decision requests |
 | [`jerome telegram setup`](telegram.md) | Connects a Telegram bot: what waits for you from every project, answers to requests, notes, `/status`, and buttons that clear a block from afar (allow a tool, trust a folder, try again, skip); no model, zero tokens |
 | [`jerome watchdog install`](watchdog.md) | The machine's job, every minute: closes lost runs, reports heartbeats that did not start, has the boards' new texts put in plain words, runs the Telegram bridge, the quota governor and the beat to the Director |
-| [`jerome connect`](connect.md), [`jerome director`](director.md) | [Jérôme Director](../director.md): one coordinator for all your Macs, on your server with Docker, reached over any VPN, with signed requests and answers, and a dashboard for the phone with each project's board |
+| [`jerome connect`](connect.md), [`jerome director`](director.md) | [Jérôme Director](../director.md): one coordinator for all your Macs, on your server with Docker, reached over any VPN, with signed requests and answers, a dashboard for the phone with each project's board, permits that share the spare quota among the Macs, and one Telegram bot for all of them |
 | [`jerome governor on`](governor.md), [`jerome quota`](quota.md) | The quota governor: reads the subscription's real quota and starts fill runs while the week is behind its pace, to reach the weekly reset at about 90% |
 | [`jerome note`](note.md) | Lists and closes the notes you sent a project from Telegram |
 | [`jerome digest [dir]`](digest.md) | What happened recently, at zero tokens |

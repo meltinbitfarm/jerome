@@ -1,6 +1,6 @@
 # Telegram
 
-Jérôme can reach you on Telegram, for every project on a machine, and you can answer from there (D130-D134). It is a bridge, not a chat with the lead agent: no model reads your messages there, and it costs no tokens.
+Jérôme can reach you on Telegram, for every project on a machine, or for every project of every Mac with the bot on [Jérôme Director](#on-the-director-for-every-mac), and you can answer from there (D130-D134, D202). It is a bridge, not a chat with the lead agent: no model reads your messages there, and it costs no tokens.
 
 ## Setting it up
 

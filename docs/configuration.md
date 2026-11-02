@@ -11,6 +11,8 @@ Where each setting of a Jérôme project lives, and how to change it. Each secti
 | This Mac's link to Jérôme Director: its key, the Director's pinned key | `~/.config/jerome/director.json`, readable by you only | [`jerome connect`](commands/connect.md), `jerome disconnect` |
 | Jérôme Director, on the server: its address, its keys | `$XDG_DATA_HOME/jerome-director/` (the `director-data` volume in Docker), and `.env` next to `compose.yaml` | [`jerome director init`](commands/director.md) |
 | Telegram bridge: bot token and your chat | `~/.config/jerome/telegram.json`, readable by you only, never in a project | [`jerome telegram setup`](commands/telegram.md) |
+| Jérôme Director's decisions: on or off, target, reserve, 5-hour cap, for every Mac; the local governor's settings are then not used | the Director's database, on the server | [`jerome director settings on --reserve 25`](commands/director.md) |
+| Telegram on the Director: bot token and your chat, for every Mac | `telegram.json` in the Director's data folder (`/data/jerome-director/` in Docker), readable by its user only | [`jerome director telegram setup`](commands/director.md) |
 | Slots, branches, max duration, test command, allowed tools, quota and alert channel of the runs | `.jerome/project.json`, `heartbeat` (`slots`, `mainBranch`, `workBranch`, `maxMinutes`, `test`, `allow`, `quota`, `alerts`) | edit it, or ask the lead agent, then `jerome heartbeat install` |
 | Lift the limits on one project's runs for today | `~/.cache/jerome/heartbeat/` | `jerome heartbeat override --today` |
 | An agent's model | `.claude/agents/<name>.md`, `model` | ask the lead agent |

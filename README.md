@@ -175,7 +175,7 @@ jerome doctor                # if something looks wrong: checks the setup and fi
 |---|---|
 | [`jerome new`](docs/commands/new.md), [`jerome init`](docs/commands/init.md) | Start a project, or bring Jérôme into one you have |
 | [`jerome prompt`](docs/commands/prompt.md) | Hold the briefing in any chat |
-| [`jerome telegram setup`](docs/commands/telegram.md) | Once per Mac: questions and problems on your phone |
+| [`jerome telegram setup`](docs/commands/telegram.md) | Once per Mac, or once on the Director for every Mac: questions and problems on your phone |
 | [`jerome schedule`](docs/commands/schedule.md), [`jerome heartbeat install`](docs/commands/heartbeat.md) | Runs at fixed times |
 | [`jerome governor`](docs/commands/governor.md) | Runs that use the week's quota before it is lost |
 | [`jerome projects`](docs/commands/projects.md), [`jerome state`](docs/commands/state.md), [`jerome view`](docs/commands/view.md) | See where things stand |
