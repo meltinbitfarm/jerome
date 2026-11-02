@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" role="img" aria-label="Inside the VPN, each Mac sends the Director a signed beat every minute and takes permits and orders from its signed answer; the Director never opens a connection to a Mac. The dashboard on the phone reads the data and places orders. The Telegram bot lives on the Director and talks to Telegram outside the VPN.">
+  <style>
+    :root { --bg: #ffffff; --fg: #18202b; --muted: #5b6676; --line: #b9c2cf; --accent: #1f4fa3; --accent-soft: #e3ebf8; --stop: #c2352b; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1a212b; --fg: #e6ebf2; --muted: #9aa6b6; --line: #3b4757; --accent: #7da6f0; --accent-soft: #1d2b44; --stop: #f07a6f; } }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; fill: var(--fg); }
+    .bg { fill: var(--bg); }
+    .h { font-size: 13.5px; font-weight: 600; }
+    .s { font-size: 11.5px; fill: var(--muted); }
+    .m { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .l { font-size: 11.5px; }
+    .la { font-size: 11.5px; fill: var(--accent); font-weight: 500; }
+    .ls { font-size: 11.5px; fill: var(--stop); font-weight: 500; }
+    .n { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+    .nb { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+    .zone { fill: none; stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 6 5; }
+    .a { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+    .aa { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+    .as { stroke: var(--stop); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+    .x { fill: var(--bg); stroke: var(--stop); stroke-width: 1.6; }
+    .xs { stroke: var(--stop); stroke-width: 1.8; }
+    .mk { fill: var(--fg); }
+    .mka { fill: var(--accent); }
+  </style>
+  <defs>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mka" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="560" rx="10"/>
+  <rect class="zone" x="10" y="10" width="940" height="380" rx="12"/>
+  <text class="m" x="28" y="34">your VPN · Tailscale, WireGuard, or a local network</text>
+
+  <rect class="n" x="40" y="100" width="240" height="110" rx="8"/>
+  <text class="h" x="56" y="126">Mac Mini</text>
+  <text class="s" x="56" y="146">projects, heartbeats, watchdog</text>
+  <text class="s" x="56" y="164">its private Ed25519 key</text>
+  <text class="s" x="56" y="182">the Claude token: it stays here</text>
+  <rect class="n" x="40" y="250" width="240" height="110" rx="8"/>
+  <text class="h" x="56" y="276">M4</text>
+  <text class="s" x="56" y="296">projects, heartbeats, watchdog</text>
+  <text class="s" x="56" y="314">its private Ed25519 key</text>
+  <text class="s" x="56" y="332">the Claude token: it stays here</text>
+
+  <rect class="nb" x="460" y="100" width="260" height="260" rx="10"/>
+  <text class="h" x="478" y="128">Jérôme Director</text>
+  <text class="s" x="478" y="148">on the VPS, in Docker, port 7788</text>
+  <text class="m" x="478" y="180">decides</text>
+  <text class="s" x="478" y="198">fill runs across the Macs, queued slots</text>
+  <text class="m" x="478" y="228">remembers</text>
+  <text class="s" x="478" y="246">quota, projects, runs, orders</text>
+  <text class="m" x="478" y="276">talks</text>
+  <text class="s" x="478" y="294">the Telegram bot of every Mac</text>
+  <text class="s" x="478" y="330">signs every answer; keeps only</text>
+  <text class="s" x="478" y="346">the Macs' public keys</text>
+
+  <line class="aa" x1="280" y1="132" x2="456" y2="132" marker-end="url(#ma)"/>
+  <text class="la" x="368" y="124" text-anchor="middle">signed beat, every minute</text>
+  <line class="a" x1="460" y1="178" x2="284" y2="178" marker-end="url(#m)"/>
+  <text class="l" x="368" y="170" text-anchor="middle">permits, orders (signed)</text>
+  <line class="aa" x1="280" y1="282" x2="456" y2="282" marker-end="url(#ma)"/>
+  <text class="la" x="368" y="274" text-anchor="middle">beat · a slot asks to go</text>
+  <line class="a" x1="460" y1="328" x2="284" y2="328" marker-end="url(#m)"/>
+  <text class="l" x="368" y="320" text-anchor="middle">permits, orders (signed)</text>
+
+  <line class="as" x1="456" y1="230" x2="290" y2="230"/>
+  <circle class="x" cx="373" cy="230" r="9"/>
+  <path class="xs" d="M368,225 L378,235 M378,225 L368,235"/>
+  <text class="ls" x="373" y="254" text-anchor="middle">never Director → Mac</text>
+
+  <rect class="n" x="790" y="100" width="140" height="110" rx="8"/>
+  <text class="h" x="806" y="126">Dashboard</text>
+  <text class="s" x="806" y="146">iPhone or Mac,</text>
+  <text class="s" x="806" y="162">with the token</text>
+  <text class="s" x="806" y="178">in the address</text>
+  <line class="a" x1="790" y1="132" x2="724" y2="132" marker-end="url(#m)"/>
+  <text class="l" x="757" y="124" text-anchor="middle">orders</text>
+  <line class="a" x1="720" y1="178" x2="786" y2="178" marker-end="url(#m)"/>
+  <text class="l" x="753" y="170" text-anchor="middle">data</text>
+
+  <rect class="n" x="40" y="450" width="240" height="64" rx="8"/>
+  <text class="h" x="56" y="476">Anthropic</text>
+  <text class="s" x="56" y="496">your account's quota</text>
+  <line class="a" x1="160" y1="360" x2="160" y2="446" marker-end="url(#m)"/>
+  <text class="l" x="170" y="410">each Mac reads the quota</text>
+
+  <rect class="n" x="460" y="450" width="260" height="64" rx="8"/>
+  <text class="h" x="478" y="476">Telegram</text>
+  <text class="s" x="478" y="496">the bot, just one</text>
+  <line class="a" x1="560" y1="360" x2="560" y2="446" marker-end="url(#m)"/>
+  <text class="l" x="552" y="410" text-anchor="end">the Macs' messages</text>
+  <line class="a" x1="620" y1="450" x2="620" y2="364" marker-end="url(#m)"/>
+  <text class="l" x="628" y="410">taps, notes, /status</text>
+
+  <rect class="n" x="790" y="450" width="140" height="64" rx="8"/>
+  <text class="h" x="806" y="476">Your phone</text>
+  <text class="s" x="806" y="496">the chat with the bot</text>
+  <line class="a" x1="720" y1="482" x2="786" y2="482" marker-end="url(#m)" marker-start="url(#m)"/>
+</svg>

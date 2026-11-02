@@ -57,6 +57,8 @@ flowchart TD
   lead --> researcher
 ```
 
+How the pieces connect on one Mac and across several, in five pictures: [docs/diagrams.md](docs/diagrams.md).
+
 You start from a brief. The lead agent keeps the project's state, proposes a team of agents for each **area**, and works towards each area's current **milestone**, one task at a time: with you in your sessions, and on its own in scheduled runs called **heartbeats**. When something is yours to decide, it leaves a **decision request** and goes on with what does not depend on it.
 
 ## Requirements
@@ -186,6 +188,7 @@ The rest, about twenty more, are for particular cases or are run by Claude Code 
 ## Learn more
 
 - [Why Jérôme works this way](docs/why.md): the choices behind it, and what was set aside
+- [Jérôme in diagrams](docs/diagrams.md): one Mac, a heartbeat, several Macs with the Director
 - [A project from start to finish](docs/guide.md), step by step
 - [Settings](docs/configuration.md): every value, where it lives and how to change it
 - [The lead agent](docs/lead-agent.md), [agents](docs/agents.md), [areas and milestones](docs/areas.md), [the briefing](docs/project-brief.md)

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 330" width="960" height="330" role="img" aria-label="A slot fires and asks the Director. If there is room it starts with a permit. If not it is queued with no alert and the Director grants it at a later beat; after 6 hours in the queue it is dropped. If the Director does not answer, it starts anyway in local mode.">
+  <style>
+    :root { --bg: #ffffff; --fg: #18202b; --muted: #5b6676; --line: #b9c2cf; --accent: #1f4fa3; --accent-soft: #e3ebf8; --stop: #c2352b; --stop-soft: #fbe7e5; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1a212b; --fg: #e6ebf2; --muted: #9aa6b6; --line: #3b4757; --accent: #7da6f0; --accent-soft: #1d2b44; --stop: #f07a6f; --stop-soft: #3a1f1e; } }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; fill: var(--fg); }
+    .bg { fill: var(--bg); }
+    .h { font-size: 13.5px; font-weight: 600; }
+    .s { font-size: 11.5px; fill: var(--muted); }
+    .m { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .l { font-size: 11.5px; }
+    .la { font-size: 11.5px; fill: var(--accent); font-weight: 500; }
+    .ls { font-size: 11.5px; fill: var(--stop); font-weight: 500; }
+    .n { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+    .nb { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+    .ns { fill: var(--stop-soft); stroke: var(--stop); stroke-width: 1.2; }
+    .a { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+    .aa { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+    .as { stroke: var(--stop); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+    .ad { stroke: var(--muted); stroke-width: 1.2; fill: none; stroke-dasharray: 4 4; }
+    .mk { fill: var(--fg); }
+    .mka { fill: var(--accent); }
+    .mks { fill: var(--stop); }
+  </style>
+  <defs>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mka" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mks" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="330" rx="10"/>
+
+  <rect class="n" x="20" y="40" width="190" height="56" rx="8"/>
+  <text class="h" x="115" y="66" text-anchor="middle">The slot fires</text>
+  <text class="s" x="115" y="84" text-anchor="middle">launchd, on its Mac</text>
+  <rect class="n" x="250" y="40" width="190" height="56" rx="8"/>
+  <text class="h" x="345" y="66" text-anchor="middle">It asks the Director</text>
+  <text class="m" x="345" y="84" text-anchor="middle">POST /v1/ask · 10 s</text>
+  <rect class="nb" x="750" y="40" width="190" height="56" rx="8"/>
+  <text class="h" x="845" y="66" text-anchor="middle">The heartbeat starts</text>
+  <text class="s" x="845" y="84" text-anchor="middle">with its permit</text>
+
+  <line class="a" x1="210" y1="68" x2="246" y2="68" marker-end="url(#m)"/>
+  <line class="aa" x1="440" y1="60" x2="746" y2="60" marker-end="url(#ma)"/>
+  <text class="la" x="595" y="52" text-anchor="middle">there is room</text>
+
+  <rect class="n" x="250" y="160" width="190" height="56" rx="8"/>
+  <text class="h" x="345" y="186" text-anchor="middle">Queued</text>
+  <text class="s" x="345" y="204" text-anchor="middle">no alert</text>
+  <rect class="n" x="500" y="160" width="190" height="56" rx="8"/>
+  <text class="h" x="595" y="186" text-anchor="middle">Granted</text>
+  <text class="s" x="595" y="204" text-anchor="middle">at a later beat</text>
+  <line class="a" x1="345" y1="96" x2="345" y2="156" marker-end="url(#m)"/>
+  <text class="l" x="355" y="124">5-hour cap, reserve,</text>
+  <text class="l" x="355" y="140">project busy</text>
+  <line class="a" x1="440" y1="188" x2="496" y2="188" marker-end="url(#m)"/>
+  <polyline class="a" points="690,188 845,188 845,100" marker-end="url(#m)"/>
+  <text class="l" x="768" y="180" text-anchor="middle">the watchdog starts it</text>
+
+  <line class="as" x1="345" y1="216" x2="345" y2="266" marker-end="url(#ms)"/>
+  <text class="ls" x="355" y="246">6 hours with no room</text>
+  <rect class="ns" x="250" y="270" width="190" height="44" rx="8"/>
+  <text class="h" x="345" y="297" text-anchor="middle">Dropped</text>
+
+  <polyline class="ad" points="440,82 470,82 470,120 720,120 720,82 746,82" marker-end="url(#m)"/>
+  <text class="s" x="595" y="112" text-anchor="middle">no answer: it starts in local mode</text>
+</svg>

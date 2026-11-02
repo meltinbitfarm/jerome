@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" width="960" height="500" role="img" aria-label="On one Mac, launchd starts the heartbeats, which work in the project and record their runs in the database; the watchdog checks the database every minute, reads the quota and starts fill runs; the Telegram bridge takes requests and alerts to the phone and brings back answers and notes.">
+  <style>
+    :root { --bg: #ffffff; --fg: #18202b; --muted: #5b6676; --line: #b9c2cf; --accent: #1f4fa3; --accent-soft: #e3ebf8; --stop: #c2352b; --stop-soft: #fbe7e5; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1a212b; --fg: #e6ebf2; --muted: #9aa6b6; --line: #3b4757; --accent: #7da6f0; --accent-soft: #1d2b44; --stop: #f07a6f; --stop-soft: #3a1f1e; } }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; fill: var(--fg); }
+    .bg { fill: var(--bg); }
+    .h { font-size: 13.5px; font-weight: 600; }
+    .s { font-size: 11.5px; fill: var(--muted); }
+    .m { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .l { font-size: 11.5px; }
+    .la { font-size: 11.5px; fill: var(--accent); font-weight: 500; }
+    .n { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+    .nb { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+    .a { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+    .aa { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+    .mk { fill: var(--fg); }
+    .mka { fill: var(--accent); }
+  </style>
+  <defs>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mka" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="500" rx="10"/>
+
+  <rect class="n" x="20" y="40" width="200" height="64" rx="8"/>
+  <text class="h" x="36" y="66">You</text>
+  <text class="s" x="36" y="86">a Claude Code session</text>
+
+  <rect class="n" x="300" y="20" width="360" height="200" rx="10"/>
+  <text class="h" x="318" y="44">The project (a git folder)</text>
+  <rect class="n" x="318" y="58" width="324" height="66" rx="6"/>
+  <text class="m" x="332" y="80">.jerome/</text>
+  <text class="s" x="332" y="98">open.md · decisions.md · digest.md</text>
+  <text class="s" x="332" y="114">the project's memory, in plain files</text>
+  <rect class="n" x="318" y="136" width="324" height="66" rx="6"/>
+  <text class="m" x="332" y="158">agent/* → main</text>
+  <text class="s" x="332" y="176">each task on a branch, then the tests</text>
+  <text class="s" x="332" y="192">and the merge; never a push or a deploy</text>
+
+  <rect class="n" x="300" y="270" width="360" height="64" rx="8"/>
+  <text class="h" x="318" y="296">The project's database</text>
+  <text class="s" x="318" y="316">runs · alerts · requests · notes · usage</text>
+
+  <rect class="nb" x="300" y="410" width="360" height="64" rx="8"/>
+  <text class="h" x="318" y="436">Telegram bridge</text>
+  <text class="s" x="318" y="456">on the Mac, always listening to the bot</text>
+
+  <rect class="n" x="20" y="410" width="200" height="64" rx="8"/>
+  <text class="h" x="36" y="436">Your phone</text>
+  <text class="s" x="36" y="456">Telegram</text>
+
+  <rect class="n" x="740" y="40" width="200" height="64" rx="8"/>
+  <text class="h" x="756" y="66">launchd</text>
+  <text class="s" x="756" y="86">a slot, for example at 09:00</text>
+  <rect class="nb" x="740" y="140" width="200" height="80" rx="8"/>
+  <text class="h" x="756" y="164">Heartbeat</text>
+  <text class="s" x="756" y="184">triage on Haiku → lead agent</text>
+  <text class="s" x="756" y="200">on Opus → its subagents</text>
+  <rect class="n" x="740" y="270" width="200" height="64" rx="8"/>
+  <text class="h" x="756" y="296">Watchdog</text>
+  <text class="s" x="756" y="316">every minute, no tokens</text>
+  <rect class="n" x="740" y="410" width="200" height="64" rx="8"/>
+  <text class="h" x="756" y="436">The account's quota</text>
+  <text class="s" x="756" y="456">Claude's usage endpoint</text>
+
+  <line class="a" x1="220" y1="72" x2="296" y2="72" marker-end="url(#m)"/>
+  <text class="l" x="258" y="64" text-anchor="middle">works</text>
+  <line class="a" x1="840" y1="104" x2="840" y2="136" marker-end="url(#m)"/>
+  <text class="l" x="850" y="125">starts</text>
+  <line class="aa" x1="740" y1="170" x2="646" y2="170" marker-end="url(#ma)"/>
+  <text class="la" x="693" y="162" text-anchor="middle">works here</text>
+  <line class="a" x1="760" y1="220" x2="664" y2="282" marker-end="url(#m)"/>
+  <text class="l" x="700" y="238" text-anchor="middle">records</text>
+  <line class="a" x1="740" y1="302" x2="664" y2="302" marker-end="url(#m)"/>
+  <text class="l" x="702" y="294" text-anchor="middle">checks</text>
+  <line class="a" x1="900" y1="270" x2="900" y2="224" marker-end="url(#m)"/>
+  <text class="l" x="908" y="252">fill run</text>
+  <line class="a" x1="840" y1="334" x2="840" y2="406" marker-end="url(#m)"/>
+  <text class="l" x="850" y="374">reads every 5 min</text>
+  <line class="a" x1="440" y1="334" x2="440" y2="406" marker-end="url(#m)"/>
+  <text class="l" x="432" y="374" text-anchor="end">requests, alerts</text>
+  <line class="a" x1="520" y1="410" x2="520" y2="338" marker-end="url(#m)"/>
+  <text class="l" x="528" y="374">answers, notes, buttons</text>
+  <line class="aa" x1="300" y1="432" x2="224" y2="432" marker-end="url(#ma)"/>
+  <text class="la" x="262" y="424" text-anchor="middle">sends</text>
+  <line class="aa" x1="220" y1="458" x2="296" y2="458" marker-end="url(#ma)"/>
+  <text class="la" x="258" y="486" text-anchor="middle">taps</text>
+</svg>

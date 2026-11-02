@@ -1,6 +1,6 @@
 # Jérôme Director
 
-Jérôme Director is the coordinator of every Mac that runs Jérôme with the same Claude account. It runs on a server of yours, with Docker, and the Macs reach it over your VPN. This is phase 2 of the [quota governor](quota-governor.md). The design is in the [spec](specs/director.md) and the decisions are D145-D155.
+Jérôme Director is the coordinator of every Mac that runs Jérôme with the same Claude account. It runs on a server of yours, with Docker, and the Macs reach it over your VPN. This is phase 2 of the [quota governor](quota-governor.md). The design is in the [spec](specs/director.md) and the decisions are D145-D155. How the Macs, the Director and Telegram are connected, in pictures: [Jérôme in diagrams](diagrams.md#several-macs).
 
 It is built in five steps:
 

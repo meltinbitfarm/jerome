@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 250" width="960" height="250" role="img" aria-label="A heartbeat goes through seven steps in order: lock, checks, limits and governor, areas, triage, lead agent, end check. Each can stop it, and every stop leaves a run with its reason.">
+  <style>
+    :root { --bg: #ffffff; --fg: #18202b; --muted: #5b6676; --line: #b9c2cf; --accent: #1f4fa3; --accent-soft: #e3ebf8; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1a212b; --fg: #e6ebf2; --muted: #9aa6b6; --line: #3b4757; --accent: #7da6f0; --accent-soft: #1d2b44; } }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; fill: var(--fg); }
+    .bg { fill: var(--bg); }
+    .h { font-size: 13.5px; font-weight: 600; }
+    .s { font-size: 11.5px; fill: var(--muted); }
+    .m { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .n { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+    .nb { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+    .a { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+    .ad { stroke: var(--muted); stroke-width: 1.2; fill: none; stroke-dasharray: 4 4; }
+    .mk { fill: var(--fg); }
+    .mkd { fill: var(--muted); }
+  </style>
+  <defs>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="md" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mkd" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="250" rx="10"/>
+
+  <rect class="n" x="19" y="40" width="118" height="64" rx="8"/>
+  <text class="h" x="78" y="68" text-anchor="middle">Lock</text>
+  <text class="s" x="78" y="86" text-anchor="middle">one per project</text>
+  <rect class="n" x="153" y="40" width="118" height="64" rx="8"/>
+  <text class="h" x="212" y="68" text-anchor="middle">Checks</text>
+  <text class="s" x="212" y="86" text-anchor="middle">git state, doctor</text>
+  <rect class="n" x="287" y="40" width="118" height="64" rx="8"/>
+  <text class="h" x="346" y="68" text-anchor="middle">Limits</text>
+  <text class="s" x="346" y="86" text-anchor="middle">quota, governor</text>
+  <rect class="n" x="421" y="40" width="118" height="64" rx="8"/>
+  <text class="h" x="480" y="68" text-anchor="middle">Areas</text>
+  <text class="s" x="480" y="86" text-anchor="middle">which are due</text>
+  <rect class="n" x="555" y="40" width="118" height="64" rx="8"/>
+  <text class="h" x="614" y="68" text-anchor="middle">Triage</text>
+  <text class="s" x="614" y="86" text-anchor="middle">Haiku, no tools</text>
+  <rect class="nb" x="689" y="40" width="118" height="64" rx="8"/>
+  <text class="h" x="748" y="68" text-anchor="middle">Lead agent</text>
+  <text class="s" x="748" y="86" text-anchor="middle">Opus + subagents</text>
+  <rect class="n" x="823" y="40" width="118" height="64" rx="8"/>
+  <text class="h" x="882" y="68" text-anchor="middle">End</text>
+  <text class="s" x="882" y="86" text-anchor="middle">clean main, digest</text>
+
+  <line class="a" x1="137" y1="72" x2="149" y2="72" marker-end="url(#m)"/>
+  <line class="a" x1="271" y1="72" x2="283" y2="72" marker-end="url(#m)"/>
+  <line class="a" x1="405" y1="72" x2="417" y2="72" marker-end="url(#m)"/>
+  <line class="a" x1="539" y1="72" x2="551" y2="72" marker-end="url(#m)"/>
+  <line class="a" x1="673" y1="72" x2="685" y2="72" marker-end="url(#m)"/>
+  <line class="a" x1="807" y1="72" x2="819" y2="72" marker-end="url(#m)"/>
+
+  <line class="ad" x1="78" y1="104" x2="78" y2="150" marker-end="url(#md)"/>
+  <text class="s" x="78" y="170" text-anchor="middle">another run</text>
+  <text class="s" x="78" y="186" text-anchor="middle">holds it</text>
+  <line class="ad" x1="212" y1="104" x2="212" y2="150" marker-end="url(#md)"/>
+  <text class="s" x="212" y="170" text-anchor="middle">an alert, or RESUME</text>
+  <text class="s" x="212" y="186" text-anchor="middle">of half-done work</text>
+  <line class="ad" x1="346" y1="104" x2="346" y2="150" marker-end="url(#md)"/>
+  <text class="s" x="346" y="170" text-anchor="middle">paused, or queued</text>
+  <text class="s" x="346" y="186" text-anchor="middle">by the Director</text>
+  <line class="ad" x1="480" y1="104" x2="480" y2="150" marker-end="url(#md)"/>
+  <text class="s" x="480" y="170" text-anchor="middle">nothing due,</text>
+  <text class="s" x="480" y="186" text-anchor="middle">at zero tokens</text>
+  <line class="ad" x1="614" y1="104" x2="614" y2="150" marker-end="url(#md)"/>
+  <text class="s" x="614" y="170" text-anchor="middle">no task it can</text>
+  <text class="s" x="614" y="186" text-anchor="middle">do without you</text>
+  <line class="ad" x1="748" y1="104" x2="748" y2="150" marker-end="url(#md)"/>
+  <text class="s" x="748" y="170" text-anchor="middle">token or turn cap:</text>
+  <text class="s" x="748" y="186" text-anchor="middle">it asks you</text>
+  <line class="ad" x1="882" y1="104" x2="882" y2="150" marker-end="url(#md)"/>
+  <text class="s" x="882" y="170" text-anchor="middle">end check failed:</text>
+  <text class="s" x="882" y="186" text-anchor="middle">an alert at once</text>
+  <text class="m" x="19" y="232">every stop leaves a run in the database, with its reason</text>
+</svg>
