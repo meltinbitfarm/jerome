@@ -6,13 +6,13 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { privateAddress, parseListen, checkListen, checkShape } from '../src/director.js';
 import { newKeys, signRequest, verifyResponse } from '../src/sign.js';
 import { scrub } from '../src/scrub.js';
 import { atLeast } from '../src/directorlink.js';
-import { readyProject } from './sandbox.js';
+import { readyProject, sandboxDb } from './sandbox.js';
 
 const BIN = new URL('../bin/jerome.js', import.meta.url).pathname;
 const H = 3_600_000;
@@ -439,6 +439,10 @@ test('the dashboard shows what is unlocked and the push asked: a tap pushes main
   // New commits after it: the page says they are new since that push, in the Mac's words (D197).
   writeFileSync(join(m.dir, 'page.md'), 'y\n');
   m.git('commit', '-q', '-am', 'Change the page');
+  // Four hours later (D198).
+  const pushState = join(dirname(sandboxDb(m.root, m.dir)), 'push.json');
+  const ps = JSON.parse(readFileSync(pushState, 'utf8'));
+  writeFileSync(pushState, JSON.stringify({ ...ps, last: new Date(Date.now() - 4 * H - 1000).toISOString() }));
   m.beat();
   m.beat();
   const again = (await overview()).attention.find((a) => a.kind === 'push');

@@ -16,9 +16,10 @@ By default every group is locked: pushing, merging or releasing on GitHub, publi
 
 Unlocked, the push is still not the model's: its `git push` stays denied. Instead:
 
-1. Once the main branch has commits not pushed, and no run is working in the project, Jérôme asks you on Telegram: how many commits, the first lines of each, and two buttons, **Push main** and **Not now**. After a push by a button, the next question says its commits are new since that push, with its time, so it does not read as the same push again (D197).
+1. Once the main branch has commits not pushed, and no run is working in the project, Jérôme asks you on Telegram, at most every 4 hours, so the commits add up and one push, with one deploy, takes them all (D198): how many commits, the first lines of each, and two buttons, **Push main** and **Not now**. After a push by a button, the next question says its commits are new since that push, with its time, so it does not read as the same push again (D197).
 2. **Push main** pushes that branch, and only it, to its own remote, never with force, if it has not changed since the question. Its commits are what the lead agent merged after the tests passed, and what you committed yourself. The push may start a deploy, if the project has one.
-3. **Not now** is not asked again until the branch has new commits. A question whose branch has changed loses its buttons, and a new one comes with the new commits.
+3. **Not now** is not asked again until the branch has new commits, and 4 hours have passed. The runs go on meanwhile: they never wait for the push. A tap on a question whose branch has changed since pushes nothing: Jérôme asks again at once, with all the commits.
+4. **Sooner**, at most every hour, only when the lead agent marks a commit on the main branch: a milestone of PROJECT.md reached, or a bug fixed that users see online. It ends that commit's message with a line `Jerome-Push: <why>`, and the question starts with that reason, after ⚡. It is told never to mark other work, since each push may start a deploy.
 
 A push that fails, for example because the remote has commits this Mac has not, is told on Telegram with git's reason, and its buttons stay for another try. The push uses this Mac's own git credentials, the ones of the watchdog's session.
 

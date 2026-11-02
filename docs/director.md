@@ -81,7 +81,7 @@ What you send from the dashboard is an **order**, and an order is data, never a 
 
 ### The push and what is unlocked
 
-In a project where you [unlocked the push](commands/rules.md), the push Jérôme asked on Telegram shows under **What you need to do** too, with its commits and the same two buttons, **Push main** and **Not now**: the first answer counts, from either side. Under each project, a line lists what you unlocked there, each with a **Lock again** button (D196). Unlocking has no button: it is done only at a terminal on the Mac, so whoever took the dashboard cannot unlock anything.
+In a project where you [unlocked the push](commands/rules.md), the push Jérôme asked on Telegram shows under **What you need to do** too, with its commits and the same two buttons, **Push main** and **Not now**: the first answer counts, from either side. A question the lead agent asked sooner starts with its reason, from a Director 0.17.0 on (D198). Under each project, a line lists what you unlocked there, each with a **Lock again** button (D196). Unlocking has no button: it is done only at a terminal on the Mac, so whoever took the dashboard cannot unlock anything.
 
 A Mac sends these only to a Director at 0.16.0 or later, which says its version in the answer to the beat; an older Director keeps working without them.
 

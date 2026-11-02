@@ -369,6 +369,7 @@ Then (0.15.0, D195): the other groups of `jerome rules` unlock too, as ask rules
 Then (0.16.0, D196): the lists in `jerome view` and on the Director's dashboard, with the push's buttons and locking again from the dashboard; unlocking stays at the Mac.
 
 Then (0.16.1, D197): the push question says its commits are new since the last push, with its time, on Telegram and on the dashboard.
+Then (0.17.0, D198): the push question at most every 4 hours, sooner only for a commit the lead agent marks for a milestone or a bug users see, with its reason.
 
 ## Before the public release
 

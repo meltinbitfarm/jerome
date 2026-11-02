@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { readyProject } from './sandbox.js';
+import { dirname, join } from 'node:path';
+import { readyProject, sandboxDb } from './sandbox.js';
 import { usersOnly } from '../src/blacklist.js';
 import { leadPrompt } from '../src/heartbeat.js';
 
@@ -43,7 +43,15 @@ function pushable() {
     assert.equal(r.status, 0, r.stderr);
   };
   const tap = (id, data) => receive({ callback_query: { id: `q${update}`, data, message: { message_id: id, chat: CHAT } } });
-  return { ...p, remoteHead, head, commit, receive, tg, idOf, tick, tap };
+  // The clock moved on: the last question, answer or push this many hours earlier (D198).
+  const state = join(dirname(sandboxDb(p.root, p.dir)), 'push.json');
+  const age = (hours) => {
+    const s = JSON.parse(readFileSync(state, 'utf8'));
+    s.last = new Date(Date.parse(s.last) - hours * 3_600_000 - 1000).toISOString();
+    writeFileSync(state, JSON.stringify(s));
+  };
+  const asked = () => tg().filter((c) => c.method === 'sendMessage' && /Shall I push/.test(c.params.text)).length;
+  return { ...p, remoteHead, head, commit, receive, tg, idOf, tick, tap, age, asked };
 }
 
 test('push is unlocked per project only at a terminal, with the project\'s name typed, and locked again (D194)', () => {
@@ -90,13 +98,16 @@ test('with push unlocked, main\'s new commits are asked on Telegram once, "not n
   p.tick();
   assert.equal(p.tg().filter((c) => c.method === 'sendMessage' && /Shall I push/.test(c.params.text)).length, 1);
 
-  // "Not now": not asked again until main has new commits.
+  // "Not now": not asked again until main has new commits, and 4 hours have passed (D198).
   p.tap(first.id, `p:${head}:no`);
   p.tick();
-  assert.match(p.idOf(/Not pushed/).call.params.text, /I ask again when main has new commits/);
+  assert.match(p.idOf(/Not pushed/).call.params.text, /I ask again with new commits on main, in 4 hours at the soonest/);
   p.tick();
-  assert.equal(p.tg().filter((c) => c.method === 'sendMessage' && /Shall I push/.test(c.params.text)).length, 1);
+  assert.equal(p.asked(), 1);
   p.commit('two');
+  p.tick();
+  assert.equal(p.asked(), 1, 'not within 4 hours');
+  p.age(4);
   p.tick();
   const second = p.idOf(/Shall I push main/);
   assert.notEqual(second.id, first.id);
@@ -125,6 +136,9 @@ test('with push unlocked, main\'s new commits are asked on Telegram once, "not n
   // A push that fails is told with git's reason, and keeps its buttons for another tap.
   p.commit('three');
   p.tick();
+  assert.equal(p.asked(), asked, 'not within 4 hours of the push');
+  p.age(4);
+  p.tick();
   const third = p.idOf(/Shall I push main/);
   // After a push, the question says its commits are new since then (D197).
   assert.match(third.call.params.text, /^(<b>[^<]+<\/b>\n)?1 new commit on main since the push at \d\d:\d\d:\n• Add three/m);
@@ -147,6 +161,50 @@ test('with push unlocked, main\'s new commits are asked on Telegram once, "not n
   assert.equal(p.tg().filter((c) => c.method === 'sendMessage' && /Shall I push/.test(c.params.text)).length, asked3);
 });
 
+test('a commit the lead agent marks asks sooner, at most every hour, saying why; a yes on a question whose branch moved asks again at once (D198)', () => {
+  const p = pushable();
+  assert.equal(p.runWithInput({ JEROME_TEST_TTY: '1' }, 'demo\n', 'rules', 'unlock', 'push', p.dir).status, 0);
+  p.commit('one');
+  p.tick();
+  const first = p.idOf(/Shall I push main/);
+  p.tap(first.id, `p:${p.head().slice(0, 12)}:go`);
+  p.tick();
+  assert.equal(p.remoteHead(), p.head());
+
+  // A bug fixed that users see: marked, asked after an hour rather than four, with the reason first.
+  writeFileSync(join(p.dir, 'fix.md'), 'fix\n');
+  p.git('add', 'fix.md');
+  p.git('commit', '-q', '-m', 'Fix the login\n\nJerome-Push: the login is fixed, users online cannot sign in now');
+  p.tick();
+  assert.equal(p.asked(), 1, 'not within the hour');
+  p.age(1);
+  p.tick();
+  const sooner = p.idOf(/Shall I push main/);
+  assert.match(sooner.call.params.text, /⚡ The lead agent asks for the push sooner than usual: the login is fixed, users online cannot sign in now\n\n1 new commit on main since the push at/);
+  // Not now: the same mark does not ask again sooner.
+  p.tap(sooner.id, `p:${p.head().slice(0, 12)}:no`);
+  p.tick();
+  p.commit('two');
+  p.age(1);
+  p.tick();
+  assert.equal(p.asked(), 2);
+  p.age(3);
+  p.tick();
+  const plain = p.idOf(/Shall I push main/);
+  assert.equal(p.asked(), 3);
+  assert.doesNotMatch(plain.call.params.text, /⚡/);
+
+  // The branch moves under the question: a yes pushes nothing and asks again at once, with all the commits.
+  p.commit('three');
+  p.tap(plain.id, `p:${plain.call.params.reply_markup.inline_keyboard[0][0].callback_data.split(':')[1]}:go`);
+  p.tick();
+  assert.match(p.idOf(/has changed since I asked/).call.params.text, /I ask again at once/);
+  p.tick();
+  assert.equal(p.asked(), 4);
+  assert.match(p.idOf(/Shall I push main/).call.params.text, /3 new commits on main/);
+  assert.notEqual(p.remoteHead(), p.head());
+});
+
 test('the model is refused unlocking, in a session too, and its run is told the push is Jérôme\'s (D194)', () => {
   for (const c of ['jerome rules unlock push', 'node bin/jerome.js rules unlock push', 'echo {} > ~/.local/share/jerome/projects/demo-1/unlocked.json', 'rm ~/.local/share/jerome/projects/demo-1/push.json']) {
     assert.ok(usersOnly(c), c);
@@ -155,6 +213,7 @@ test('the model is refused unlocking, in a session too, and its run is told the 
   const unlocked = leadPrompt('a task', null, [], { config: { mainBranch: 'main' }, push: true });
   assert.match(unlocked, /The push of main is Jérôme's in this project/);
   assert.match(unlocked, /never open a request about pushing main/);
+  assert.match(unlocked, /Jerome-Push: <why, in plain words for the user>/);
   assert.match(leadPrompt('a task', null, [], { config: { mainBranch: 'main' } }), /needs a push, a deploy or a release, which only the user does, open a request/);
 });
 
