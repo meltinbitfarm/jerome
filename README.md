@@ -187,13 +187,29 @@ The rest, about twenty more, are for particular cases or are run by Claude Code 
 
 ## Learn more
 
+The same pages, with a sidebar and search: **[meltinbitfarm.github.io/jerome](https://meltinbitfarm.github.io/jerome/)**.
+
+**Getting started**
 - [Why Jérôme works this way](docs/why.md): the choices behind it, and what was set aside
 - [Jérôme in diagrams](docs/diagrams.md): one Mac, a heartbeat, several Macs with the Director
 - [A project from start to finish](docs/guide.md), step by step
-- [Settings](docs/configuration.md): every value, where it lives and how to change it
+- [Roadmap](docs/roadmap.md)
+
+**A project**
 - [The lead agent](docs/lead-agent.md), [agents](docs/agents.md), [areas and milestones](docs/areas.md), [the briefing](docs/project-brief.md)
+- [A project's board](docs/board.md), [settings](docs/configuration.md): every value, where it lives and how to change it
+
+**On its own**
 - [Heartbeats](docs/heartbeat.md), [limits](docs/limits.md), [the quota governor](docs/quota-governor.md), [Telegram](docs/telegram.md), [the Director](docs/director.md)
-- [The lean profile](docs/lean-profile.md), [project layout](docs/project-layout.md), [usage data](docs/usage-data.md), [the database](docs/database.md)
+- [Replacing your own heartbeat scripts](docs/migrating-heartbeat-scripts.md)
+
+**How it is built**
+- [The lean profile](docs/lean-profile.md), [project layout](docs/project-layout.md), [the memory format](docs/memory-format.md), [the database](docs/database.md)
+- [Usage data](docs/usage-data.md), [hooks and status line](docs/hooks.md), [lessons on agents' token use](docs/token-lessons.md), [repository layout](docs/repository-layout.md)
+
+**Commands:** [all of them](docs/commands/README.md).
+
+**Specs:** [autonomy](docs/specs/autonomy.md), [unblocking from afar](docs/specs/unblock.md), [the quota governor](docs/specs/quota-governor.md), [the Director](docs/specs/director.md).
 
 ## Repository layout
 

@@ -1,0 +1,17 @@
+{
+  "name": "jerome-docs-site",
+  "private": true,
+  "description": "The documentation site of Jérôme, built from docs/ and the README. Not part of the npm package.",
+  "type": "module",
+  "scripts": {
+    "sync": "node sync.mjs",
+    "dev": "node sync.mjs && vitepress dev",
+    "build": "node sync.mjs && vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "mermaid": "^11.4.1",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17"
+  }
+}

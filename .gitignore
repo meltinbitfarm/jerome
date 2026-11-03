@@ -1,2 +1,6 @@
 .DS_Store
 dist/
+site/node_modules/
+site/src/
+site/.vitepress/cache/
+site/.vitepress/dist/

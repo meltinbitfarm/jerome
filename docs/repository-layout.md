@@ -13,6 +13,9 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
 │   ├── .claude/rules/jerome.md  the lead agent's instructions
 │   └── .claude/skills/  project-brief, project-team (with the agent catalog) and docs
 ├── docs/                this documentation
+├── site/                the documentation site, built from docs/ and the README (VitePress, its own package.json)
+├── .github/workflows/   docs.yml: builds site/ and publishes it on GitHub Pages at every push to main
+├── director/            the Dockerfile and compose.yaml of Jérôme Director
 ├── PLAN.md              the development plan
 └── .jerome/             Jérôme's own project state, like any project's (never copied into projects):
     ├── project.json     marks this folder as a Jérôme project
@@ -20,6 +23,12 @@ Jérôme is developed with Jérôme, so this repository holds two different thin
     ├── brief.md         the original brief, kept in Italian as a snapshot
     └── notes/           development notes, such as the usage probe
 ```
+
+## The documentation site
+
+The pages of `docs/` and the README are also a website, [meltinbitfarm.github.io/jerome](https://meltinbitfarm.github.io/jerome/), with a sidebar, search and a light and dark theme. The Markdown stays the only source: `site/sync.mjs` copies it into `site/src/` at each build, the README as the introduction, and turns the links that leave `docs/` into links to the file on GitHub. `site/` has its own `package.json`, so the site's tools never reach the `jerome` package, which keeps no dependencies. The GitHub Action `.github/workflows/docs.yml` builds and publishes it at every push to `main` that changes `docs/`, the README or `site/`; the build fails on a broken link between pages.
+
+To see it on the Mac while writing: `cd site && npm install && npm run dev`. A new page in `docs/` needs a line in the sidebar, in `site/.vitepress/config.mts`; the commands are listed there by themselves.
 
 ## The template
 
