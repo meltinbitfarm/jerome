@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Jérôme
   text: Your projects keep moving while you are away
-  tagline: The lead of each of your projects, on the Claude subscription you already pay for. On your Mac, with nothing of your work leaving it.
+  tagline: An open-source lead for your projects that makes the most of your Claude subscription. It works on your Mac on the week's quota that would otherwise go unused, and keeps a reserve for you. No API key, nothing to pay on top.
   image:
     src: /assets/jerome.png
     alt: Jérôme as a French painter, in pixel art

@@ -2,9 +2,19 @@
   <img src="docs/assets/jerome.png" width="160" height="160" alt="Jérôme as a French painter, in pixel art">
 </p>
 
+<p align="center">
+  <a href="https://meltinbitfarm.github.io/jerome/"><b>📖 Documentation site</b></a> ·
+  <a href="https://meltinbitfarm.github.io/jerome/introduction">Get started</a> ·
+  <a href="https://meltinbitfarm.github.io/jerome/diagrams">Diagrams</a> ·
+  <a href="https://meltinbitfarm.github.io/jerome/commands/">Commands</a> ·
+  <a href="https://meltinbitfarm.github.io/jerome/director">Director</a>
+</p>
+
 # Jérôme
 
 **Your projects keep moving while you are away, on the Claude subscription you already pay for.**
+
+An open-source lead for your projects that makes the most of that subscription: it works on your Mac on the week's quota that would otherwise go unused, and keeps a reserve for you. No API key, nothing to pay on top.
 
 Jérôme turns Claude Code into the lead of each of your projects. A project is a product or an initiative, not only code: development, marketing, research. The lead agent keeps the project's state in plain files, gives the work to a small team of agents, works with you in your sessions and on its own on a schedule, and asks you only what is yours to decide. It runs on your Mac, and nothing of your work leaves it.
 
