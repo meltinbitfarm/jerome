@@ -308,11 +308,16 @@ async function leadRun(dir, run, { label, prompt }, caps, given, model, env, con
   if (lead.timedOut) return result('stopped', `max duration: ${config.maxMinutes} min, process tree stopped${after}`, true);
   if (lead.interrupted) return result('stopped', `interrupted${after}`);
   if (lead.error) return result('failed', `${lead.error}${after}`);
-  // A run refused a tool did not do what it was asked, whatever its end check says (D129).
-  if (lead.denied.length) {
-    return { ...result('blocked', `permission denied for ${lead.denied.slice(0, 3).join(', ')}${lead.denied.length > 3 ? `, and ${lead.denied.length - 3} more` : ''}: add the rules to heartbeat.allow in .jerome/project.json${after}`, true, 'permission denied'), rules: lead.denied };
+  // A run refused a tool the user can allow did not do what it was asked, whatever its end check says (D129). A
+  // command is not one (D204): every command is given since D159, so one refused anyway was refused by Claude Code's
+  // own checks (a cd out of the project, a heredoc), which no rule lifts, and the lead agent goes another way; the
+  // run ends on its end check like any other.
+  const denied = lead.denied.filter((r) => !isCommand(r));
+  if (denied.length) {
+    return { ...result('blocked', `permission denied for ${denied.slice(0, 3).join(', ')}${denied.length > 3 ? `, and ${denied.length - 3} more` : ''}: add the rules to heartbeat.allow in .jerome/project.json${after}`, true, 'permission denied'), rules: denied };
   }
-  if (!check.ok) return result('failed', `end check: ${failed}${tidy}; next run resumes`);
+  const refused = lead.denied.length ? `; refused by Claude Code: ${lead.denied.slice(0, 2).join(', ')}` : '';
+  if (!check.ok) return result('failed', `end check: ${failed}${tidy}${refused}; next run resumes`);
   return result('done', `done${notes}`);
 }
 
@@ -549,9 +554,17 @@ export function tidyStale(dir, now = new Date()) {
   if (!db) return 0;
   try {
     let closed = 0;
-    for (const a of db.prepare("SELECT id, reason FROM alerts WHERE status = 'open'").all()) {
+    for (const a of db.prepare("SELECT id, reason, rules FROM alerts WHERE status = 'open'").all()) {
       const files = a.reason.match(/uncommitted changes \(([^)…]+)\)/)?.[1].split(', ');
-      if (files?.every((f) => isOwnFile(f, dir))) {
+      // A block on refused commands only, from before D204, which no rule could lift.
+      let rules = null;
+      try {
+        rules = JSON.parse(a.rules ?? 'null');
+      } catch {
+        // Unreadable: as none recorded.
+      }
+      const commandsOnly = /^permission denied for /.test(a.reason) && Array.isArray(rules) && rules.length > 0 && rules.every(isCommand);
+      if (files?.every((f) => isOwnFile(f, dir)) || commandsOnly) {
         closed += db.prepare("UPDATE alerts SET status = 'resolved', resolved_at = ? WHERE id = ?").run(now.toISOString(), a.id).changes;
       }
     }
@@ -912,6 +925,9 @@ function runLead(dir, run, { label, prompt }, caps, model, env, maxMs, stopper, 
 }
 
 // A refused tool call as the rule that would allow it: "Bash(npm run e2e)", "WebFetch(domain:x.org)", "Skill".
+// A refused command, as deniedRule names it: never a block (D204).
+export const isCommand = (rule) => /^Bash\b/.test(String(rule));
+
 export function deniedRule({ name, input = {} }) {
   const short = (x) => (x.length > 80 ? `${x.slice(0, 79)}…` : x);
   if (name === 'Bash' && input.command) return `Bash(${short(String(input.command).trim())})`;

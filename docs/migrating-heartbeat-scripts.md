@@ -51,7 +51,7 @@ Jérôme's runner (D118-D125) guarantees what such scripts usually miss:
    jerome heartbeat run <slot> --max-tokens 100000
    jerome heartbeat status
    ```
-   The run's line shows its mode, length, exit code and `end check ok` or what failed; a failure is an alert, and the next run resumes. `blocked: permission denied for …` names a command to add to `allow`.
+   The run's line shows its mode, length, exit code and `end check ok` or what failed; a failure is an alert, and the next run resumes. `blocked: permission denied for …` names a tool, such as an MCP server's, to add to `allow`.
 
 9. **Update the project's own instructions.** Remove from `PROJECT.md`, `CLAUDE.md` or notes any rule about the old scripts (how to start them, the branch check, the hour loop). Jérôme's rules (`.claude/rules/jerome.md`, updated by `jerome update`) now say to run unattended work only with `jerome heartbeat`.
 

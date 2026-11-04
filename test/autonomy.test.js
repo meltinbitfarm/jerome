@@ -371,17 +371,23 @@ test('a block only the user can clear reaches them at once, as one plain sentenc
   assert.match(status, /^alerts {3}1 open, 3 runs lost: tell the user$/m);
 });
 
-test('a run is given the test command and the allowed tools, and one refused a tool ends blocked with an alert (D129)', () => {
+test('a run is given the test command and the allowed tools, and one refused a tool ends blocked with an alert, a command never (D129, D204)', () => {
   const p = project({ FAKE_TRIAGE: WORK });
   p.settings({ allow: ['not a rule!'] });
   assert.match(p.run('doctor', 'demo').stdout, /heartbeat\.allow: "not a rule!" is not a permission rule/);
   p.settings({ test: 'npm test', allow: ['Bash(./tools/fetch.sh:*)'], slots: [{ name: 'evening', at: ['18:00'], allow: ['WebFetch(domain:example.org)'] }] });
   assert.equal(p.run('heartbeat', 'install', 'demo').status, 0);
-  p.runWith({ FAKE_LEAD_DENIED: 'npm run e2e' }, 'heartbeat', 'run', 'evening', 'demo');
+  // A command refused anyway was refused by Claude Code's own checks, which no rule lifts: the run goes another way and
+  // ends on its end check.
+  p.runWith({ FAKE_LEAD_DENIED: 'python3 - <<\'EOF\'' }, 'heartbeat', 'run', 'evening', 'demo');
   assert.match(p.calls(), /--allowedTools Bash\(npm test\) Bash\(npm test:\*\) Bash\(\.\/tools\/fetch\.sh:\*\) WebFetch\(domain:example\.org\) Bash Read Glob Grep Monitor WebSearch WebFetch --disallowedTools Read\(~\/\.ssh\/\*\*\) .*Read\(~\/\.config\/jerome\/\*\*\)/m);
+  assert.equal(p.lastRun().status, 'done', p.lastRun().reason);
+  assert.deepEqual(p.alerts(), []);
+  // A tool the user can allow is a block.
+  p.runWith({ FAKE_LEAD_DENIED: 'x', FAKE_LEAD_DENIED_TOOL: 'mcp__vault__search' }, 'heartbeat', 'run', 'evening', 'demo');
   const run = p.lastRun();
   assert.equal(run.status, 'blocked');
-  assert.match(run.reason, /^permission denied for Bash\(npm run e2e\): add the rules to heartbeat\.allow in \.jerome\/project\.json$/);
+  assert.match(run.reason, /^permission denied for mcp__vault__search: add the rules to heartbeat\.allow in \.jerome\/project\.json$/);
   assert.equal(JSON.parse(run.outcome).ok, true, 'the end check alone would have called it done');
   assert.deepEqual(p.alerts().map((a) => a.key), ['permission denied']);
   // A deny rule of the project's is a refusal on purpose: the run is done, and the alert closes.
@@ -391,7 +397,7 @@ test('a run is given the test command and the allowed tools, and one refused a t
   assert.deepEqual(p.alerts(), []);
 });
 
-test('the watchdog settles what an older Jérôme left open: its own questions, and blocks on its own files (D158, D160)', async () => {
+test('the watchdog settles what an older Jérôme left open: its own questions, blocks on its own files and on refused commands (D158, D160, D204)', async () => {
   const { mkdtempSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { openDb } = await import('../src/db.js');
@@ -403,14 +409,17 @@ test('the watchdog settles what an older Jérôme left open: its own questions, 
   ask.run(new Date().toISOString(), 'Run `jerome doctor` in …/x and fix what it reports');
   ask.run(new Date().toISOString(), 'Which name for the app?');
   raiseAlert(db, { reason: 'uncommitted changes (.claude/settings.json) on main, not left by a heartbeat: commit or discard them' });
+  // A block on refused commands only, from before D204, goes too; one on a tool the user can allow stays.
+  raiseAlert(db, { reason: 'permission denied for Bash(mkdir -p /tmp && cd …/platform): add the rules to heartbeat.allow in .jerome/project.json', key: 'permission denied', rules: ['Bash(mkdir -p /tmp && cd …/platform)'] });
   db.close();
-  assert.equal(tidyStale(dir), 1);
+  assert.equal(tidyStale(dir), 2);
   const after = openDb(dir);
   // The user's own file stays a block.
   raiseAlert(after, { reason: 'uncommitted changes (README.md) on main, not left by a heartbeat: commit or discard them' });
+  raiseAlert(after, { reason: 'permission denied for mcp__vault__search: add the rules to heartbeat.allow in .jerome/project.json', key: 'permission denied', rules: ['mcp__vault__search'] });
   assert.equal(tidyStale(dir), 0);
   assert.deepEqual(after.prepare("SELECT question FROM requests WHERE status = 'open'").all().map((r) => r.question), ['Which name for the app?']);
-  assert.deepEqual(after.prepare("SELECT reason FROM alerts WHERE status = 'open'").all().map((r) => r.reason.slice(0, 30)), ['uncommitted changes (README.md']);
+  assert.deepEqual(after.prepare("SELECT reason FROM alerts WHERE status = 'open'").all().map((r) => r.reason.slice(0, 30)), ['uncommitted changes (README.md', 'permission denied for mcp__vau']);
   after.close();
 });
 

@@ -14,7 +14,7 @@ The causes, from the dashboard and the code:
 | `jerome doctor failed: Startup context: 20.9k estimated headless` | a size warning counted as a failure, and a failure stops the run with a request to Fabio | Jérôme's own |
 | `uncommitted changes (.jerome/open.md) on v2-la-via`, 5 runs in a row overnight | state files the run should carry (D127) and did not | Jérôme's own, cause to find |
 | `token cap: … next run resumes`, as an alert | a run stopped by its budget, which the next one resumes; shown as a failure | not a problem |
-| `permission denied for Bash(python3 …)` | heartbeats may run only the commands of a list | a rule too narrow |
+| `permission denied for Bash(python3 …)` | heartbeats may run only the commands of a list | a rule too narrow (since D159 any command is given, and since D204 a command refused anyway is no block) |
 
 None of these needed Fabio.
 
