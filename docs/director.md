@@ -7,7 +7,7 @@ It is built in five steps:
 | Step | What it does | |
 |---|---|---|
 | 1 | **Sees:** Macs connect and are approved; every minute each one sends what it knows | in place, 0.5.0 |
-| 2 | **Shows:** a dashboard, also on the iPhone, in your language | in place, 0.5.1; simpler in 0.8.0; each project's [board](board.md) and a legend in 0.11.0; a **?** button with help, the legend and the guides in 0.12.3; answers, notes and a block's buttons in 0.13.0 |
+| 2 | **Shows:** a dashboard, also on the iPhone, in your language | in place, 0.5.1; simpler in 0.8.0; each project's [board](board.md) and a legend in 0.11.0; a **?** button with help, the legend and the guides in 0.12.3; answers, notes and a block's buttons in 0.13.0; the notes the runs wrote, to read, in 0.21.0 |
 | 3 | **Decides:** permits for fill runs, slots that queue, a fallback when it cannot be reached | in place, 0.19.0, once turned on with `jerome director settings on`; see [Deciding](#deciding) |
 | 4 | Setup on your server, step by step | in place: the Dockerfile and compose.yaml in 0.5.0, with Coolify since 2026-10-28; see [Setting it up](#setting-it-up) |
 | 5 | Telegram on the Director, one bot for every Mac | in place, 0.20.0, once set up with `jerome director telegram setup`; see [Telegram](telegram.md#on-the-director-for-every-mac) |
@@ -106,7 +106,7 @@ What you send from the dashboard is an **order**, and an order is data, never a 
 
 ### The push and what is unlocked
 
-In a project where you [unlocked the push](commands/rules.md), the push Jérôme asked on Telegram shows under **What you need to do** too, with its commits and the same two buttons, **Push main** and **Not now**: the first answer counts, from either side. A question the lead agent asked sooner starts with its reason, from a Director 0.17.0 on (D198). Under each project, a line lists what you unlocked there, each with a **Lock again** button (D196). Unlocking has no button: it is done only at a terminal on the Mac, so whoever took the dashboard cannot unlock anything.
+In a project where you [unlocked the push](commands/rules.md), the push Jérôme asked on Telegram shows under **What you need to do** too, with its commits and the same two buttons, **Push main** and **Not now**: the first answer counts, from either side. A question the lead agent asked sooner starts with its reason, from a Director 0.17.0 on (D198). Under each project, a line lists what you unlocked there, each with a **Lock again** button (D196), which asks you to confirm first, since unlocking again is done only at the Mac (D207). Unlocking has no button: it is done only at a terminal on the Mac, so whoever took the dashboard cannot unlock anything.
 
 A Mac sends these only to a Director at 0.16.0 or later, which says its version in the answer to the beat; an older Director keeps working without them.
 

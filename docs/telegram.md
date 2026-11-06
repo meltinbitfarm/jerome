@@ -40,6 +40,7 @@ The macOS notifications stay, and `heartbeat.alerts.command` stays for other cha
 | `#project text` | a note for that project |
 | any other text | a note: for the only project, or Jérôme asks which one, with a button each |
 | `/status` | what waits for you in every project, from `jerome projects`, then each block with its buttons |
+| `/note` | with the bot on the Director: the latest notes the runs wrote, a button each; a tap sends the note (D207) |
 | `/help` | what you can send |
 
 When what you sent went through, Jérôme does not write back (D205): a tap's buttons go from its message, and a text you typed gets a 👍 reaction, which makes no sound. It writes only when something did not go through: an answer that failed, a block already closed, a push that failed or found the branch moved, an order the Mac did not take.

@@ -23,6 +23,7 @@ import { openAlerts } from './alerts.js';
 import { scrub } from './scrub.js';
 import { lang, t } from './i18n.js';
 import { projectBoard } from './board.js';
+import { NOTES_DIR } from './paths.js';
 import { createHash } from 'node:crypto';
 import { projectStatus, projectOver } from './budget.js';
 import { lockHolder, cacheDir } from './runstate.js';
@@ -169,6 +170,11 @@ export function atLeast(a, b) {
 // A board is sent again after this, even unchanged; the boards of one beat stay under this many characters.
 const BOARD_RESEND_MS = 30 * 60_000;
 const BOARD_BYTES = 150_000;
+// The notes the boards' lines name (D207): sent when new or changed, again once a day in case the Director lost one,
+// each cut to this many characters, those of one beat under this many.
+const NOTE_RESEND_MS = 86_400_000;
+const NOTE_TEXT = 12_000;
+const NOTE_BYTES = 60_000;
 const real = (p) => {
   try {
     return realpathSync(p);
@@ -290,7 +296,11 @@ async function beat({ env, now, log }) {
   // The boards (D177) go when they changed, or every half hour in case the Director lost one, the oldest sent first,
   // as many as the beat's size allows.
   state.boards ??= {};
+  state.notes ??= {};
+  const withNotes = atLeast(state.directorVersion, '0.21.0');
   const boards = [];
+  const notes = [];
+  const named = new Set();
   for (const s of stores()) {
     if (s.orphan || !s.record?.path || !existsSync(join(s.record.path, MARKER))) continue;
     try {
@@ -299,9 +309,25 @@ async function beat({ env, now, log }) {
       projects.push(b.project);
       runs.push(...b.runs);
       const board = { key: s.key, ...projectBoard(s.record.path, { now, code }) };
+      const noted = new Set(board.done.flatMap((x) => x.notes ?? []));
+      // The notes of the boards' lines (D207): only to a Director from 0.21.0, and the board sent again once it is.
+      if (!withNotes) for (const x of board.done) delete x.notes;
       const sum = createHash('sha256').update(JSON.stringify(board)).digest('hex').slice(0, 16);
       const sent = state.boards[s.key];
       if (!sent || sent.hash !== sum || now.getTime() - Date.parse(sent.at) > BOARD_RESEND_MS) boards.push({ board, sum, at: sent?.at ?? '' });
+      for (const name of withNotes ? noted : []) {
+        named.add(`${s.key}/${name}`);
+        let text;
+        try {
+          // With no path, as every text that leaves the Mac, its lines and their indent kept.
+          text = readFileSync(join(s.record.path, NOTES_DIR, name), 'utf8').split('\n').map((l) => `${l.match(/^\s*/)[0]}${scrub(l)}`).join('\n').slice(0, NOTE_TEXT);
+        } catch {
+          continue;
+        }
+        const hash = createHash('sha256').update(text).digest('hex').slice(0, 16);
+        const was = state.notes[`${s.key}/${name}`];
+        if (!was || was.hash !== hash || now.getTime() - Date.parse(was.at) > NOTE_RESEND_MS) notes.push({ note: { key: s.key, name, text }, hash, at: was?.at ?? '' });
+      }
     } catch (err) {
       log(`director: ${s.key} left out of the beat: ${err.message}`);
     }
@@ -323,6 +349,13 @@ async function beat({ env, now, log }) {
     size += n;
     sending.push(b);
   }
+  const notesSending = [];
+  let noteSize = 0;
+  for (const n of notes.sort((x, y) => x.at.localeCompare(y.at))) {
+    if (noteSize + n.note.text.length > NOTE_BYTES || notesSending.length >= 20) continue;
+    noteSize += n.note.text.length;
+    notesSending.push(n);
+  }
   // Results of the dashboard's orders whose quick report did not get through go with the beat (D191).
   state.orders ??= { done: {}, unsent: [] };
   const unsent = state.orders.unsent.slice(0, 50);
@@ -335,7 +368,8 @@ async function beat({ env, now, log }) {
   }
   const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), language: code, quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50),
     // Only when there is one: a Director from before 0.13.0 refuses a field it does not know.
-    boards: sending.map((b) => b.board), ...(unsent.length ? { results: unsent } : {}), ...(messages.items.length ? { messages: messages.items } : {}) });
+    boards: sending.map((b) => b.board), ...(unsent.length ? { results: unsent } : {}), ...(messages.items.length ? { messages: messages.items } : {}),
+    ...(notesSending.length ? { notes: notesSending.map((n) => n.note) } : {}) });
   const problem = r.error ?? (r.status >= 400 ? r.data.error : null);
   messages.settle(!problem);
   if (problem) {
@@ -355,6 +389,9 @@ async function beat({ env, now, log }) {
   else if (state.local && mode === 'directing') log('director: answering again: directed');
   for (const run of runs.slice(0, 50)) state.cursors[run.project] = Math.max(state.cursors[run.project] ?? 0, run.id);
   for (const b of sending) state.boards[b.board.key] = { hash: b.sum, at: now.toISOString() };
+  for (const n of notesSending) state.notes[`${n.note.key}/${n.note.name}`] = { hash: n.hash, at: now.toISOString() };
+  // A note no board names any more is forgotten.
+  for (const k of Object.keys(state.notes)) if (!named.has(k)) delete state.notes[k];
   state.orders.unsent = state.orders.unsent.slice(unsent.length);
   // The dashboard's orders (D169, D191): run here under this Mac's own checks, then reported at once.
   if (Array.isArray(r.data.orders) && r.data.orders.length) {

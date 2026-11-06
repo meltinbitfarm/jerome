@@ -74,8 +74,25 @@ export function serveDashboard(req, res, { db, token, telegram = false, now = ne
     json(res, 200, overview(db, now, { telegram }));
     return true;
   }
+  // A note's text (D207), asked when the user opens it: too long to go with every refresh.
+  if (path === '/api/note') {
+    if (!authorized(req, token)) {
+      json(res, 403, { error: 'missing or wrong token' });
+      return true;
+    }
+    const note = readNote(db, Number(new URL(req.url, 'http://director').searchParams.get('id')));
+    json(res, note ? 200 : 404, note ?? { error: 'no such note' });
+    return true;
+  }
   json(res, 404, { error: 'not found' });
   return true;
+}
+
+// A note the Director keeps (D207), with its project's name, or null.
+export function readNote(db, id) {
+  if (!Number.isInteger(id)) return null;
+  const n = db.prepare('SELECT n.id, n.name, n.text, n.updated_at, p.name project FROM notes n LEFT JOIN projects p ON p.machine = n.machine AND p.key = n.key WHERE n.id = ?').get(id);
+  return n ? { id: n.id, name: n.name, project: n.project ?? n.key, text: n.text, updatedAt: n.updated_at } : null;
 }
 
 // An order from the dashboard (D191), checked against what the Mac last said: the project is one of its own, the
@@ -228,6 +245,11 @@ export function overview(db, now = new Date(), { telegram = false } = {}) {
     });
     // The project's board (D177), as its Mac last sent it.
     const board = parse(db.prepare('SELECT data FROM boards WHERE machine = ? AND key = ?').get(p.machine, p.key)?.data ?? 'null');
+    // The notes its lines name (D207), those the Mac sent, each with the id the page asks it by.
+    if (board?.done) {
+      const ids = new Map(db.prepare('SELECT id, name FROM notes WHERE machine = ? AND key = ?').all(p.machine, p.key).map((n) => [n.name, n.id]));
+      board.done = board.done.map((x) => ({ ...x, notes: (x.notes ?? []).filter((n) => ids.has(n)).map((n) => ({ id: ids.get(n), name: n })) }));
+    }
     const state = data.running ? 'running' : blocks.some((b) => b.lasting) ? 'stuck' : blocks.length ? 'retrying'
       : (data.requests ?? []).length ? 'asking' : data.overLimit ? 'paused' : 'idle';
     return {

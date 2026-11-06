@@ -716,3 +716,53 @@ test('with the bot on the Director, a Mac\'s question reaches Telegram with its 
   m.beat();
   assert.match(m.watchdogLog(), /director: Telegram is not on the Director/);
 });
+
+test('a note a run wrote goes with its board line to the Director once, opens on the dashboard and is read on Telegram with /note (D207)', async () => {
+  const fake = mkdtempSync(join(tmpdir(), 'jerome-tg-'));
+  const d = await startDirector({ extra: { JEROME_TELEGRAM_FAKE: fake }, before: (home) => {
+    writeFileSync(join(home, '.local', 'share', 'jerome-director', 'telegram.json'), JSON.stringify({ token: '1:x', chatId: 7, chat: 'Fabio', bot: 'jerome_test_bot' }), { mode: 0o600 });
+  } });
+  const m = mac('mini');
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  mkdirSync(join(m.dir, '.jerome', 'notes'), { recursive: true });
+  writeFileSync(join(m.dir, '.jerome', 'notes', '2026-11-06-visibility.md'), `# AI visibility\n\n- robots open\n  - bots 200, checked from ${m.root}/check.sh\n- three moves\n`);
+  writeFileSync(join(m.dir, '.jerome', 'digest.md'), '# Digest\n\n- 2026-11-06 08:47 · main · visibility check, note notes/2026-11-06-visibility.md with 3 moves · agent/vis · R22\n- 2026-11-06 09:16 · main · index check, 17/17 indexed · agent/idx · none\n');
+  // The first beat learns the Director's version; the next carries the note.
+  m.beat();
+  m.beat();
+  const token = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  const auth = { authorization: `Bearer ${token}` };
+  const o = await (await fetch(`${d.url}/api/overview`, { headers: auth })).json();
+  const [last, first] = o.projects[0].board.done;
+  assert.deepEqual(last.notes, [], 'a line that names no note');
+  assert.equal(first.notes.length, 1);
+  assert.equal(first.notes[0].name, '2026-11-06-visibility.md');
+  assert.equal((await fetch(`${d.url}/api/note?id=${first.notes[0].id}`)).status, 403, 'only with the token');
+  const note = await (await fetch(`${d.url}/api/note?id=${first.notes[0].id}`, { headers: auth })).json();
+  assert.match(note.text, /^# AI visibility\n\n- robots open\n {2}- bots 200, checked from …\/check\.sh\n/, 'its lines and indent kept');
+  assert.ok(!note.text.includes(m.root), 'no path leaves the Mac');
+  assert.equal(note.project, 'demo');
+  // Sent once: unchanged, the next beat leaves it out; changed, it goes again.
+  const updated = () => { const x = d.db(); const r = x.prepare('SELECT updated_at FROM notes').get().updated_at; x.close(); return r; };
+  const was = updated();
+  m.beat();
+  assert.equal(updated(), was);
+  writeFileSync(join(m.dir, '.jerome', 'notes', '2026-11-06-visibility.md'), '# AI visibility\n\nfour moves now\n');
+  m.beat();
+  assert.notEqual(updated(), was);
+
+  // On Telegram: /note lists it, a tap sends its text.
+  const calls = () => (existsSync(join(fake, 'calls.jsonl')) ? readFileSync(join(fake, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
+  const sent = () => calls().filter((c) => c.method === 'sendMessage').map((c) => c.params);
+  const until = async (what, check) => {
+    for (let i = 0; i < 100 && !check(); i += 1) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(check(), `${what}; the Director said: ${d.log()}`);
+  };
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 1, message: { message_id: 60, chat: { id: 7, type: 'private' }, text: '/note' } }]));
+  await until('the notes listed', () => sent().some((x) => /The latest notes the runs wrote/.test(x.text)));
+  const [[button]] = sent().find((x) => /The latest notes/.test(x.text)).reply_markup.inline_keyboard;
+  assert.equal(button.text, '📄 demo · 2026-11-06-visibility');
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 2, callback_query: { id: 'q1', data: button.callback_data, message: { message_id: 1001, chat: { id: 7, type: 'private' } } } }]));
+  await until('the note sent', () => sent().some((x) => /^📄 demo · 2026-11-06-visibility\.md\n\n# AI visibility\n\nfour moves now/.test(x.text)));
+});

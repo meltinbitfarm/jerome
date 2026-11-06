@@ -71,6 +71,8 @@ const WORDS = {
     push: (n, branch) => `${n} ${n === 1 ? 'commit' : 'commits'} on ${branch} not pushed yet`,
     pushHow: 'The push may start a deploy. Jérôme asked on Telegram too: either answer counts.',
     unlocked: 'Unlocked here', lock: 'Lock again', lockHint: 'Unlocking is done only at the Mac: jerome rules unlock <name>.',
+    lockAsk: (what) => `Lock "${what}" again? Unlocking it again can be done only at the Mac.`,
+    readNote: 'Read the note', hideNote: 'Close the note', noteLoading: 'Loading…',
     silent: (mac, since) => `The Mac ${mac} has not been heard from since ${since}. Is it on and connected?`,
     pending: (mac) => `The Mac ${mac} waits for your approval: \`jerome director approve\` on the server.`,
     projects: 'Projects',
@@ -133,6 +135,8 @@ const WORDS = {
     push: (n, branch) => `${n} commit su ${branch} non ancora ${n === 1 ? 'pushato' : 'pushati'}`,
     pushHow: 'Il push può far partire il deploy. Jérôme te l\'ha chiesto anche su Telegram: vale la prima risposta.',
     unlocked: 'Sbloccato qui', lock: 'Blocca di nuovo', lockHint: 'Sbloccare si fa solo dal Mac: jerome rules unlock <nome>.',
+    lockAsk: (what) => `Bloccare di nuovo "${what}"? Per sbloccarlo di nuovo dovrai farlo dal Mac.`,
+    readNote: 'Leggi la nota', hideNote: 'Chiudi la nota', noteLoading: 'Carico…',
     silent: (mac, since) => `Il Mac ${mac} non si sente da ${since}. È acceso e in rete?`,
     pending: (mac) => `Il Mac ${mac} aspetta la tua approvazione: \`jerome director approve\` sul server.`,
     projects: 'Progetti',
@@ -474,13 +478,50 @@ function projectCard(p) {
     noteBox(p));
 }
 
+// A note a line of the board names (D207): its text is asked when opened, and kept, with the notes opened, across the
+// page's refreshes.
+const NOTES_OPEN = new Set();
+const NOTE_TEXT = new Map();
+function noteView(n) {
+  const box = el('div', { class: 'note' });
+  const draw = () => {
+    const open = NOTES_OPEN.has(n.id);
+    const text = NOTE_TEXT.get(n.id);
+    box.replaceChildren(
+      el('button', { type: 'button', class: 'choice small', title: n.name, 'aria-expanded': String(open), onclick: toggle }, `📄 ${open ? W.hideNote : W.readNote}`),
+      open ? el('pre', { class: 'note-text' }, text ?? W.noteLoading) : null);
+  };
+  async function toggle() {
+    if (NOTES_OPEN.delete(n.id)) return draw();
+    NOTES_OPEN.add(n.id);
+    draw();
+    if (NOTE_TEXT.has(n.id)) return;
+    try {
+      const r = await fetch(`/api/note?id=${n.id}`, { headers: { authorization: `Bearer ${token}` }, cache: 'no-store' });
+      const answer = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(answer.error ?? `HTTP ${r.status}`);
+      NOTE_TEXT.set(n.id, answer.text);
+    } catch (err) {
+      NOTES_OPEN.delete(n.id);
+      box.replaceChildren(el('span', { class: 'warn small' }, err.message));
+      return;
+    }
+    draw();
+  }
+  draw();
+  return box;
+}
+
 // What the user unlocked in the project (D196), each with a button to lock it again: unlocking is only at the Mac.
 function unlockedLine(p) {
   if (!p.unlocked?.length) return null;
   return el('div', { class: 'unlocked', title: W.lockHint },
     el('span', { class: 'muted small' }, `🔓 ${W.unlocked}: `),
     p.unlocked.map((g) => el('span', { class: 'small' }, `${g.label} `,
-      el('button', { type: 'button', class: 'choice small', onclick: (ev) => order(ev.target, { machine: p.machineCode, project: p.key, kind: 'lock', group: g.name }) }, `🔒 ${W.lock}`), ' ')));
+      el('button', { type: 'button', class: 'choice small', onclick: (ev) => {
+        // A tap by mistake would lock what only the Mac can unlock again: asked first.
+        if (confirm(W.lockAsk(g.label))) order(ev.target, { machine: p.machineCode, project: p.key, kind: 'lock', group: g.name });
+      } }, `🔒 ${W.lock}`), ' ')));
 }
 
 // A note for the project, as `#project text` on Telegram: closed until opened.
@@ -495,7 +536,7 @@ function noteBox(p) {
 // The project's board (D177), closed until opened: what it does now, what is left, what was done.
 function board(p) {
   const id = `${p.machine}/${p.key}`;
-  const box = el('details', { class: 'project-board', open: opened.has(id) }, el('summary', {}, W.board), boardView(p.board, { lang: data.language, el, key: id }));
+  const box = el('details', { class: 'project-board', open: opened.has(id) }, el('summary', {}, W.board), boardView(p.board, { lang: data.language, el, key: id, note: noteView }));
   box.addEventListener('toggle', () => { if (box.open) opened.add(id); else opened.delete(id); });
   return box;
 }

@@ -11,7 +11,7 @@ import { t } from './i18n.js';
 import { optionList } from './options.js';
 import { actionsFor } from './unblock.js';
 import { blockMessage, howLong } from './blocks.js';
-import { placeOrder, spokenLanguage } from './dashboard.js';
+import { placeOrder, readNote, spokenLanguage } from './dashboard.js';
 import { scrub } from './scrub.js';
 
 // The longest a poll of Telegram waits for an update: what a beat brought waits at most this long too.
@@ -180,6 +180,8 @@ async function onButton(q, ctx) {
     if (!waiting || !p) return ctx.reply(ctx.say('note.expired'));
     return order(ctx, p, { kind: 'note', text: waiting.text }, Number(a));
   }
+  // A note to read (D207).
+  if (kind === 't') return readNoteHere(ctx, Number(a));
   // Whether a dashboard's order was the user's (D206): yes only takes the buttons off; no gives the dashboard a new
   // token at once, so the address that was used opens nothing any more, and says the new one.
   if (kind === 'd' && about?.ord === Number(a) && ['me', 'no'].includes(b)) {
@@ -204,6 +206,7 @@ async function onMessage(m, ctx) {
   const text = m.text.trim();
   const command = text.match(/^\/(\w+)/)?.[1]?.toLowerCase();
   if (command === 'status') return status(ctx);
+  if (command === 'note' || command === 'notes') return notesList(ctx);
   if (command === 'start' || command === 'help') return ctx.reply(ctx.say('dbot.help'));
   if (command) return ctx.reply(`${ctx.say('bot.unknown')}\n\n${ctx.say('dbot.help')}`);
   const about = m.reply_to_message ? ctx.db.prepare('SELECT * FROM tg_sent WHERE message_id = ?').get(m.reply_to_message.message_id) : null;
@@ -228,6 +231,29 @@ async function onMessage(m, ctx) {
   for (const [k, v] of Object.entries(pending)) if (Date.parse(v.at) < ctx.now().getTime() - 86_400_000) delete pending[k];
   setState(ctx.db, 'pending', pending);
   return ctx.reply(ctx.say('note.which'), { reply_markup: { inline_keyboard: named.map((x, i) => [{ text: x.name, callback_data: `n:${key}:${i}` }]) } });
+}
+
+// /note (D207): the latest notes the runs wrote, of every project, a button each; a tap sends the note's text.
+const NOTES_LISTED = 10;
+const NOTE_PARTS = 3;
+async function notesList(ctx) {
+  const projects = new Map(allProjects(ctx.db).map((p) => [`${p.machine}/${p.key}`, p.name]));
+  const notes = ctx.db.prepare('SELECT id, machine, key, name FROM notes ORDER BY created_at DESC, id DESC LIMIT ?').all(NOTES_LISTED)
+    .filter((n) => projects.has(`${n.machine}/${n.key}`));
+  if (!notes.length) return ctx.reply(ctx.say('dbot.noNotes'));
+  return ctx.reply(ctx.say('dbot.notes'), { reply_markup: { inline_keyboard: notes.map((n) => [{
+    text: `📄 ${projects.get(`${n.machine}/${n.key}`)} · ${n.name.replace(/\.md$/, '')}`.slice(0, 60), callback_data: `t:${n.id}` }]) } });
+}
+
+async function readNoteHere(ctx, id) {
+  const note = readNote(ctx.db, id);
+  if (!note) return ctx.reply(ctx.say('dbot.noteGone'));
+  const text = `📄 ${note.project} · ${note.name}\n\n${note.text}`;
+  const parts = [];
+  for (let i = 0; i < text.length && parts.length < NOTE_PARTS; i += MAX_TEXT - 100) parts.push(text.slice(i, i + MAX_TEXT - 100));
+  if (parts.length * (MAX_TEXT - 100) < text.length) parts[parts.length - 1] += `…\n\n${ctx.say('dbot.noteMore')}`;
+  for (const part of parts) await ctx.reply(part);
+  return null;
 }
 
 // /status, from what every Mac said: the open requests and the blocks of each project, the quota, then each block

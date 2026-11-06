@@ -3,9 +3,9 @@
 // viewer and, for every project, by the Director's dashboard. Each text is the plain one when it has been written
 // (plain.js), else the project's own, which the next minutes replace.
 import { answersToRecord } from './answers.js';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { STATE } from './paths.js';
+import { NOTES_DIR, STATE } from './paths.js';
 import { openDb } from './db.js';
 import { liveRun } from './live.js';
 import { scrub } from './scrub.js';
@@ -52,6 +52,38 @@ export function owner(kind, text) {
   return kind;
 }
 
+// The notes a line of digest.md goes with (D207), at most this many: those it names, as `notes/<name>.md`; or, when it
+// only says it wrote notes, those written by its run: after the line before it and by its own time, or in the 10
+// minutes after the last line, and not named by another line.
+const NOTES = 5;
+const NAMED = /(?:^|[^\w/])(?:\.jerome\/)?notes\/([\w.-]+\.md)\b/g;
+export function digestNotes(dir, lines) {
+  let files = [];
+  try {
+    files = readdirSync(join(dir, NOTES_DIR)).filter((n) => n.endsWith('.md'))
+      .map((name) => ({ name, at: statSync(join(dir, NOTES_DIR, name)).mtimeMs }));
+  } catch {
+    return lines.map(() => []);
+  }
+  const names = new Set(files.map((f) => f.name));
+  const named = lines.map((l) => [...new Set([...l.text.matchAll(NAMED)].map((m) => m[1]).filter((n) => names.has(n)))]);
+  const claimed = new Set(named.flat());
+  // When a line's run ended, as digest.md writes it, in local time: its minute's end, or its day's for a date alone.
+  const end = (at) => (at.length > 10 ? new Date(at.replace(' ', 'T')).getTime() + 60_000 : new Date(`${at}T23:59:59.999`).getTime());
+  const owner = (f) => {
+    const i = lines.findIndex((l) => f.at <= end(l.at));
+    if (i >= 0) return i;
+    const last = lines.length - 1;
+    return last >= 0 && f.at <= end(lines[last].at) + 10 * 60_000 ? last : -1;
+  };
+  const written = lines.map(() => []);
+  for (const f of files.filter((x) => !claimed.has(x.name)).sort((x, y) => x.at - y.at)) {
+    const i = owner(f);
+    if (i > 0 || (i === 0 && f.at > end(lines[0].at) - 86_400_000)) written[i].push(f.name);
+  }
+  return lines.map((l, i) => (named[i].length ? named[i] : /\bnot[ea]s?\b/i.test(l.text) ? written[i] : []).slice(0, NOTES));
+}
+
 const read = (dir, file) => (existsSync(join(dir, file)) ? readFileSync(join(dir, file), 'utf8') : '');
 
 // The board, with each text in plain words (D177): an item whose text is not rewritten yet is left out and counted
@@ -83,9 +115,12 @@ export function projectBoard(dir, { now = new Date(), code = lang(), plain = (te
     .map((x) => ({ id: x.id, raw: x.text, at: x.text.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1] ?? null }))
     .sort((a, b) => String(b.at ?? '').localeCompare(String(a.at ?? ''))).slice(0, CLOSED)
     .map((x) => ({ id: x.id, at: x.at, text: say(x.raw.replace(/\s+—\s+done\b.*$/, '')) })));
-  // One line of digest.md per heartbeat, newest first.
-  const done = shown(read(dir, STATE.digest).split('\n').map((l) => l.match(/^- (\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?) · (.+)$/)).filter(Boolean)
-    .slice(-DONE).reverse().map((m) => ({ at: m[1], text: say(m[2]) })));
+  // One line of digest.md per heartbeat, newest first, with the notes it wrote (D207).
+  const lines = read(dir, STATE.digest).split('\n').map((l) => l.match(/^- (\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?) · (.+)$/)).filter(Boolean)
+    .slice(-DONE - 1).map((m) => ({ at: m[1], text: m[2] }));
+  const notes = digestNotes(dir, lines);
+  const done = shown(lines.map((l, i) => ({ at: l.at, text: l.text, notes: notes[i] })).slice(-DONE).reverse()
+    .map((x) => ({ at: x.at, text: say(x.text), ...(x.notes.length ? { notes: x.notes } : {}) })));
 
   let now_ = null;
   let last = null;

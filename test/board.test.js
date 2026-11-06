@@ -2,10 +2,11 @@
 // watchdog starts, shown by the project's viewer and sent to the Director.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readyProject } from './sandbox.js';
-import { sections, kindOf, owner } from '../src/board.js';
+import { sections, kindOf, owner, digestNotes } from '../src/board.js';
 
 const OPEN = `# Open
 
@@ -97,4 +98,30 @@ test('a question whose request was answered leaves the board, and the next run i
   const { leadPrompt } = await import('../src/heartbeat.js');
   assert.match(leadPrompt('x', null, [], { answers }), /The user answered these questions of open\.md[^\n]*R1 "Which host\?" → "B\) two"[^\n]*record each answer as a decision/);
   assert.doesNotMatch(leadPrompt('x'), /The user answered these questions/);
+});
+
+test('a line of digest.md goes with the notes it names, or, when it only says it wrote notes, with those its run wrote (D207)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'jerome-notes-'));
+  mkdirSync(join(dir, '.jerome', 'notes', 'recipes'), { recursive: true });
+  const note = (name, at) => {
+    writeFileSync(join(dir, '.jerome', 'notes', name), 'x\n');
+    const t = new Date(at).getTime() / 1000;
+    utimesSync(join(dir, '.jerome', 'notes', name), t, t);
+  };
+  note('visibility.md', '2026-11-06T08:47:51');
+  note('seo.md', '2026-11-06T09:16:57');
+  note('when-max-year.md', '2026-11-06T14:11:09');
+  note('backup.md', '2026-11-06T14:29:03');
+  writeFileSync(join(dir, '.jerome', 'notes', 'recipes', 'run.md'), 'x\n');
+  const lines = [
+    { at: '2026-11-06 08:10', text: 'Friday digest written' },
+    { at: '2026-11-06 08:47', text: 'visibility check, note notes/visibility.md and .jerome/notes/recipes/run.md' },
+    { at: '2026-11-06 09:16', text: 'index check, no request' },
+    { at: '2026-11-06 13:12', text: 'recorded N7+N8, notes closed' },
+    { at: '2026-11-06 14:11', text: 'slider max is the year' },
+    { at: '2026-11-06', text: 'backup rehearsed (notes + recipe)' },
+  ];
+  assert.deepEqual(digestNotes(dir, lines), [[], ['visibility.md'], [], [], [], ['backup.md']],
+    'named; then by time: the SEO note is the 09:16 run\'s and the slider\'s note the 14:11 run\'s, so neither goes to the lines that say notes');
+  assert.deepEqual(digestNotes(join(dir, 'none'), lines), lines.map(() => []), 'no notes folder');
 });

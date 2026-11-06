@@ -226,6 +226,9 @@ footer { color: var(--muted); border-top: 1px solid var(--line); padding: 8px 0 
 .board-list .mark { color: var(--muted); }
 .board-list .mark.ok { color: var(--green); }
 .board-list .mark.running { color: var(--cyan); }
+.board-notes { margin: 4px 0 2px; }
+.board-notes .choice { padding: 3px 8px; font-size: 13px; }
+.note-text { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hl); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 6px 0; max-height: 60vh; overflow: auto; }
 .board-list + details > summary, .board > details > summary { margin-top: 4px; }
 .board-now { border-left: 3px solid var(--cyan); padding: 4px 0 4px 1.5ch; margin: 4px 0 6px; }
 .project-board { margin-top: 4px; }

@@ -122,7 +122,9 @@ export function openDirectorDb(env = process.env) {
       kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action', 'push', 'lock')), ref INTEGER, action TEXT, text TEXT,
       created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed', 'lapsed')),
       result TEXT, done_at TEXT);
-    CREATE INDEX IF NOT EXISTS orders_open ON orders (machine, status);`);
+    CREATE INDEX IF NOT EXISTS orders_open ON orders (machine, status);
+    CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, key TEXT NOT NULL, name TEXT NOT NULL,
+      text TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (machine, key, name));`);
   // The push and the locking from the dashboard (D196): a table from before them is copied into one that takes them.
   if (!/'push'/.test(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'orders'").get()?.sql ?? "'push'")) {
     db.exec(`BEGIN;
@@ -151,7 +153,8 @@ const WINDOW = { used: 'number', 'resetsAt?': 'number', 'readAt?': 'string:40', 
 const POINTS = { 'five_hour?': 'number', 'seven_day?': 'number' };
 const USAGE = { tokens: 'number', usd: 'number' };
 // A project's board (D177): texts only, each cut on the Mac.
-const ITEM = { 'id?': 'string:12', text: 'string:600', 'kind?': 'string:12', 'at?': 'string:40' };
+// A line of the done ones names the notes its run wrote (D207).
+const ITEM = { 'id?': 'string:12', text: 'string:600', 'kind?': 'string:12', 'at?': 'string:40', 'notes?': ['string:120', 5] };
 const BOARD = {
   key: 'string:120',
   'now?': { startedAt: 'string:40', 'task?': 'string:600', agents: [{ name: 'string:60', 'what?': 'string:600', status: 'string:20' }, 20] },
@@ -205,6 +208,8 @@ const SHAPES = {
     'results?': [RESULT, 50],
     // What waits for Telegram, once the bot is here (D202).
     'messages?': [MESSAGE, 20],
+    // The text of the notes the boards' lines name (D207), when new or changed.
+    'notes?': [{ key: 'string:120', name: 'string:120', text: 'string:12000' }, 20],
   },
   results: { results: [RESULT, 50] },
   ask: { project: 'string:120', slot: 'string:40' },
@@ -340,6 +345,13 @@ export function directorApp({ env = process.env, log = () => {}, now = () => Dat
       record(id, body.results ?? [], at);
       followPermits(db, id, body.projects, now());
       takeMessages(db, directorHome(env), id, body.messages, at);
+      for (const n of body.notes ?? []) {
+        db.prepare('INSERT INTO notes (machine, key, name, text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (machine, key, name) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at')
+          .run(id, n.key, n.name, n.text, at, at);
+      }
+      // A note goes with its project, and once its Mac has not sent it for a week: it sends one again every day.
+      db.prepare(`DELETE FROM notes WHERE machine = ? AND (key NOT IN (${keys.map(() => '?').join(', ') || "''"}) OR updated_at < ?)`)
+        .run(id, ...keys, new Date(now() - 7 * 86_400_000).toISOString());
       const old = new Date(now() - KEEP_DAYS * 86_400_000).toISOString();
       db.prepare('DELETE FROM readings WHERE read_at < ?').run(old);
       db.prepare('DELETE FROM runs WHERE ended_at < ?').run(old);

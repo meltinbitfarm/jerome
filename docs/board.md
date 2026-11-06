@@ -10,11 +10,13 @@ Each project has a board (D177): what it does now and who works on it, what is l
 | **Questions for you** | the open questions of `.jerome/open.md`: each still to ask, or asked as a request and waiting for your answer. The next heartbeat asks each one not yet asked (D178, D180). Once you answer, the question leaves the board at once, and the next run records your answer as a decision and removes it from `open.md` (D192) |
 | **Once left for a session** | the items once marked for an interactive session: heartbeats now take them up, or ask you (D180) |
 | **Jérôme does** | the other items of `open.md`, except the assumptions, the decision requests (the database holds them) and the parked ideas; the backlog apart, as work for when time is spare |
-| **Done lately** | the last 15 lines of `.jerome/digest.md`, one per heartbeat, newest first |
+| **Done lately** | the last 15 lines of `.jerome/digest.md`, one per heartbeat, newest first. On the Director's dashboard, a line whose run wrote a note in `.jerome/notes/` has a **📄 Read the note** button under it (D207) |
 | **Items closed** | the closed items of `.jerome/archive.md`, newest first by the date each one names |
 | **Ideas parked** | the parked section of `open.md`: not to do for now. Each comes back to you as a question when its date comes, or when its area's milestone changes (D179) |
 
 The last work shown next to each project on the dashboard comes from the board too, when it has it.
+
+A line goes with the notes it names (`notes/<name>.md`), or, when it only says it wrote notes, with those its run wrote: changed after the line before it and by its own time, and named by no other line. The Mac sends their text to the Director with no path, once and again when it changes; the dashboard asks for it only when you open it, and no model reads it, so reading a note costs no tokens. On Telegram, `/note` lists the latest ones (D207).
 
 ## Plain words
 

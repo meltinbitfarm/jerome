@@ -385,6 +385,8 @@ Then (0.20.3, D205): what the user sends on Telegram is not confirmed when it go
 
 Then (0.20.4, D206): the echo of a dashboard's order asks "Was it you?" with two buttons. No gives the dashboard a new token at once and sends the new address.
 
+Then (0.21.0, D207): the notes a run writes can be read from the Director. The board pairs each line of Done lately with its notes, the Mac sends their text once, the dashboard shows "📄 Read the note" under the line, and the Director's bot answers `/note` with the latest ones. Lock again on the dashboard asks for confirmation.
+
 Then: the documentation as a website on GitHub Pages, built by VitePress in `site/` (its own package.json, never in the `jerome` package) from `docs/` and the README at every push to main, with a sidebar, search and Jérôme's colours; the README's Learn more lists every page.
 
 Next: on Fabio's VPS, `jerome director settings on` and `jerome director telegram setup` (after `jerome telegram off` on the Mac Mini, or with a new bot), then a week of real use to see the fill runs spread over the two Macs and the 90% at the reset. Step 4, the setup on the server, is in place: director/Dockerfile and director/compose.yaml since 0.5.0, the Director running under Coolify on Fabio's VPS since 2026-10-28, and its setup in docs/director.md. The governor's 90% at each reset (a success criterion of docs/specs/quota-governor.md) is computed but not shown: the Director's overview (src/dashboard.js) gives each past week's highest reading before its reset, up to 12 weeks from the 90 days of readings it keeps, and viewer/director.html does not display it.

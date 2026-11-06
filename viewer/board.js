@@ -80,12 +80,14 @@ function idTag(id, lang, el) {
 }
 
 // A list as a checklist: ☐ to do, ✓ done; the first `first` shown, the others under "and N more".
-function boardList(items, lang, el, { mark = '☐', dated = false, first = 8, key = null } = {}) {
+// `note`, when the page can show a note (D207), draws one of the notes a line names.
+function boardList(items, lang, el, { mark = '☐', dated = false, first = 8, key = null, note = null } = {}) {
   const w = boardWords(lang);
   if (!items.length) return el('div', { class: 'muted small' }, w.none);
   const line = (x) => el('li', {}, el('span', { class: mark === '✓' ? 'mark ok' : 'mark' }, mark),
     el('span', {}, x.text, ' ', idTag(x.id, lang, el),
-      dated && x.at ? el('span', { class: 'muted small' }, ` ${x.at.slice(5, 10).split('-').reverse().join('/')}${x.at.length > 10 ? ` ${x.at.slice(11, 16)}` : ''}`) : null));
+      dated && x.at ? el('span', { class: 'muted small' }, ` ${x.at.slice(5, 10).split('-').reverse().join('/')}${x.at.length > 10 ? ` ${x.at.slice(11, 16)}` : ''}`) : null,
+      note && x.notes?.length ? el('div', { class: 'board-notes' }, x.notes.map(note)) : null));
   const list = el('ul', { class: 'board-list' }, items.slice(0, first).map(line));
   if (items.length <= first) return list;
   return el('div', {}, list, remember(el('details', {}, el('summary', {}, w.more(items.length - first)), el('ul', { class: 'board-list' }, items.slice(first).map(line))), key && `${key}:more`));
@@ -98,7 +100,7 @@ function boardHead(el, icon, text, tone) {
 const fold = (el, icon, text, tone, body, key) => remember(el('details', { class: 'board-fold' }, el('summary', { class: tone }, `${icon} ${text}`), body), key);
 
 // The board as an element.
-function boardView(board, { lang, el, key = 'board' }) {
+function boardView(board, { lang, el, key = 'board', note = null }) {
   const w = boardWords(lang);
   if (!board) return el('div', { class: 'muted small' }, w.noBoard);
   const parts = [];
@@ -126,7 +128,7 @@ function boardView(board, { lang, el, key = 'board' }) {
   const waiting = board.pending ? el('div', { class: 'muted small' }, w.pending(board.pending)) : null;
   parts.push(boardHead(el, '🛠', w.todo(todo.length), 'cyan'), todo.length || !waiting ? boardList(todo, lang, el, { key: `${key}:todo` }) : waiting);
   if (backlog.length) parts.push(fold(el, '⏳', w.backlog(backlog.length), 'muted', boardList(backlog, lang, el, { first: 50 }), `${key}:backlog`));
-  parts.push(boardHead(el, '✅', w.done, 'ok'), board.done.length || !waiting ? boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5, key: `${key}:done` }) : waiting);
+  parts.push(boardHead(el, '✅', w.done, 'ok'), board.done.length || !waiting ? boardList(board.done, lang, el, { mark: '✓', dated: true, first: 5, key: `${key}:done`, note }) : waiting);
   if (board.closed.length) parts.push(fold(el, '📦', w.closed(board.closed.length), 'muted', boardList(board.closed, lang, el, { mark: '✓', dated: true, first: 50 }), `${key}:closed`));
   if (board.parked.length) parts.push(fold(el, '💡', w.parked(board.parked.length), 'muted', el('div', {}, el('div', { class: 'muted small' }, w.parkedHow), boardList(board.parked, lang, el, { mark: '·', first: 50 })), `${key}:parked`));
   if (waiting && (todo.length || board.done.length)) parts.push(waiting);
