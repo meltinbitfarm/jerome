@@ -6,7 +6,7 @@
 // server, in a file only the Director's user can read.
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { telegramApi, sendItem, setup as telegramSetup } from './telegram.js';
+import { react, telegramApi, sendItem, setup as telegramSetup } from './telegram.js';
 import { t } from './i18n.js';
 import { optionList } from './options.js';
 import { actionsFor } from './unblock.js';
@@ -135,11 +135,16 @@ export async function runBot({ db, home, env = process.env, log = () => {} }) {
   }
 }
 
-// An order placed from Telegram: told as sent to its Mac, or why not. True when placed.
-async function order(ctx, p, o) {
+// An order placed from Telegram: told only when it was refused (D205). Placed, a typed message gets a reaction,
+// which makes no sound, and a tap loses its buttons. True when placed.
+async function order(ctx, p, o, typed = null) {
   const r = placeOrder(ctx.db, { machine: p.machine, project: p.key, ...o }, { now: ctx.now(), via: 'telegram' });
-  await ctx.reply(r.status === 201 ? ctx.say('dbot.sent', { project: p.name, machine: p.machineName }) : ctx.say('dbot.refused', { project: p.name, error: r.body.error }));
-  return r.status === 201;
+  if (r.status !== 201) {
+    await ctx.reply(ctx.say('dbot.refused', { project: p.name, error: r.body.error }));
+    return false;
+  }
+  if (typed) await react(ctx.call, ctx.config.chatId, typed);
+  return true;
 }
 
 const findProject = (db, machine, key) => allProjects(db).find((p) => p.machine === machine && p.key === key) ?? null;
@@ -171,7 +176,7 @@ async function onButton(q, ctx) {
     const choice = waiting?.choices?.[Number(b)];
     const p = choice ? findProject(ctx.db, choice[0], choice[1]) : null;
     if (!waiting || !p) return ctx.reply(ctx.say('note.expired'));
-    return order(ctx, p, { kind: 'note', text: waiting.text });
+    return order(ctx, p, { kind: 'note', text: waiting.text }, Number(a));
   }
   const p = about ? findProject(ctx.db, about.machine, about.project) : null;
   // A button of a message the Director did not send, such as a Mac's bridge's before the move.
@@ -194,17 +199,17 @@ async function onMessage(m, ctx) {
   const about = m.reply_to_message ? ctx.db.prepare('SELECT * FROM tg_sent WHERE message_id = ?').get(m.reply_to_message.message_id) : null;
   const p = about ? findProject(ctx.db, about.machine, about.project) : null;
   if (p && about.request) {
-    if (await order(ctx, p, { kind: 'answer', ref: about.request, text })) await clear(ctx, about.message_id);
+    if (await order(ctx, p, { kind: 'answer', ref: about.request, text }, m.message_id)) await clear(ctx, about.message_id);
     return null;
   }
-  if (p) return order(ctx, p, { kind: 'note', text });
+  if (p) return order(ctx, p, { kind: 'note', text }, m.message_id);
   const projects = allProjects(ctx.db);
   const tag = text.match(/^#([\w.-]+)\s+([\s\S]+)$/);
   const named = tag ? projects.filter((x) => x.data.name.toLowerCase() === tag[1].toLowerCase()) : projects;
   const body = tag ? tag[2].trim() : text;
   if (tag && !named.length) return ctx.reply(ctx.say('dbot.unknown', { name: tag[1], list: [...new Set(projects.map((x) => x.name))].join(', ') || '—' }));
   if (!named.length) return ctx.reply(ctx.say('dbot.none'));
-  if (named.length === 1) return order(ctx, named[0], { kind: 'note', text: body });
+  if (named.length === 1) return order(ctx, named[0], { kind: 'note', text: body }, m.message_id);
   // Which project: asked with a button each; the text waits in the bot's state meanwhile.
   const key = String(m.message_id);
   const pending = getState(ctx.db, 'pending', {});
@@ -269,10 +274,12 @@ async function sendQueue(ctx, done) {
 }
 
 // What the Macs did with the orders given on Telegram: their own words, or that the Mac never took it.
+// An order's outcome, only when it did not go through (D205): one done is not told, the user asked for it.
 async function tellResults(ctx) {
   for (const o of ctx.db.prepare("SELECT o.*, m.name machine_name FROM orders o JOIN machines m ON m.id = o.machine WHERE o.via = 'telegram' AND o.status != 'pending' AND o.told IS NULL ORDER BY o.id").all()) {
     const p = findProject(ctx.db, o.machine, o.project);
-    await ctx.reply(o.status === 'lapsed' ? ctx.say('dbot.lapsed', { project: p?.name ?? o.project }) : scrub(o.result ?? ''));
+    if (o.status === 'lapsed') await ctx.reply(ctx.say('dbot.lapsed', { project: p?.name ?? o.project }));
+    else if (o.status !== 'done') await ctx.reply(scrub(o.result ?? ''));
     ctx.db.prepare('UPDATE orders SET told = ? WHERE id = ?').run(ctx.now().toISOString(), o.id);
   }
 }

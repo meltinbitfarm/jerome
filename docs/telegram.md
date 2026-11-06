@@ -42,6 +42,8 @@ The macOS notifications stay, and `heartbeat.alerts.command` stays for other cha
 | `/status` | what waits for you in every project, from `jerome projects`, then each block with its buttons |
 | `/help` | what you can send |
 
+When what you sent went through, Jérôme does not write back (D205): a tap's buttons go from its message, and a text you typed gets a 👍 reaction, which makes no sound. It writes only when something did not go through: an answer that failed, a block already closed, a push that failed or found the branch moved, an order the Mac did not take.
+
 Messages are laid out for the phone (D186): the project's name in bold on its own line, then the text. A request shows its question, each option on its own line, the recommendation, and how to answer in italics. Every text is escaped for Telegram's HTML, and a message Telegram refuses that way goes again as plain text, with the same lines.
 
 Each option of a request is a button. The options are read however the agent wrote them: labelled in order (`A) … B) …`, `A: …`, `1) …`), split at the labels so a `/` or `;` inside an option stays in it, or else separated by ` / `, `;`, ` | ` or ` · `. A request with fewer than two options, or more than six, has no buttons, and its message says to reply instead.
@@ -81,7 +83,7 @@ It asks for the token and your `/start` as on a Mac, and keeps the token on the 
 From each Mac's next beat:
 
 - **What a Mac queues** for you, its decision requests with their options, its blocks with their buttons, its push questions and its notifications, goes to the Director with the beat, with the project's key and never its folder, and the Director's bot sends it. Its own bridge stays off, even if set up (`jerome telegram status` on the Mac says so).
-- **What you send** works as before, for every project of every Mac: a tap, a reply, `#project` and a note, `/status`. The bot turns it into the same order the dashboard places (D191): it says at once that it went to the Mac, the Mac takes it with its next beat, within a minute, checks it again under its own rules and runs it, and the bot then tells you how it went, or that the Mac did not take it within 10 minutes. A tap is no longer acted on within seconds: up to a minute, the time of a beat.
+- **What you send** works as before, for every project of every Mac: a tap, a reply, `#project` and a note, `/status`. The bot turns it into the same order the dashboard places (D191): the Mac takes it with its next beat, within a minute, checks it again under its own rules and runs it. The bot writes only if it did not go through, or if the Mac did not take it within 10 minutes (D205). A tap is no longer acted on within seconds: up to a minute, the time of a beat.
 - **Two projects with the same name** on two Macs are told apart by their Mac's name.
 - **The quota running fast** is told once, whichever Mac noticed it first.
 

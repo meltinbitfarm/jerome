@@ -327,6 +327,15 @@ async function reply(call, config, text, extra = {}) {
   return call('sendMessage', { chat_id: config.chatId, text: clip(text), ...extra });
 }
 
+// What the user sent went through: a reaction on their message, which makes no sound, instead of a reply (D205).
+export async function react(call, chatId, messageId) {
+  try {
+    await call('setMessageReaction', { chat_id: chatId, message_id: messageId, reaction: [{ type: 'emoji', emoji: '👍' }] });
+  } catch {
+    // An old Telegram or a message gone: nothing is lost, only the reaction.
+  }
+}
+
 async function onButton(q, state, call, config, now, env) {
   const [kind, a, b] = String(q.data ?? '').split(':');
   const about = state.sent[q.message?.message_id];
@@ -349,7 +358,8 @@ async function onButton(q, state, call, config, now, env) {
   // project checks again that the alert is open and offers it.
   if (kind === 'x' && about?.alert === Number(a) && ACTIONS.includes(b)) {
     const done = runAction(about.dir, Number(a), b, { origin: 'telegram', env, now });
-    if (done.ok) await clearButtons();
+    // Done, the buttons going is the answer; only what did not go through is told (D205).
+    if (done.ok) return clearButtons();
     return reply(call, config, `${about.project}: ${done.text}`);
   }
   // The push question (D194): only on its own message, for its head; pushing checks again that it is unlocked and
@@ -358,6 +368,7 @@ async function onButton(q, state, call, config, now, env) {
     const done = answerPush(about.dir, a, b, { origin: 'telegram', env, now });
     // A push that failed, or found a run working, keeps its buttons for another tap.
     if (!done.retry) await clearButtons();
+    if (done.ok) return null;
     return reply(call, config, `${about.project}: ${done.text}`);
   }
   if (kind === 'a' && about?.request === Number(a)) {
@@ -366,7 +377,7 @@ async function onButton(q, state, call, config, now, env) {
     db?.close();
     const option = optionList(row?.options)[Number(b)];
     // The buttons go only once the request is closed: after a failed answer they stay, for another tap.
-    if (option && (await answer(about, Number(a), option, call, config))) await clearButtons();
+    if (option && (await answer(about, Number(a), option, call, config, null))) await clearButtons();
     return;
   }
   // The project chosen for a note that named none.
@@ -375,7 +386,7 @@ async function onButton(q, state, call, config, now, env) {
     const project = knownProjects()[Number(b)];
     delete state.pending[a];
     if (!text || !project) return reply(call, config, t('note.expired'));
-    return saveNote(project, text, call, config, now);
+    return saveNote(project, text, call, config, now, Number(a));
   }
   return null;
 }
@@ -387,17 +398,17 @@ async function onMessage(m, state, call, config, now) {
   if (command === 'start' || command === 'help') return reply(call, config, t('bot.help'));
   if (command) return reply(call, config, `${t('bot.unknown')}\n\n${t('bot.help')}`);
   const about = m.reply_to_message ? state.sent[m.reply_to_message.message_id] : null;
-  if (about?.request) return answer(about, about.request, text, call, config);
-  if (about) return saveNote({ name: about.project, dir: about.dir }, text, call, config, now);
+  if (about?.request) return answer(about, about.request, text, call, config, m.message_id);
+  if (about) return saveNote({ name: about.project, dir: about.dir }, text, call, config, now, m.message_id);
   const projects = knownProjects();
   const tag = text.match(/^#([\w.-]+)\s+([\s\S]+)$/);
   if (tag) {
     const project = projects.find((p) => p.name.toLowerCase() === tag[1].toLowerCase());
     if (!project) return reply(call, config, t('note.unknown', { name: tag[1], list: projects.map((p) => p.name).join(', ') || '—' }));
-    return saveNote(project, tag[2].trim(), call, config, now);
+    return saveNote(project, tag[2].trim(), call, config, now, m.message_id);
   }
   if (!projects.length) return reply(call, config, t('note.none'));
-  if (projects.length === 1) return saveNote(projects[0], text, call, config, now);
+  if (projects.length === 1) return saveNote(projects[0], text, call, config, now, m.message_id);
   // Which project: asked with a button each; the text waits in the bridge's state meanwhile.
   const key = String(m.message_id);
   state.pending[key] = text;
@@ -405,8 +416,8 @@ async function onMessage(m, state, call, config, now) {
 }
 
 // The answer goes through `jerome request answer`, run without a shell, in the project's folder: the same write as
-// in a session, at zero tokens.
-async function answer(about, id, text, call, config) {
+// in a session, at zero tokens. Answered, a typed answer gets a reaction and a tap loses its buttons (D205).
+async function answer(about, id, text, call, config, typed) {
   const db = openDb(about.dir);
   const row = db?.prepare('SELECT status FROM requests WHERE id = ?').get(id);
   db?.close();
@@ -419,11 +430,15 @@ async function answer(about, id, text, call, config) {
     return true;
   }
   const r = spawnSync(process.execPath, [BIN, 'request', 'answer', String(id), '--', text], { cwd: about.dir, encoding: 'utf8', timeout: 30_000 });
-  await reply(call, config, r.status === 0 ? t('request.answered', { project: about.project, id, text }) : t('request.failed', { project: about.project, id, error: (r.stderr || r.stdout).trim() }));
-  return r.status === 0;
+  if (r.status !== 0) {
+    await reply(call, config, t('request.failed', { project: about.project, id, error: (r.stderr || r.stdout).trim() }));
+    return false;
+  }
+  if (typed) await react(call, config.chatId, typed);
+  return true;
 }
 
-async function saveNote(project, text, call, config, now) {
+async function saveNote(project, text, call, config, now, typed) {
   const db = openDb(project.dir);
   if (!db) return reply(call, config, t('note.nodb', { project: project.name }));
   let id;
@@ -432,6 +447,8 @@ async function saveNote(project, text, call, config, now) {
   } finally {
     db.close();
   }
+  // Saved: a reaction on the user's message, not a reply (D205).
+  if (typed) return react(call, config.chatId, typed);
   return reply(call, config, t('note.saved', { project: project.name, id }));
 }
 

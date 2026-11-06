@@ -660,16 +660,17 @@ test('with the bot on the Director, a Mac\'s question reaches Telegram with its 
   const { message_id: mid, request } = db.prepare('SELECT message_id, request FROM tg_sent WHERE request IS NOT NULL').get();
   db.close();
 
-  // A tap on B: an order for the Mac, told as sent, its buttons taken off.
+  // A tap on B: an order for the Mac, its buttons taken off, and no message: that is the answer (D205).
   writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 1, callback_query: { id: 'q1', data: `a:${request}:1`, message: { message_id: mid, chat: { id: 7, type: 'private' } } } }]));
-  await until('the tap told as sent', () => sent().some((x) => /demo: sent to mini, which does it within a minute/.test(x.text)));
-  assert.ok(calls().some((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === mid));
-  // The Mac's next beat runs it, and the Director tells the result.
+  await until('the buttons taken off', () => calls().some((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === mid));
+  // The Mac's next beat runs it, and the Director tells nothing more once it went through.
   m.beat();
   const project = m.db();
   assert.equal(project.prepare('SELECT status FROM requests WHERE id = ?').get(request).status, 'answered');
   project.close();
-  await until('the result told', () => sent().some((x) => /demo: R\d+ answered: B\) Render/.test(x.text)));
+  const toldOf = () => { const x = d.db(); const r = x.prepare("SELECT told FROM orders WHERE via = 'telegram'").all(); x.close(); return r; };
+  await until('the outcome recorded as told', () => toldOf().length && toldOf().every((o) => o.told));
+  assert.ok(!sent().some((x) => /sent to mini|answered: B\) Render/.test(x.text)), 'nothing told for what went through');
   assert.ok(!sent().some((x) => /From the Director's dashboard/.test(x.text)), 'no echo for the user\'s own tap');
 
   // A note by the project's name, then /status.
@@ -679,6 +680,7 @@ test('with the bot on the Director, a Mac\'s question reaches Telegram with its 
     { update_id: 4, message: { message_id: 52, chat: { id: 99, type: 'private' }, text: '#demo from a stranger' } },
   ]));
   await until('the status told', () => sent().some((x) => /Nothing waits for you in 1 project/.test(x.text)));
+  assert.deepEqual(calls().filter((c) => c.method === 'setMessageReaction').map((c) => c.params.message_id), [50], 'the note placed gets a reaction');
   m.beat();
   const notes = m.db();
   assert.deepEqual(notes.prepare('SELECT text FROM notes').all().map((n) => n.text), ['the pricing page needs the free plan']);

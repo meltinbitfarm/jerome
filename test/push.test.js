@@ -101,7 +101,8 @@ test('with push unlocked, main\'s new commits are asked on Telegram once, "not n
   // "Not now": not asked again until main has new commits, and 4 hours have passed (D198).
   p.tap(first.id, `p:${head}:no`);
   p.tick();
-  assert.match(p.idOf(/Not pushed/).call.params.text, /I ask again with new commits on main, in 4 hours at the soonest/);
+  // The user chose it: not told back (D205).
+  assert.ok(!p.tg().some((c) => c.method === 'sendMessage' && /Not pushed/.test(c.params.text)));
   p.tick();
   assert.equal(p.asked(), 1);
   p.commit('two');
@@ -123,7 +124,8 @@ test('with push unlocked, main\'s new commits are asked on Telegram once, "not n
   p.tap(second.id, `p:${now}:go`);
   p.tick();
   assert.equal(p.remoteHead(), p.head());
-  assert.match(p.idOf(/Pushed/).call.params.text, /Pushed: main, 2 commits/);
+  // Pushed: not told, only a failure would be (D205).
+  assert.ok(!p.tg().some((c) => c.method === 'sendMessage' && /Pushed/.test(c.params.text)));
   const db = p.db();
   assert.match(db.prepare('SELECT text FROM notes ORDER BY id DESC').get().text, /main pushed \(2 commits/);
   db.close();

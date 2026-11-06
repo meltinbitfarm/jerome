@@ -191,7 +191,7 @@ const TEXTS = {
     'bot.connected': 'Jérôme is connected on this machine. You will get here what waits for you, from every project.',
     'bot.test': 'Jérôme: test message from this machine.',
     // The bot on the Director (D155, D202): one for every Mac's projects.
-    'dbot.help': 'I am Jérôme on the Director, for the projects of every Mac.\n• Reply to a decision request, or tap an option, to answer it.\n• Reply to any other message of a project, or start with #project, to leave that project a note; its next heartbeat reads it.\n• /status: what waits for you, in every project.\nWhat you send reaches its Mac within a minute, and I tell you how it went. I run nothing else.',
+    'dbot.help': 'I am Jérôme on the Director, for the projects of every Mac.\n• Reply to a decision request, or tap an option, to answer it.\n• Reply to any other message of a project, or start with #project, to leave that project a note; its next heartbeat reads it.\n• /status: what waits for you, in every project.\nWhat you send reaches its Mac within a minute, and I write again only if it did not go through. I run nothing else.',
     'dbot.connected': 'Jérôme is connected on the Director. You will get here what waits for you, from every project of every Mac.',
     'dbot.test': 'Jérôme: test message from the Director.',
     'dbot.sent': ({ project, machine }) => `${project}: sent to ${machine}, which does it within a minute.`,
@@ -316,7 +316,7 @@ const TEXTS = {
     'bot.unknown': 'Conosco solo /status e /help.',
     'bot.connected': 'Jérôme è collegato su questo Mac. Qui ti arriva quello che ti aspetta, da tutti i progetti.',
     'bot.test': 'Jérôme: messaggio di prova da questo Mac.',
-    'dbot.help': 'Sono Jérôme sul Director, per i progetti di tutti i Mac.\n• Rispondi a una domanda, o tocca un\'opzione, per rispondere.\n• Rispondi a un altro messaggio di un progetto, o inizia con #progetto, per lasciargli una nota; la legge il suo prossimo heartbeat.\n• /status: cosa ti aspetta, in tutti i progetti.\nQuello che mandi arriva al suo Mac entro un minuto, e ti dico com\'è andata. Non eseguo nient\'altro.',
+    'dbot.help': 'Sono Jérôme sul Director, per i progetti di tutti i Mac.\n• Rispondi a una domanda, o tocca un\'opzione, per rispondere.\n• Rispondi a un altro messaggio di un progetto, o inizia con #progetto, per lasciargli una nota; la legge il suo prossimo heartbeat.\n• /status: cosa ti aspetta, in tutti i progetti.\nQuello che mandi arriva al suo Mac entro un minuto, e ti riscrivo solo se qualcosa non va. Non eseguo nient\'altro.',
     'dbot.connected': 'Jérôme è collegato sul Director. Qui ti arriva quello che ti aspetta, da tutti i progetti di tutti i Mac.',
     'dbot.test': 'Jérôme: messaggio di prova dal Director.',
     'dbot.sent': ({ project, machine }) => `${project}: mandato a ${machine}, che lo fa entro un minuto.`,
