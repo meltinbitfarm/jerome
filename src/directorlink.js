@@ -21,7 +21,7 @@ import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { linkPath, statePath, permitsPath, directorOutboxPath, readLink, readState, readPermits, SILENT_MS } from './directormode.js';
 import { openAlerts } from './alerts.js';
 import { scrub } from './scrub.js';
-import { lang } from './i18n.js';
+import { lang, t } from './i18n.js';
 import { projectBoard } from './board.js';
 import { createHash } from 'node:crypto';
 import { projectStatus, projectOver } from './budget.js';
@@ -328,6 +328,11 @@ async function beat({ env, now, log }) {
   const unsent = state.orders.unsent.slice(0, 50);
   // What waits for Telegram, when the Director has the bot (D202).
   const messages = takeMessages();
+  // The order an echo tells of, for its two buttons (D206): only to a Director from 0.20.4; an older one gets the way
+  // to change the dashboard's token in the text, as before.
+  if (!atLeast(state.directorVersion, '0.20.4')) {
+    for (const m of messages.items) if (m.order) { delete m.order; m.text = `${m.text}\n${t('order.notYou', {}, code)}`; }
+  }
   const r = await call(link, '/v1/beat', { version: VERSION, at: now.toISOString(), language: code, quota: sendQuota ? quota : null, projects: projects.slice(0, 100), runs: runs.slice(0, 50),
     // Only when there is one: a Director from before 0.13.0 refuses a field it does not know.
     boards: sending.map((b) => b.board), ...(unsent.length ? { results: unsent } : {}), ...(messages.items.length ? { messages: messages.items } : {}) });
@@ -394,7 +399,8 @@ function takeMessages() {
     const request = m.request && Number.isInteger(m.request.id) ? { id: m.request.id, question: lines(m.request.question, 600), ...(m.request.options ? { options: lines(m.request.options, 600) } : {}), ...(m.request.recommendation ? { recommendation: lines(m.request.recommendation, 600) } : {}) } : null;
     const alert = m.alert && Number.isInteger(m.alert.id) ? { id: m.alert.id, actions: (m.alert.actions ?? []).slice(0, 10).map((a) => String(a).slice(0, 20)) } : null;
     const push = m.push && /^[0-9a-f]{12}$/.test(m.push.head ?? '') ? { head: m.push.head, branch: cut(m.push.branch, 60) } : null;
-    items.push({ at: String(m.at ?? '').slice(0, 40), ...(m.project ? { project: String(m.project).slice(0, 120) } : {}), text: lines(m.text, 1500), ...(request ? { request } : {}), ...(alert ? { alert } : {}), ...(push ? { push } : {}) });
+    const order = Number.isInteger(m.order) && m.order > 0 ? m.order : null;
+    items.push({ at: String(m.at ?? '').slice(0, 40), ...(m.project ? { project: String(m.project).slice(0, 120) } : {}), text: lines(m.text, 1500), ...(request ? { request } : {}), ...(alert ? { alert } : {}), ...(push ? { push } : {}), ...(order ? { order } : {}) });
   }
   return {
     items,

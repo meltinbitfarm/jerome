@@ -685,6 +685,30 @@ test('with the bot on the Director, a Mac\'s question reaches Telegram with its 
   const notes = m.db();
   assert.deepEqual(notes.prepare('SELECT text FROM notes').all().map((n) => n.text), ['the pricing page needs the free plan']);
   notes.close();
+
+  // A note from the dashboard: told by the bot with two buttons, was it you (D206).
+  const token = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  const board = await (await fetch(`${d.url}/api/overview`, { headers: auth })).json();
+  const order = await fetch(`${d.url}/api/order`, { method: 'POST', headers: auth, body: JSON.stringify({ machine: board.projects[0].machineCode, project: board.projects[0].key, kind: 'note', text: 'check the SEO every two days' }) });
+  assert.equal(order.status, 201);
+  m.beat();
+  m.beat();
+  await until('the echo sent with its buttons', () => sent().some((x) => /From the Director's dashboard: note N\d+: check the SEO/.test(x.text)));
+  const echo = sent().find((x) => /From the Director's dashboard: note/.test(x.text));
+  assert.match(echo.text, /<i>Was it you\?<\/i>$/);
+  assert.doesNotMatch(echo.text, /--new-token/);
+  const [[me], [notMe]] = echo.reply_markup.inline_keyboard;
+  assert.deepEqual([me.text, notMe.text], ['Yes, it was me', 'No, it was not me']);
+  const echoId = calls().findIndex((c) => c.method === 'sendMessage' && c.params.text === echo.text) + 1001;
+  // No: a new token at once, the old address refused, the new one said.
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 10, callback_query: { id: 'q9', data: notMe.callback_data, message: { message_id: echoId, chat: { id: 7, type: 'private' } } } }]));
+  await until('the new token told', () => sent().some((x) => /The dashboard has a new token/.test(x.text)));
+  assert.ok(calls().some((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === echoId), 'its buttons taken off');
+  const fresh = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  assert.notEqual(fresh, token);
+  assert.ok(sent().find((x) => /new token/.test(x.text)).text.includes(`#${fresh}`));
+  assert.equal((await fetch(`${d.url}/api/overview`, { headers: auth })).status, 403);
   // The Mac's own bot was never called: one bot, one machine.
   assert.ok(!existsSync(join(own, 'calls.jsonl')));
   // Off on the Director: the Mac's own bridge speaks again.

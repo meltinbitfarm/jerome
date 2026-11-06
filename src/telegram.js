@@ -65,17 +65,19 @@ export function writeConfig(config) {
 }
 
 // Queues a message for the user (D131), when the bridge is set up: { dir, text, request? }.
-// A push question (D194) has `push`: { head, branch }.
-export function enqueue({ dir = null, text, request = null, alert = null, push = null, now = new Date() }) {
+// A push question (D194) has `push`: { head, branch }. The echo of a dashboard's order (D191) has `order`, its id on
+// the Director, which asks with two buttons whether it was the user (D206); a Mac's own bridge says how to change the
+// dashboard's token instead, as it cannot.
+export function enqueue({ dir = null, text, request = null, alert = null, push = null, order = null, now = new Date() }) {
   // Through the Director (D202): the project's key, never its folder, which stays on the Mac.
   if (directorTelegram()) {
     mkdirSync(dirname(directorOutboxPath()), { recursive: true });
-    appendFileSync(directorOutboxPath(), `${JSON.stringify({ at: now.toISOString(), project: dir ? storeKey(cloneRoot(dir)) : null, text, request, alert, ...(push ? { push } : {}) })}\n`);
+    appendFileSync(directorOutboxPath(), `${JSON.stringify({ at: now.toISOString(), project: dir ? storeKey(cloneRoot(dir)) : null, text, request, alert, ...(push ? { push } : {}), ...(order ? { order } : {}) })}\n`);
     return;
   }
   if (!readConfig()) return;
   mkdirSync(dataDir(), { recursive: true });
-  appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: dir ? basename(dir) : null, text, request, alert, ...(push ? { push } : {}) })}\n`);
+  appendFileSync(outboxPath(), `${JSON.stringify({ at: now.toISOString(), dir, project: dir ? basename(dir) : null, text: order ? `${text}\n${t('order.notYou')}` : text, request, alert, ...(push ? { push } : {}) })}\n`);
 }
 
 function readState() {
@@ -283,7 +285,8 @@ export function layout(item, html = true, code = undefined) {
   // A message about the account, not a project (the quota running fast), has no project's name.
   const head = b(esc(item.project ?? 'Jérôme'));
   const r = item.request;
-  if (!r) return `${head}\n${esc(item.text)}`;
+  // A dashboard's order told on the Director's bot asks whether it was the user, with two buttons (D206).
+  if (!r) return `${head}\n${esc(item.text)}${item.order ? `\n\n${i(esc(t('order.wasYou', {}, code)))}` : ''}`;
   const options = optionList(r.options);
   const lines = [head, `❓ ${b(`R${r.id}`)} ${esc(r.question)}`];
   if (options.length) lines.push('', b(t('request.options', {}, code)), ...options.map(esc));
@@ -308,9 +311,11 @@ export async function sendItem(item, call, chatId, code = undefined) {
   const options = r ? optionList(r.options) : [];
   const actions = !r && item.alert?.actions?.length ? item.alert.actions.filter((a) => ACTIONS.includes(a)) : [];
   const push = !r && /^[0-9a-f]{12}$/.test(item.push?.head ?? '') ? item.push : null;
+  const order = !r && !push && !actions.length && Number.isInteger(item.order) ? item.order : null;
   const keyboard = options.length ? options.map((o, i) => [{ text: o, callback_data: `a:${r.id}:${i}` }])
     : push ? [[{ text: t('push.go', { branch: push.branch }, code), callback_data: `p:${push.head}:go` }], [{ text: t('push.no', {}, code), callback_data: `p:${push.head}:no` }]]
-      : actions.map((a) => [{ text: t(`action.${a}`, {}, code), callback_data: `x:${item.alert.id}:${a}` }]);
+      : order ? [[{ text: t('order.me', {}, code), callback_data: `d:${order}:me` }], [{ text: t('order.notMe', {}, code), callback_data: `d:${order}:no` }]]
+        : actions.map((a) => [{ text: t(`action.${a}`, {}, code), callback_data: `x:${item.alert.id}:${a}` }]);
   const markup = keyboard.length ? { reply_markup: { inline_keyboard: keyboard } } : {};
   const html = layout(item, true, code);
   let message;
@@ -320,7 +325,7 @@ export async function sendItem(item, call, chatId, code = undefined) {
     if (!/parse entities|can't parse/i.test(err.message)) throw err;
     message = await call('sendMessage', { chat_id: chatId, text: clip(layout(item, false, code)), ...markup });
   }
-  return { message, actions, push, keyboard };
+  return { message, actions, push, order, keyboard };
 }
 
 async function reply(call, config, text, extra = {}) {

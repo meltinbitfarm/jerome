@@ -38,7 +38,7 @@ export function runOrders(orders, { done = {}, env = process.env, now = new Date
     done[o.id] = { ok: result.ok, text: result.text, at: now.toISOString() };
     results.push(result);
     // An order from the Director's Telegram bot (D202) was the user's own tap there: the bot tells them the result.
-    if (r.echo && o.via !== 'telegram') enqueue({ dir: r.dir, text: r.echo, now });
+    if (r.echo && o.via !== 'telegram') enqueue({ dir: r.dir, text: r.echo, order: o.id, now });
   }
   return results;
 }

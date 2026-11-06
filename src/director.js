@@ -161,12 +161,14 @@ const BOARD = {
   'pending?': 'number',
 };
 const RESULT = { id: 'number', ok: 'boolean', text: 'string:300' };
-// A message for Telegram (D202): the project's key, the text, and a request's, a block's or a push's own fields.
+// A message for Telegram (D202): the project's key, the text, and a request's, a block's or a push's own fields; the
+// echo of a dashboard's order, the order's id, for its two buttons (D206).
 const MESSAGE = {
   at: 'string:40', 'project?': 'string:120', text: 'string:1500',
   'request?': { id: 'number', question: 'string:600', 'options?': 'string:600', 'recommendation?': 'string:600' },
   'alert?': { id: 'number', actions: ['string:20', 10] },
   'push?': { head: 'string:12', branch: 'string:60' },
+  'order?': 'number',
 };
 const SHAPES = {
   hello: { name: 'string:60', publicKey: 'string:400', version: 'string:20' },
@@ -493,7 +495,7 @@ export async function serve({ listen = null, env = process.env } = {}) {
   });
   writeFileSync(pidFile(env), String(process.pid));
   // The Telegram bot (D202), in the same process, once `jerome director telegram setup` has given it a token.
-  runBot({ db: app.db, home: directorHome(env), env, log });
+  runBot({ db: app.db, home: directorHome(env), env, log, newToken: () => newDashboardToken(env) });
   log(`Jérôme Director ${VERSION} listening on ${where.host}:${server.address().port}${env.DIRECTOR_ADDRESS ? `, published on ${env.DIRECTOR_ADDRESS}` : ''}`);
   const stop = () => {
     rmSync(pidFile(env), { force: true });
@@ -528,16 +530,24 @@ function shownAddress(config, env) {
   return env.DIRECTOR_ADDRESS && ['0.0.0.0', '::'].includes(where.host) ? `${env.DIRECTOR_ADDRESS}:${where.port}` : `${where.host}:${where.port}`;
 }
 
+// A new token for the dashboard, read at each request so it takes effect at once: its new address, or null with no
+// Director set up. Also from the bot, when the user says a dashboard's order was not theirs (D206).
+export function newDashboardToken(env = process.env) {
+  const config = readDirectorConfig(env);
+  if (!config) return null;
+  const changed = { ...config, dashboardToken: randomBytes(18).toString('base64url') };
+  writeDirectorConfig(changed, env);
+  return `http://${shownAddress(changed, env)}/#${changed.dashboardToken}`;
+}
+
 // `jerome director dashboard [--new-token]`: the dashboard's address with its token; a new token makes every
 // address given before stop working.
 export async function dashboard({ newToken = false, env = process.env } = {}) {
-  let config = readDirectorConfig(env);
+  const config = readDirectorConfig(env);
   if (!config) return fail('The Director is not set up here: `jerome director init --listen <VPN address>`.');
   if (newToken || !config.dashboardToken) {
-    config = { ...config, dashboardToken: randomBytes(18).toString('base64url') };
-    writeDirectorConfig(config, env);
-  }
-  console.log(`${newToken ? '✓ New token: the address given before no longer opens the dashboard.\n' : ''}http://${shownAddress(config, env)}/#${config.dashboardToken}`);
+    console.log(`${newToken ? '✓ New token: the address given before no longer opens the dashboard.\n' : ''}${newDashboardToken(env)}`);
+  } else console.log(`http://${shownAddress(config, env)}/#${config.dashboardToken}`);
   console.log('Open it from any device on the VPN, such as the iPhone. Keep it private: it shows everything the Director knows.');
   return 0;
 }

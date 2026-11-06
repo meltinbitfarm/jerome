@@ -42,6 +42,8 @@ export function createBotTables(db) {
   const columns = db.prepare('PRAGMA table_info(orders)').all().map((c) => c.name);
   if (!columns.includes('via')) db.exec('ALTER TABLE orders ADD COLUMN via TEXT');
   if (!columns.includes('told')) db.exec('ALTER TABLE orders ADD COLUMN told TEXT');
+  // The dashboard's order a message tells of, for its two buttons (D206).
+  if (!db.prepare('PRAGMA table_info(tg_sent)').all().some((c) => c.name === 'ord')) db.exec('ALTER TABLE tg_sent ADD COLUMN ord INTEGER');
 }
 
 const getState = (db, key, fallback) => {
@@ -74,7 +76,7 @@ const clip = (text) => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}
 
 // One pass: the updates, the results to tell, the buttons to take off, then what waits to be sent. `wait` is how long
 // Telegram may hold the poll open for an update.
-export async function botPass({ db, home, env = process.env, wait = 0, now = () => new Date() }) {
+export async function botPass({ db, home, env = process.env, wait = 0, now = () => new Date(), newToken = () => null }) {
   const config = readBotConfig(home);
   if (!config) return { configured: false };
   const call = telegramApi(config.token, env);
@@ -82,7 +84,7 @@ export async function botPass({ db, home, env = process.env, wait = 0, now = () 
   const say = (key, values = {}) => t(key, values, code);
   const reply = (text, extra = {}) => call('sendMessage', { chat_id: config.chatId, text: clip(text), ...extra });
   const done = { configured: true, received: 0, ignored: 0, sent: 0, errors: [] };
-  const ctx = { db, call, config, say, reply, now, code };
+  const ctx = { db, call, config, say, reply, now, code, newToken };
   try {
     const updates = await call('getUpdates', { offset: getState(db, 'offset', 0), timeout: wait, allowed_updates: ['message', 'callback_query'] });
     for (const u of updates) {
@@ -115,11 +117,11 @@ export async function botPass({ db, home, env = process.env, wait = 0, now = () 
 }
 
 // The bot, for as long as the Director serves: a pass after another, long polling Telegram so a tap is heard at once.
-export async function runBot({ db, home, env = process.env, log = () => {} }) {
+export async function runBot({ db, home, env = process.env, log = () => {}, newToken = () => null }) {
   for (let wait = 0; ; wait = POLL_SECONDS) {
     let done;
     try {
-      done = await botPass({ db, home, env, wait });
+      done = await botPass({ db, home, env, wait, newToken });
     } catch (err) {
       done = { configured: true, errors: [err.message] };
     }
@@ -177,6 +179,14 @@ async function onButton(q, ctx) {
     const p = choice ? findProject(ctx.db, choice[0], choice[1]) : null;
     if (!waiting || !p) return ctx.reply(ctx.say('note.expired'));
     return order(ctx, p, { kind: 'note', text: waiting.text }, Number(a));
+  }
+  // Whether a dashboard's order was the user's (D206): yes only takes the buttons off; no gives the dashboard a new
+  // token at once, so the address that was used opens nothing any more, and says the new one.
+  if (kind === 'd' && about?.ord === Number(a) && ['me', 'no'].includes(b)) {
+    await clear(ctx, id);
+    if (b === 'me') return null;
+    const address = ctx.newToken();
+    return ctx.reply(address ? ctx.say('dbot.newToken', { address }) : ctx.say('dbot.noToken'));
   }
   const p = about ? findProject(ctx.db, about.machine, about.project) : null;
   // A button of a message the Director did not send, such as a Mac's bridge's before the move.
@@ -251,9 +261,9 @@ async function status(ctx) {
 
 // One message to the user, remembered so a tap or a reply on it reaches its project.
 async function deliver(ctx, { machine, project, name, item }) {
-  const { message, actions, push, keyboard } = await sendItem({ ...item, project: name }, ctx.call, ctx.config.chatId, ctx.code);
-  ctx.db.prepare('INSERT OR REPLACE INTO tg_sent (message_id, machine, project, request, alert, push, buttons, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(message.message_id, machine, project, item.request?.id ?? null, actions.length ? item.alert.id : null, push?.head ?? null, keyboard.length ? 1 : 0, ctx.now().toISOString());
+  const { message, actions, push, order, keyboard } = await sendItem({ ...item, project: name }, ctx.call, ctx.config.chatId, ctx.code);
+  ctx.db.prepare('INSERT OR REPLACE INTO tg_sent (message_id, machine, project, request, alert, push, ord, buttons, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(message.message_id, machine, project, item.request?.id ?? null, actions.length ? item.alert.id : null, push?.head ?? null, order, keyboard.length ? 1 : 0, ctx.now().toISOString());
   // Kept for the last 1,000 messages.
   ctx.db.prepare('DELETE FROM tg_sent WHERE message_id NOT IN (SELECT message_id FROM tg_sent ORDER BY message_id DESC LIMIT 1000)').run();
 }

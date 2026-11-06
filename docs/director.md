@@ -102,7 +102,7 @@ What you send from the dashboard is an **order**, and an order is data, never a 
 2. The Mac takes it in the answer to its next beat, within a minute, signed with the Director's key it pinned. The Director still never contacts a Mac.
 3. The Mac checks it again under its own rules, and runs it with the same code as a tap or a reply on Telegram: an answer through `jerome request answer`, a note as a note of the project, an action from the closed list of D167, never while a heartbeat holds the project. An order older than 10 minutes lapses, and one given twice runs once.
 4. It reports at once what it did. The dashboard shows it under **Sent from here**: waiting for the Mac, done, not done with the reason, or lapsed. A question answered from the dashboard leaves the page at once.
-5. **The Mac tells you on Telegram** of each order it ran, when its Telegram bridge is set up: "📋 From the Director's dashboard: R4 answered: B". If you did not send it, someone has the dashboard's address: `jerome director dashboard --new-token` on the server makes it stop working.
+5. **The Mac tells you on Telegram** of each order it ran: "📋 From the Director's dashboard: R4 answered: B". With the bot on the Director (0.20.4 or later), the message asks "Was it you?" with two buttons (D206): **Yes, it was me** only takes the buttons off; **No, it was not me** gives the dashboard a new token at once, so the address used until then opens nothing on any device, and the bot sends you the new one. What was done stays done: check that project. With a Mac's own bridge, the message says instead to run `jerome director dashboard --new-token` on the server.
 
 ### The push and what is unlocked
 
