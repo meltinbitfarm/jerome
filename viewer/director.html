@@ -72,6 +72,7 @@ const WORDS = {
     pushHow: 'The push may start a deploy. Jérôme asked on Telegram too: either answer counts.',
     unlocked: 'Unlocked here', lock: 'Lock again', lockHint: 'Unlocking is done only at the Mac: jerome rules unlock <name>.',
     lockAsk: (what) => `Lock "${what}" again? Unlocking it again can be done only at the Mac.`,
+    waitsYou: 'Stopped: it waits for you', waitsHow: 'Until then it does what it can without you. Do it, then say so in a note; or tell it what to do instead.',
     readNote: 'Read the note', hideNote: 'Close the note', noteLoading: 'Loading…',
     silent: (mac, since) => `The Mac ${mac} has not been heard from since ${since}. Is it on and connected?`,
     pending: (mac) => `The Mac ${mac} waits for your approval: \`jerome director approve\` on the server.`,
@@ -136,6 +137,7 @@ const WORDS = {
     pushHow: 'Il push può far partire il deploy. Jérôme te l\'ha chiesto anche su Telegram: vale la prima risposta.',
     unlocked: 'Sbloccato qui', lock: 'Blocca di nuovo', lockHint: 'Sbloccare si fa solo dal Mac: jerome rules unlock <nome>.',
     lockAsk: (what) => `Bloccare di nuovo "${what}"? Per sbloccarlo di nuovo dovrai farlo dal Mac.`,
+    waitsYou: 'Fermo: aspetta te', waitsHow: 'Intanto fa quello che può senza di te. Fallo, poi diglielo con una nota; o scrivigli cosa fare invece.',
     readNote: 'Leggi la nota', hideNote: 'Chiudi la nota', noteLoading: 'Carico…',
     silent: (mac, since) => `Il Mac ${mac} non si sente da ${since}. È acceso e in rete?`,
     pending: (mac) => `Il Mac ${mac} aspetta la tua approvazione: \`jerome director approve\` sul server.`,
@@ -267,6 +269,13 @@ function renderTodo(items) {
         el('ul', { class: 'card-text' }, a.subjects.map((s) => el('li', {}, s))),
         el('div', { class: 'choices' }, a.choices.map((c) => el('button', { type: 'button', class: 'choice', onclick: (ev) => order(ev.target, { machine: a.machineCode, project: a.key, kind: 'push', head: a.head, action: c.name }) }, c.label))),
         el('div', { class: 'muted small' }, W.pushHow));
+    }
+    if (a.kind === 'waiting') {
+      return el('div', { class: 'card ask' },
+        el('div', { class: 'card-head' }, el('span', { class: 'warn' }, `⏸ ${W.waitsYou}`), el('span', { class: 'muted' }, ` · ${a.project} · ${ago(a.since)}`)),
+        el('ul', { class: 'card-text' }, a.items.map((x) => el('li', {}, x))),
+        writeBox(`waiting:${a.machineCode}/${a.key}`, W.notePlaceholder, (text, button) => order(button, { machine: a.machineCode, project: a.key, kind: 'note', text })),
+        el('div', { class: 'muted small' }, W.waitsHow));
     }
     if (a.kind === 'block') {
       return el('div', { class: 'card stop' },

@@ -52,7 +52,8 @@ Control starts at once, not at the end of the week: the pace is worked out again
 
 **How a fill run differs from a scheduled one.** It goes through the same checks, triage and end check. It is told the quota is behind, and:
 - an area's pace does not hold it back; a paused area, or one waiting for a milestone decision, still does;
-- if no area has a task, it may take one from the `## Backlog` section of `open.md`.
+- if no area has a task, it may take one from the `## Backlog` section of `open.md`;
+- if the backlog has nothing that can be done without you either, it writes the backlog (D208): the lead agent reads the project's goals, criteria, decisions and recent work, adds 3 to 6 items it can do without you, and does the first. At most once every 12 hours per project; in between, the run ends with no work as before, at zero tokens when nothing changed.
 
 **The backlog** holds work that needs nobody: tests, refactors, research. The lead agent adds to it what it notices along the way and removes an item once it is done. New projects get the section empty; add it to `open.md` in older ones.
 

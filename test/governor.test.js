@@ -2,7 +2,7 @@
 // and fill runs started by the watchdog on throwaway projects.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pace, modelFor } from '../src/pacing.js';
 import { parseUsage } from '../src/quota.js';
@@ -180,4 +180,40 @@ test('a project with a session in use gets no fill run: the governor leaves it t
   d.close();
   assert.equal(p.gov('watchdog', 'run').status, 0);
   assert.equal(heartbeats(), 1);
+});
+
+test('a fill run with nothing to take writes the backlog and does its first item, at most once in 12 hours (D208)', () => {
+  const p = governed({ FAKE_TRIAGE: '{"work": false, "reason": "every item waits on the user"}' });
+  assert.equal(p.gov('governor', 'on').status, 0);
+  assert.equal(p.runIn(p.dir, 'governor', 'add').status, 0);
+  p.gov('quota');
+  const runs = () => {
+    const d = p.db();
+    const rows = d.prepare('SELECT status, reason FROM runs ORDER BY id').all();
+    d.close();
+    return rows;
+  };
+  const triages = () => (p.calls().match(/--model haiku/g) ?? []).length;
+  p.gov('heartbeat', 'fill', 'demo');
+  assert.equal(runs().at(-1).status, 'done', runs().at(-1).reason);
+  assert.equal(triages(), 1);
+  const prompt = readFileSync(join(p.root, 'lead-prompt'), 'utf8');
+  assert.match(prompt, /Task chosen by the triage: Write the backlog: nothing can be done now without the user/);
+  assert.match(prompt, /Writing the backlog \(D208\)[\s\S]*add 3 to 6 items under `## Backlog`[\s\S]*Then do the first of them in this run/);
+  // Within 12 hours the triage's no work stands, then nothing changed costs nothing.
+  p.gov('heartbeat', 'fill', 'demo');
+  assert.equal(runs().at(-1).reason, 'no work: every item waits on the user');
+  p.gov('heartbeat', 'fill', 'demo');
+  assert.equal(runs().at(-1).reason, 'no changes since the last heartbeat');
+  // 12 hours later the fill run writes it again, without asking the triage what it already said.
+  const dir = join(p.root, '.cache', 'jerome', 'heartbeat');
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.json'))) {
+    const last = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+    if (last.refilledAt) writeFileSync(join(dir, f), JSON.stringify({ ...last, refilledAt: new Date(Date.now() - 13 * H).toISOString() }));
+  }
+  const before = triages();
+  writeFileSync(join(p.root, 'lead-prompt'), '');
+  p.gov('heartbeat', 'fill', 'demo');
+  assert.match(readFileSync(join(p.root, 'lead-prompt'), 'utf8'), /Writing the backlog \(D208\)/);
+  assert.equal(triages(), before);
 });

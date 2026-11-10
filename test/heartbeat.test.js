@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readyProject as project, sandbox, sandboxDb } from './sandbox.js';
-import { globalLimits, leadPrompt } from '../src/heartbeat.js';
+import { globalLimits, leadPrompt, triagePrompt } from '../src/heartbeat.js';
 import { jobLabel } from '../src/schedule.js';
 
 test('an untrusted project is skipped with an alert, never a decision request (D160)', () => {
@@ -392,7 +392,7 @@ test('the triage chooses among the areas due; paused areas, open requests and pa
   run = p.lastRun();
   assert.deepEqual([run.status, run.reason], ['failed', 'triage: the triage chose the area "marketing", which is not due']);
   // The verdict is kept with its run, the refused one too (D110).
-  assert.deepEqual(JSON.parse(run.triage), { work: true, area: 'marketing', task: 'Write a post', reason: null, milestone: false });
+  assert.deepEqual(JSON.parse(run.triage), { work: true, area: 'marketing', task: 'Write a post', reason: null, milestone: false, waiting: [] });
   assert.doesNotMatch(triages().pop(), /### marketing/);
 
   // A triage with no work still records the subscription window its stream carries.
@@ -613,4 +613,34 @@ test('near the token cap each agent of the run is told once to wrap up, on its n
   assert.match(bash('run-1'), /80% of its token budget.*commit what is done on its work branch.*The next run goes on from there/);
   assert.equal(bash('run-1'), null);
   assert.match(bash('run-1', 'a2'), /reply to the lead agent/);
+});
+
+test('what holds a project up waiting for the user is kept, told once on Telegram and in jerome projects, and cleared by work; a put-off answer is asked again (D209)', () => {
+  const p = project();
+  const log = join(p.root, 'notify.log');
+  const triage = (verdict) => p.runWith({ FAKE_TRIAGE: JSON.stringify(verdict), JEROME_NOTIFY_LOG: log }, 'heartbeat', 'demo');
+  const told = () => (existsSync(log) ? readFileSync(log, 'utf8') : '');
+  const waiting = { work: false, reason: 'every task waits on Fabio', waiting: ['Confirm the game\'s name', 'Publish the listing on Virgilio', 42] };
+  triage(waiting);
+  assert.equal(p.lastRun().reason, 'no work: every task waits on Fabio');
+  assert.match(told(), /⏸ Stopped: it waits for you\.\n• Confirm the game's name\n• Publish the listing on Virgilio\nUntil then/);
+  assert.match(p.run('projects').stdout, /waits for you: Confirm the game's name · Publish the listing on Virgilio/);
+  // The same again, after a change: not told twice.
+  writeFileSync(join(p.dir, '.jerome', 'open.md'), '# Open\n\n## To do\nO1: something\n');
+  p.git('add', '.jerome/open.md');
+  p.git('commit', '-q', '-m', 'Change open.md');
+  triage({ ...waiting, waiting: ['Publish the listing on Virgilio', 'Confirm the game\'s name'] });
+  assert.equal(told().match(/⏸/g).length, 1);
+  // Work found after a note: it moves by itself, nothing waits.
+  writeFileSync(join(p.dir, '.jerome', 'open.md'), '# Open\n\n## To do\nO1: something else\n');
+  p.git('commit', '-q', '-am', 'Change open.md again');
+  triage({ work: true, task: 'Write the report writer', reason: 'next step', waiting: [] });
+  assert.doesNotMatch(p.run('projects').stdout, /waits for you/);
+
+  const prompt = triagePrompt({ plan: { due: [{ name: 'main', goal: 'g', criteria: 'c' }], implicit: true }, language: 'it', today: '2026-11-10' });
+  assert.match(prompt, /"waiting" lists what holds work up and only the user can do, at most 5, each a short sentence in Italian/);
+  assert.match(prompt, /put off: R<n>, ask again from <date>\)` whose date has come \(today is 2026-11-10\) is work/);
+  const lead = leadPrompt('Record the answers', null, [], { answers: [{ id: 25, status: 'answered', question: 'Confirm the name?', answer: 'I need to think about it' }] });
+  assert.match(lead, /An answer that does not decide \(they will think about it, not now\) or answers something else is no decision \(D209\)/);
+  assert.match(lead, /one marked `\(put off: R<n>, ask again from <date>\)` is asked only from that date/);
 });

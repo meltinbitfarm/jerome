@@ -24,6 +24,7 @@ import { scrub } from './scrub.js';
 import { lang, t } from './i18n.js';
 import { projectBoard } from './board.js';
 import { NOTES_DIR } from './paths.js';
+import { readWaiting } from './waiting.js';
 import { createHash } from 'node:crypto';
 import { projectStatus, projectOver } from './budget.js';
 import { lockHolder, cacheDir } from './runstate.js';
@@ -222,6 +223,9 @@ function projectBeat(s, filled, cursors, now) {
       model: cut(readMarker(dir).heartbeat?.model ?? 'opus', 60),
       maxMinutes: config.maxMinutes,
     };
+    // What holds it up waiting for the user (D209), as the triage said it.
+    const waiting = readWaiting(dir);
+    if (waiting) project.waiting = { at: waiting.at, items: waiting.items.map((x) => cut(x, 300)) };
     // What the user unlocked here, and the push asked (D194-D196), for a Director that knows them.
     const open = Object.keys(unlocked(dir)).slice(0, 20).map((g) => cut(g, 20));
     const push = pushPending(dir);
@@ -340,6 +344,8 @@ async function beat({ env, now, log }) {
   if (!atLeast(state.directorVersion, '0.17.0')) for (const p of projects) delete p.rules?.push?.why;
   // The model and the longest run, for permits (D201): only to a Director from 0.19.0.
   if (!atLeast(state.directorVersion, '0.19.0')) for (const p of projects) { delete p.model; delete p.maxMinutes; }
+  // What waits for the user (D209): only to a Director from 0.22.0.
+  if (!atLeast(state.directorVersion, '0.22.0')) for (const p of projects) delete p.waiting;
   const sendQuota = quota && quota.readAt !== state.quotaReadAt;
   const sending = [];
   let size = 0;

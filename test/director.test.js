@@ -766,3 +766,22 @@ test('a note a run wrote goes with its board line to the Director once, opens on
   writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 2, callback_query: { id: 'q1', data: button.callback_data, message: { message_id: 1001, chat: { id: 7, type: 'private' } } } }]));
   await until('the note sent', () => sent().some((x) => /^📄 demo · 2026-11-06-visibility\.md\n\n# AI visibility\n\nfour moves now/.test(x.text)));
 });
+
+test('what holds a project up waiting for the user reaches the top of the dashboard, with a box for a note (D209)', async () => {
+  const d = await startDirector();
+  const m = mac('mini');
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  m.runWith({ FAKE_TRIAGE: JSON.stringify({ work: false, reason: 'waits on Fabio', waiting: ['Conferma il nome del gioco'] }) }, 'heartbeat', 'demo');
+  m.beat();
+  m.beat();
+  const token = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  const o = await (await fetch(`${d.url}/api/overview`, { headers: { authorization: `Bearer ${token}` } })).json();
+  const w = o.attention.find((a) => a.kind === 'waiting');
+  assert.ok(w, JSON.stringify(o.attention));
+  assert.deepEqual(w.items, ['Conferma il nome del gioco']);
+  assert.equal(w.project, 'demo');
+  assert.equal(o.projects[0].state, 'asking');
+  // A Director from before 0.22.0 is not sent it: it would refuse the field.
+  assert.equal(atLeast('0.21.1', '0.22.0'), false);
+});

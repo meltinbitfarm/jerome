@@ -13,6 +13,7 @@ import { readMarker } from './template.js';
 import { describe, launchd } from './schedule.js';
 import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { needsYou, oneRunCap } from './heartbeat.js';
+import { readWaiting } from './waiting.js';
 import { lostRuns } from './alerts.js';
 import { missedStarts, missedText } from './missed.js';
 import { openDb } from './db.js';
@@ -113,6 +114,9 @@ function attention(row, dir, now) {
   if (h && (h.status === 'failed' || (h.status === 'stopped' && !(h.caps?.once ?? oneRunCap(h.reason))) || (h.status === 'blocked' && needsYou(h.reason)))) reasons.push(`heartbeat ${h.status}: ${h.reason}`);
   const late = lateHeartbeat(row, dir, now);
   if (late) reasons.push(late);
+  // What holds it up and only the user can do (D209).
+  const waiting = readWaiting(dir);
+  if (waiting) reasons.push(`waits for you: ${waiting.items.join(' · ')}`);
   return reasons;
 }
 

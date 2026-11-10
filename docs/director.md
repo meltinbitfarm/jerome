@@ -106,6 +106,8 @@ What you send from the dashboard is an **order**, and an order is data, never a 
 
 ### The push and what is unlocked
 
+When a project has nothing it can do without you, what it waits for shows here too, as **⏸ Stopped: it waits for you**, in plain words, with a box to send it a note (D209): a choice you put off, a step outside the project, a link it asked for. It goes once the project finds work again.
+
 In a project where you [unlocked the push](commands/rules.md), the push Jérôme asked on Telegram shows under **What you need to do** too, with its commits and the same two buttons, **Push main** and **Not now**: the first answer counts, from either side. A question the lead agent asked sooner starts with its reason, from a Director 0.17.0 on (D198). Under each project, a line lists what you unlocked there, each with a **Lock again** button (D196), which asks you to confirm first, since unlocking again is done only at the Mac (D207). Unlocking has no button: it is done only at a terminal on the Mac, so whoever took the dashboard cannot unlock anything.
 
 A Mac sends these only to a Director at 0.16.0 or later, which says its version in the answer to the beat; an older Director keeps working without them.

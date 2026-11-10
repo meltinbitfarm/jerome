@@ -251,7 +251,7 @@ export function overview(db, now = new Date(), { telegram = false } = {}) {
       board.done = board.done.map((x) => ({ ...x, notes: (x.notes ?? []).filter((n) => ids.has(n)).map((n) => ({ id: ids.get(n), name: n })) }));
     }
     const state = data.running ? 'running' : blocks.some((b) => b.lasting) ? 'stuck' : blocks.length ? 'retrying'
-      : (data.requests ?? []).length ? 'asking' : data.overLimit ? 'paused' : 'idle';
+      : (data.requests ?? []).length || data.waiting?.items?.length ? 'asking' : data.overLimit ? 'paused' : 'idle';
     return {
       ...data,
       // The groups unlocked here, named in the user's language, each with its Lock button (D196).
@@ -284,6 +284,9 @@ export function overview(db, now = new Date(), { telegram = false } = {}) {
         head: p.rules.push.head, branch: p.rules.push.branch, count: p.rules.push.count, subjects: p.rules.push.subjects,
         text: t('push.ask', { count: p.rules.push.count, branch: p.rules.push.branch, after: p.rules.push.after ?? null, why: p.rules.push.why ?? null, subjects: p.rules.push.subjects.map((x) => `• ${x}`).join('\n') }, spoken),
         choices: [{ name: 'go', label: t('push.go', { branch: p.rules.push.branch }, spoken) }, { name: 'no', label: t('push.no', {}, spoken) }] })),
+      // What holds a project up and only the user can do (D209), as its triage said it.
+      ...projects.filter((p) => p.waiting?.items?.length).map((p) => ({ kind: 'waiting', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode,
+        items: p.waiting.items, since: p.waiting.at })),
       ...projects.flatMap((p) => p.blocks.filter((b) => b.lasting).map((b) => ({ kind: 'block', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode, id: b.id,
         text: b.text, since: b.since, actions: b.actions }))),
     ],

@@ -194,6 +194,8 @@ const SHAPES = {
       overLimit: 'boolean',
       // The model and the longest run of the project's heartbeats, for its permits (D201).
       'model?': 'string:60', 'maxMinutes?': 'number',
+      // What holds it up waiting for the user, in their words (D209).
+      'waiting?': { at: 'string:40', items: ['string:300', 5] },
       'lastHeartbeat?': { at: 'string:40', status: 'string:20', reason: 'string:300' },
       usage: { today: USAGE, week: USAGE },
       // What the user unlocked in the project, and the push asked and not answered (D194-D196).

@@ -37,7 +37,8 @@ import { heartbeatConfig, runAllowed } from './heartbeatconfig.js';
 import { acquireLock, releaseLock, cacheDir, startState, carryState, OWN_MESSAGE, isOwnFile, endCheck, digestLines, currentBranch, uncommitted, readResume, writeResume, clearResume, overrideToday, readCapped, writeCapped, clearCapped, markBudget, clearBudget, WRAP_UP_AT, unmergedWorkBranches } from './runstate.js';
 import { raiseAlert, resolveAlerts, sameAsBefore, capStop, capsBefore, lostRuns } from './alerts.js';
 import { announceAlerts } from './announce.js';
-import { t, lang, leadLanguageLine } from './i18n.js';
+import { t, lang, leadLanguageLine, englishName } from './i18n.js';
+import { waitingItems, writeWaiting } from './waiting.js';
 import { plainNow } from './plain.js';
 import { activeSession, ACTIVE_MINUTES } from './activity.js';
 import { notify } from './notify.js';
@@ -239,21 +240,33 @@ export async function heartbeat(dirArg, { env = process.env, now = new Date(), m
 
     const fingerprint = projectFingerprint(dir, plan.due.map((a) => a.name), slot?.name, fill);
     const last = readLast(dir);
-    if (last?.fingerprint === fingerprint && last.verdict === 'no work') return finish('done', `no changes since the last heartbeat${note}`);
+    // A fill run that finds nothing to take writes the project's backlog instead (D208), at most once in REFILL_MS: the
+    // quota left at the reset is lost, and a project that grows by itself always has more to do.
+    const refilledAt = last?.refilledAt ?? null;
+    const canRefill = fill && !(Date.parse(refilledAt ?? '') > now.getTime() - REFILL_MS);
+    const known = last?.fingerprint === fingerprint && last.verdict === 'no work';
+    if (known && !canRefill) return finish('done', `no changes since the last heartbeat${note}`);
 
-    const triage = await runTriage(dir, run, env, plan, slot, fill);
+    let triage = known ? { work: false } : await runTriage(dir, run, env, plan, slot, fill);
     if (triage.verdict) saveVerdict(dir, run, triage.verdict);
     if (triage.error) return finish('failed', `triage: ${triage.error}${note}`);
+    // What holds the project up and only the user can do (D209): kept while the triage finds no task, told once on
+    // Telegram when it changes; a task found clears it.
+    if (!known) {
+      const told = writeWaiting(dir, triage.work ? [] : triage.waiting ?? [], now);
+      if (told) notify(env, dir, t('waiting.told', { project: basename(dir), items: told }, lang(env)));
+    }
+    if (!triage.work && canRefill) triage = { work: true, area: plan.due[0].name, task: REFILL_TASK, refill: true };
     if (!triage.work) {
-      writeLast(dir, { fingerprint, verdict: 'no work', at: now.toISOString() });
+      writeLast(dir, { fingerprint, verdict: 'no work', at: now.toISOString(), refilledAt });
       return finish('done', `no work: ${triage.reason ?? 'nothing to do'}${note}`);
     }
     const area = plan.due.find((a) => a.name === triage.area);
     setRunArea(dir, run, area.name);
 
-    const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot, notes: projectNotes(dir), fill, answers: answersToRecord(dir), push: isUnlocked(dir, 'push') });
+    const prompt = leadPrompt(triage.task, plan.implicit ? null : area, area.requests, { config, slot, notes: projectNotes(dir), fill, refill: triage.refill === true, answers: answersToRecord(dir), push: isUnlocked(dir, 'push') });
     const lead = await leadRun(dir, run, { label: `lead agent: ${triage.task}`, prompt }, caps, given, model, env, config, stopper, record, slot, governed);
-    writeLast(dir, { fingerprint: projectFingerprint(dir, [], null, fill), verdict: 'work', at: new Date().toISOString() });
+    writeLast(dir, { fingerprint: projectFingerprint(dir, [], null, fill), verdict: 'work', at: new Date().toISOString(), refilledAt: triage.refill ? now.toISOString() : refilledAt });
     // The pages' new hashes count only once the area's heartbeat has done its work (D111).
     if (lead.status === 'done' && area.watch) saveHashes(jobLabel(dir), area.name, area.watch.pending);
     // A task stopped by its caps is not tried again by itself (D182): the user is asked at once, and while the request
@@ -605,6 +618,10 @@ async function checks(dir, config) {
   return { reason: null, start, carried: all.length ? all : null, warned };
 }
 
+// A fill run with no task writes the backlog (D208): the task the lead agent is given, and how often at most.
+export const REFILL_TASK = 'Write the backlog: nothing can be done now without the user, and the week\'s quota is behind its pace';
+const REFILL_MS = 12 * 3_600_000;
+
 // What the triage looks at: when none of it changed since a "no work" verdict, there is nothing new to do. A slot's
 // text counts too, since another slot may ask for other work.
 function projectFingerprint(dir, due = [], slot = null, fill = false) {
@@ -674,7 +691,7 @@ async function runTriage(dir, run, env, plan, slot = null, fill = false) {
   let out;
   const progress = startProgress('triage on Haiku: is there work to do?');
   try {
-    out = await runClaudeAsync(['-p', triagePrompt({ plan, open: read(STATE.open), gitLog, requests, digestLines: recent, slot, notes, fill }), '--model', 'haiku', '--tools', '',
+    out = await runClaudeAsync(['-p', triagePrompt({ plan, open: read(STATE.open), gitLog, requests, digestLines: recent, slot, notes, fill, language: lang(env) }), '--model', 'haiku', '--tools', '',
       '--no-session-persistence', '--output-format', 'stream-json', '--verbose', ...(existsSync(settings) ? ['--settings', settings] : [])],
     { cwd: serviceFolder(dir), timeout: 180_000, env: { JEROME_HOOKS: 'off' } });
   } catch (err) {
@@ -708,23 +725,25 @@ async function runTriage(dir, run, env, plan, slot = null, fill = false) {
     return { error: 'the triage did not answer with JSON' };
   }
   // The verdict as given, kept with the run (D110), even when it is refused below.
-  const kept = { work: v.work === true, area: v.area ?? null, task: v.task ?? null, reason: v.reason ?? null, milestone: v.milestone === true };
+  const kept = { work: v.work === true, area: v.area ?? null, task: v.task ?? null, reason: v.reason ?? null, milestone: v.milestone === true, waiting: waitingItems(v.waiting) };
   const given = Object.fromEntries(Object.entries(kept).map(([k, x]) => [k, typeof x === 'string' ? x.slice(0, 300) : x]));
+  const waiting = kept.waiting;
   const work = v.work === true && Boolean(v.task);
   // With one area the choice is made; with several, an area that is not due is not taken on trust.
   const area = plan.due.length === 1 ? plan.due[0].name : String(v.area ?? '');
-  if (work && !plan.due.some((a) => a.name === area)) return { verdict: given, error: `the triage chose ${area ? `the area "${area.slice(0, 40)}", which is not due` : 'no area'}` };
+  if (work && !plan.due.some((a) => a.name === area)) return { verdict: given, waiting, error: `the triage chose ${area ? `the area "${area.slice(0, 40)}", which is not due` : 'no area'}` };
   const task = String(v.task ?? '').slice(0, 300);
-  return { verdict: given, work, area, task: v.milestone === true ? `${task} (check the milestone's criteria)` : task, reason: String(v.reason ?? '').slice(0, 300) };
+  return { verdict: given, work, area, waiting, task: v.milestone === true ? `${task} (check the milestone's criteria)` : task, reason: String(v.reason ?? '').slice(0, 300) };
 }
 
-export function triagePrompt({ plan, open = '', gitLog = '', requests = [], digestLines = [], slot = null, notes = [], fill = false }) {
+export function triagePrompt({ plan, open = '', gitLog = '', requests = [], digestLines = [], slot = null, notes = [], fill = false, language = 'en', today = new Date().toISOString().slice(0, 10) }) {
   const areas = plan.due.map((a) => `### ${a.name}${plan.implicit ? '' : ` · priority ${a.priority} · ${a.pace} pace · last heartbeat ${a.lastAt ? a.lastAt.slice(0, 16).replace('T', ' ') : 'never'}`}
 Goal: ${a.goal ?? 'none'}${a.milestone ? `\nMilestone: ${a.milestone}` : ''}
 ${a.milestone ? 'Criteria' : 'Success criteria'}: ${a.criteria ?? 'none'}`).join('\n\n');
   return `You decide whether a scheduled heartbeat of a project should start its lead agent, and on which area of work.
-Answer with one JSON object and nothing else: {"work": true|false, "area": "<area name>", "task": "<one task, one sentence>", "milestone": true|false, "reason": "<one sentence>"}.
-Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. An area with no goal or criteria (a project brought in without a brief) moves by the open items of open.md and the next step its recent history points to: take one of those, never answer no work for want of criteria. An open request holds up only what depends on it: choose another task of the same area. The assumptions of open.md hold nothing up. An item marked for an interactive session is work like any other: there is no session to wait for (the lead agent does it, or asks the user for what only they can do). Never choose one under a parked or ideas section${fill ? '' : ', nor one under Backlog'}. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. A request answered or dropped whose question is still in open.md, marked \`(asked: R<n>)\`, is work too: when no area has another task, the task is to record those answers. When the history shows an area's criteria all met, set "milestone": true and make checking them the task.
+Answer with one JSON object and nothing else: {"work": true|false, "area": "<area name>", "task": "<one task, one sentence>", "milestone": true|false, "reason": "<one sentence>", "waiting": ["<what only the user can do>", …]}.
+"waiting" lists what holds work up and only the user can do, at most 5, each a short sentence in ${englishName(language)} for the user to read on the phone, in plain words with no item IDs (O4, R25), file names or commands: a choice they put off or did not make, a step outside the project (an account, a listing, a message to send), a review or a push they keep for themselves. An empty list when nothing waits on them. A question already asked and still open is not listed: they see it.
+Areas are listed by priority, highest first. Take the first area with one concrete task that moves it towards its criteria, can be done now without the user, and depends neither on an open decision request nor on an open question of open.md. An area with no goal or criteria (a project brought in without a brief) moves by the open items of open.md and the next step its recent history points to: take one of those, never answer no work for want of criteria. An open request holds up only what depends on it: choose another task of the same area. The assumptions of open.md hold nothing up. An item marked for an interactive session is work like any other: there is no session to wait for (the lead agent does it, or asks the user for what only they can do). Never choose one under a parked or ideas section${fill ? '' : ', nor one under Backlog'}. Prefer the next step the recent history points to. An answered request that changes an area's milestone comes first: the task is to record it. A request answered or dropped whose question is still in open.md, marked \`(asked: R<n>)\`, is work too: when no area has another task, the task is to record those answers. When the history shows an area's criteria all met, set "milestone": true and make checking them the task. A question of open.md marked \`(put off: R<n>, ask again from <date>)\` whose date has come (today is ${today}) is work: the task is to ask it again.
 ${slot?.text ? `\n## This run's slot: ${slot.name}\nWhat the user wants of this run: when it names work, that work comes first and is the task.\n${slot.text}\n` : ''}${fill ? `
 ## This is a fill run
 The subscription's weekly quota is behind its pace, and what is left at its reset is lost. When no area has a task as above, take one item of the Backlog section of open.md (tests, refactors, research), in the area it names or the first area due. Answer no work only when the backlog has nothing that can be done without the user either.
@@ -752,7 +771,7 @@ ${notesBlock(notes)}` : ''}`;
 // The lead agent's prompt (D73, D125): project-agnostic, shipped with Jérôme, and the same invariants in both modes.
 // In RESUME mode (D119) the task is the half-done work; otherwise the triage's task, in its area. A slot's text and
 // the project's own `heartbeat.prompt` are appended.
-export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, capped = null, cappedAnswer: told = null, notes = [], fill = false, answers = [], push = false } = {}) {
+export function leadPrompt(task, area = null, requests = area?.requests ?? [], { config = null, slot = null, resume = null, capped = null, cappedAnswer: told = null, notes = [], fill = false, refill = false, answers = [], push = false } = {}) {
   const main = config?.mainBranch ?? 'main';
   const branch = (config?.workBranch ?? 'agent/*').replace('*', '<short-name>');
   const where = area ? `
@@ -765,7 +784,7 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
   const answered = answers.length ? `
 - The user answered these questions of open.md, and their answers are not recorded yet: ${answers.map((r) => (r.status === 'answered'
     ? `R${r.id} "${r.question}" → "${r.answer}"`
-    : `R${r.id} "${r.question}" (dropped)`)).join(' · ')}. Also first: record each answer as a decision in decisions.md, with the user's words as its reason, and remove its question from open.md; what an answer asks for is work for this or a later run, within the project's limits. For a dropped one, remove only its \`(asked: R<n>)\` mark, so the question is asked again if it still holds.` : '';
+    : `R${r.id} "${r.question}" (dropped)`)).join(' · ')}. Also first: record each answer as a decision in decisions.md, with the user's words as its reason, and remove its question from open.md; what an answer asks for is work for this or a later run, within the project's limits. An answer that does not decide (they will think about it, not now) or answers something else is no decision (D209): keep the question in open.md marked \`(put off: R<n>, ask again from YYYY-MM-DD)\`, three days from today, record what the answer does ask for, and remove only the \`(asked: R<n>)\` mark. For a dropped one, remove only its \`(asked: R<n>)\` mark, so the question is asked again if it still holds.` : '';
   const language = leadLanguageLine();
   const spoken = language ? `\n- ${language}` : '';
   const what = resume
@@ -775,17 +794,18 @@ Area: ${area.name} (folder ${area.folder}; agents ${area.agents.join(', ') || 'n
 - This work stopped twice at its caps, and the user answered R${told.id} "${told.question}": "${told.answer}". Do what the answer says, going on from what the earlier runs left, and record it as a decision.` : ''}`
     : `Task chosen by the triage: ${task}${where}
 - Do this task only. Work on a new branch named ${branch}.${fill ? `
-- This is a fill run, started because the subscription's weekly quota is behind its pace. If the task is an item of the Backlog section of open.md, remove it from there once done.` : ''}`;
+- This is a fill run, started because the subscription's weekly quota is behind its pace. If the task is an item of the Backlog section of open.md, remove it from there once done.` : ''}${refill ? `
+- Writing the backlog (D208): the triage found no task that can be done now without the user, and the backlog has none either. With the agents, read PROJECT.md, the areas' goals and milestone criteria, open.md, decisions.md, the last lines of digest.md, and the code or content as needed. Then add 3 to 6 items under \`## Backlog\` in open.md, one line each naming its area: concrete work that moves the project towards its goals and can be done now without the user, such as tests, checks of what is live, research, drafts of content, improvements, refactors. Never work that waits on an open request or question, needs a push, deploy, publish, mail, login or payment, is parked, or was done already. Then do the first of them in this run, and remove it from the Backlog once done. If nothing at all can be done without the user, add nothing and say why in your digest line.` : ''}`;
   const tests = config?.test ? `\`${config.test}\`` : 'the project\'s tests';
   // The open questions are asked first (D181): a run stopped by its caps halfway through the task has asked them.
   return `This is a scheduled heartbeat of this project: nobody reads this session while it runs.
-- FIRST, before the task: the open questions of open.md are the user's to answer, and nobody has asked them yet unless one is marked \`(asked: R<n>)\` or is among the requests already asked (below). First check whether what you can read already answers it (the project, the other projects on this machine, the web): then record that answer as an assumption, saying where it comes from, and remove the question instead of asking. Ask each one still open and not asked, each as its own decision request written as below, with options and your recommendation, and mark it \`(asked: R<n>)\` in open.md (a question already asked only gets its mark). Do it now, with your own commands and no agent: a run stopped by its caps halfway through the task has asked them all the same.${answered}
+- FIRST, before the task: the open questions of open.md are the user's to answer, and nobody has asked them yet unless one is marked \`(asked: R<n>)\` or is among the requests already asked (below); one marked \`(put off: R<n>, ask again from <date>)\` is asked only from that date. First check whether what you can read already answers it (the project, the other projects on this machine, the web): then record that answer as an assumption, saying where it comes from, and remove the question instead of asking. Ask each one still open and not asked, each as its own decision request written as below, with options and your recommendation, and mark it \`(asked: R<n>)\` in open.md (a question already asked only gets its mark). Do it now, with your own commands and no agent: a run stopped by its caps halfway through the task has asked them all the same.${answered}
 ${what}${slot?.text ? `\n- This run's slot (${slot.name}): ${slot.text}` : ''}
 - Delegate reading and work to the agents in .claude/agents/, in the foreground: wait for every result before going on, never start one in the background, and never end while one is still working. Keep your own turns few.
 - Recipes (D199): how to do what took effort to work out and will come again (running the project locally, taking screenshots, a test setup) is kept in .jerome/notes/recipes/<topic>.md, a few lines with the commands. Read the ones that fit before you start, give their paths to the agents, and have the agents add or fix one when they work something out.
 - Never ask the user, and never push, deploy, publish or send mail. Open a decision request only for a choice about the product or how to build it that only the user can make (see jerome.md): run \`jerome request open --question "…" --options "A) … / B) …" --recommendation "…"\`. The user reads it on the phone, each option a button: write it in plain words, with no ticket or item IDs (MEL-151, O4), file names or paths, and no command unless it is one they must run. Then go on with the parts of the task that do not depend on it. ${push ? `The push of ${main} is Jérôme's in this project (D194): once ${main} has commits not pushed, it asks the user with a button, at most every 4 hours, and pushes on their yes, with the deploy the push may start; never open a request about pushing ${main}. Only when a merge into ${main} reaches a milestone of PROJECT.md, or fixes a bug that users see online, end that merge's commit message with a line \`Jerome-Push: <why, in plain words for the user>\`: Jérôme then asks sooner, saying why. Never for other work: each push may start a deploy. A release or any other deploy, which only the user does, is a request, saying in plain words what and the exact command to run, and go on.` : 'When the work is ready and needs a push, a deploy or a release, which only the user does, open a request too, saying in plain words what and the exact command to run, and go on.'} A technical obstacle is never a request (a missing tool, a failing command, an error, a refused command): solve it or go another way, and say so in your digest line. Make every other choice yourself, as assumptions in open.md.${spoken}${asked}
 - Never leave work for an interactive session: the user does not open one. Do it in this run; what only the user can do (a step outside the project, a login, a payment, a choice) is a decision request saying exactly what is needed. An item of open.md marked for an interactive session is done or asked the same way, and the mark goes.
-- When the request of an open question is answered, record the answer as a decision and remove the question. A parked item of open.md that names when to come back to it (a date, \"after 16/12\") is asked the same way once that time has come: take it up now, park it until a new date, or drop it. Ask a parked item with no such time when the area's milestone changes.
+- When the request of an open question is answered, record the answer as a decision and remove the question. A question marked \`(put off: R<n>, ask again from <date>)\` is asked again once that date has come, as a new request saying it was put off on that date; before then it is not asked, and the work that depends on it waits. A parked item of open.md that names when to come back to it (a date, \"after 16/12\") is asked the same way once that time has come: take it up now, park it until a new date, or drop it. Ask a parked item with no such time when the area's milestone changes.
 - Verify with ${tests}, and with whatever PROJECT.md asks for, such as screenshots of visual changes. When it passes with no conflicts, merge the branch into ${main} and report it; if it fails or there is a conflict, open a decision request instead.
 - Run each command that changes the repository on its own, and stage explicit paths: never \`git add -A\`, \`git add .\` or \`git commit -a\`.
 - You may run any command the machine has (python3, node, the project's scripts) but a few: pushing, publishing, deploying, mail, sudo, deleting outside the project, credentials. A refused command tells you why: do not retry it in another form, do the task another way.

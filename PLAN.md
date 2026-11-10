@@ -387,6 +387,10 @@ Then (0.20.4, D206): the echo of a dashboard's order asks "Was it you?" with two
 
 Then (0.21.0, D207): the notes a run writes can be read from the Director. The board pairs each line of Done lately with its notes, the Mac sends their text once, the dashboard shows "📄 Read the note" under the line, and the Director's bot answers `/note` with the latest ones. Lock again on the dashboard asks for confirmation.
 
+Then (0.22.0, D208): a fill run with no task writes the backlog, at most every 12 hours per project: 3 to 6 items that need nobody, and the first one done.
+
+Then (0.22.0, D209): what holds a project up waiting for the user is told: the triage names it in plain words, Telegram says it once, and the dashboard puts it at the top with a box for a note; an answer that puts a choice off asks it again three days later.
+
 Then: the documentation as a website on GitHub Pages, built by VitePress in `site/` (its own package.json, never in the `jerome` package) from `docs/` and the README at every push to main, with a sidebar, search and Jérôme's colours; the README's Learn more lists every page.
 
 Next: on Fabio's VPS, `jerome director settings on` and `jerome director telegram setup` (after `jerome telegram off` on the Mac Mini, or with a new bot), then a week of real use to see the fill runs spread over the two Macs and the 90% at the reset. Step 4, the setup on the server, is in place: director/Dockerfile and director/compose.yaml since 0.5.0, the Director running under Coolify on Fabio's VPS since 2026-10-28, and its setup in docs/director.md. The governor's 90% at each reset (a success criterion of docs/specs/quota-governor.md) is computed but not shown: the Director's overview (src/dashboard.js) gives each past week's highest reading before its reset, up to 12 weeks from the 90 days of readings it keeps, and viewer/director.html does not display it.
