@@ -215,7 +215,7 @@ function projectBeat(s, filled, cursors, now) {
       slots: config.slots.slice(0, 20).map((x) => ({ name: cut(x.name, 40), at: cut(describeSlot(x), 200) })),
       alerts: openAlerts(db).slice(0, 50).map((a) => ({ id: a.id, reason: cut(a.reason, 200), count: a.count, openedAt: a.openedAt })),
       requests: db.prepare("SELECT id, question, options, recommendation FROM requests WHERE status = 'open' ORDER BY id LIMIT 50").all()
-        .map((r) => ({ id: r.id, question: cut(r.question, 200), options: r.options ? cut(r.options, 200) : null, recommendation: r.recommendation ? cut(r.recommendation, 200) : null })),
+        .map((r) => ({ id: r.id, question: cut(r.question, 1500), options: r.options ? cut(r.options, 600) : null, recommendation: r.recommendation ? cut(r.recommendation, 600) : null })),
       overLimit: Boolean(projectOver(status)),
       lastHeartbeat: last ? { at: last.started_at, status: cut(last.status, 20), reason: cut(last.reason, 200) } : null,
       usage: { today: { tokens: status.daily.tokens, usd: status.daily.usd }, week: { tokens: status.weekly.tokens, usd: status.weekly.usd } },
@@ -346,6 +346,11 @@ async function beat({ env, now, log }) {
   if (!atLeast(state.directorVersion, '0.19.0')) for (const p of projects) { delete p.model; delete p.maxMinutes; }
   // What waits for the user (D209): only to a Director from 0.22.0.
   if (!atLeast(state.directorVersion, '0.22.0')) for (const p of projects) delete p.waiting;
+  // A question's whole text (D210): up to 1500 characters, its options and advice 600, only to a Director from 0.22.1;
+  // an older one takes 300 and gets the 200 it always had.
+  if (!atLeast(state.directorVersion, '0.22.1')) {
+    for (const p of projects) for (const r of p.requests) for (const k of ['question', 'options', 'recommendation']) if (r[k]) r[k] = r[k].slice(0, 200);
+  }
   const sendQuota = quota && quota.readAt !== state.quotaReadAt;
   const sending = [];
   let size = 0;

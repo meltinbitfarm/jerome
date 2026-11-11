@@ -20,7 +20,7 @@ The Director is built so that nobody can intercept the subscription's tokens or 
 
 - **What a Mac sends:**
   - the quota as percentages and reset times;
-  - its projects' state: name, slots, open alerts and requests as short texts, usage, last heartbeat;
+  - its projects' state: name, slots, open alerts as short texts, open requests whole (up to 1,500 characters, D210), usage, last heartbeat;
   - its finished runs;
   - each project's board (D177): what it does now and with which agents, its open items, its recent work, its closed items and parked ideas, as short texts in plain words. It goes when it changes, and every half hour.
 

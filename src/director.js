@@ -190,7 +190,7 @@ const SHAPES = {
       key: 'string:120', name: 'string:100', fill: 'boolean', running: 'boolean',
       slots: [{ name: 'string:40', at: 'string:200' }, 20],
       alerts: [{ id: 'number', reason: 'string:300', 'count?': 'number', 'openedAt?': 'string:40' }, 50],
-      requests: [{ id: 'number', question: 'string:300', 'options?': 'string:300', 'recommendation?': 'string:300' }, 50],
+      requests: [{ id: 'number', question: 'string:1500', 'options?': 'string:600', 'recommendation?': 'string:600' }, 50],
       overLimit: 'boolean',
       // The model and the longest run of the project's heartbeats, for its permits (D201).
       'model?': 'string:60', 'maxMinutes?': 'number',

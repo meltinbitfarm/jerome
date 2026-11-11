@@ -785,3 +785,21 @@ test('what holds a project up waiting for the user reaches the top of the dashbo
   // A Director from before 0.22.0 is not sent it: it would refuse the field.
   assert.equal(atLeast('0.21.1', '0.22.0'), false);
 });
+
+test('a question reaches the dashboard whole, not cut at 200 characters (D210)', async () => {
+  const d = await startDirector();
+  const m = mac('mini');
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  const question = `${'La nuova sezione è pronta e la build passa. '.repeat(7)}Dalla cartella del sito: git merge agent/bandi, poi git push. Lo fai?`;
+  assert.ok(question.length > 300);
+  assert.equal(m.runIn(m.dir, 'request', 'open', '--question', question, '--options', 'A) Sì / B) No').status, 0);
+  m.beat();
+  m.beat();
+  const token = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  const o = await (await fetch(`${d.url}/api/overview`, { headers: { authorization: `Bearer ${token}` } })).json();
+  const ask = o.attention.find((a) => a.kind === 'request');
+  assert.equal(ask.question, question);
+  // A Director from before 0.22.1 still gets 200 characters: it would refuse more.
+  assert.equal(atLeast('0.22.0', '0.22.1'), false);
+});
