@@ -45,7 +45,7 @@ Each minute the watchdog asks for the verdict. On a go, it starts `jerome heartb
 Control starts at once, not at the end of the week: the pace is worked out again at every reading, every 5 minutes. As soon as the week reaches its curve, the 5-hour window its cap, or the reserve is touched, no new run starts. The runs already going are not stopped: each one ends within its project's `maxMinutes`.
 
 **Which project.** It picks the project whose last heartbeat is oldest, skipping any project that:
-- has an open alert;
+- has an open alert only you can clear, or one that has lasted (three runs or six hours); a snag a run clears by itself, such as an error of Anthropic's service, is tried again by the next fill run (D212);
 - is at its own daily or weekly limit;
 - started a heartbeat in the last 30 minutes;
 - has a slot due before a run started now could end (its `maxMinutes`), so the slot's run never finds the project locked (D176).

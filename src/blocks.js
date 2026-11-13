@@ -7,7 +7,7 @@ export const LASTING_RUNS = 3;
 export const LASTING_HOURS = 6;
 
 // The blocks no run clears by itself, which wait for the user however often the project runs (D173): told at once.
-const THE_USERS = ['untrusted', 'provisional', 'nogit', 'yours', 'branch', 'detached', 'operation', 'denied', 'commit', 'slot'];
+const THE_USERS = ['untrusted', 'provisional', 'nogit', 'yours', 'branch', 'detached', 'operation', 'denied', 'commit', 'slot', 'login'];
 
 // Whether an open alert is for the user now: one only they can clear, or any that has lasted (D160).
 export function lasting(alert, now = new Date()) {
@@ -36,6 +36,10 @@ export function blockKind(reason) {
   if (/max duration/.test(r)) return { kind: 'duration' };
   if (/^heartbeat of .* lost:/.test(r)) return { kind: 'lost' };
   if (/did not start/.test(r)) return { kind: 'missed' };
+  // Claude Code's own login on this Mac, gone or expired (D211): only the user can sign in again.
+  if (/login reached its time limit|Not logged in|Please run \/login|claude auth login|OAuth token has expired|API Error: 401|authentication_error/i.test(r)) return { kind: 'login' };
+  // Anthropic's service, or the way to it, refused or failed the run (D211): not the project's, it passes by itself.
+  if (/API Error: (403|408|429|5\d\d)|Attention Required|Cloudflare|overloaded|rate.?limit|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed/i.test(r)) return { kind: 'service' };
   if (/end check/.test(r)) return { kind: 'endcheck' };
   return { kind: 'other' };
 }

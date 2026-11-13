@@ -28,6 +28,8 @@ const OFFERED = {
   slot: ['install'],
   duration: ['retry', 'skip'],
   endcheck: ['retry', 'skip'],
+  service: ['retry'],
+  login: ['retry'],
   other: ['retry', 'skip'],
   branch: ['main'],
   detached: ['main'],

@@ -803,3 +803,27 @@ test('a question reaches the dashboard whole, not cut at 200 characters (D210)',
   // A Director from before 0.22.1 still gets 200 characters: it would refuse more.
   assert.equal(atLeast('0.22.0', '0.22.1'), false);
 });
+
+test('a snag Jérôme retries by itself says nothing is needed yet; one that lasted keeps its action (D211)', async () => {
+  const { overview } = await import('../src/dashboard.js');
+  const { openDirectorDb } = await import('../src/director.js');
+  const env = { XDG_DATA_HOME: mkdtempSync(join(tmpdir(), 'jerome-d211-')) };
+  const db = openDirectorDb(env);
+  const now = new Date();
+  db.prepare("INSERT INTO machines (id, name, public_key, status, created_at, last_beat, version) VALUES ('m1', 'mini', 'k', 'approved', ?, ?, '0.22.2')").run(now.toISOString(), now.toISOString());
+  const reason = 'success: Failed to authenticate. API Error: 403 Attention Required! | Cloudflare; end check: claude exited with code 1';
+  const project = (key, openedAt, count) => db.prepare('INSERT INTO projects (machine, key, name, data, updated_at) VALUES (?, ?, ?, ?, ?)')
+    .run('m1', key, key, JSON.stringify({ key, name: key, fill: true, running: false, slots: [], requests: [], alerts: [{ id: 1, reason, count, openedAt }] }), now.toISOString());
+  project('fresh', now.toISOString(), 1);
+  project('old', new Date(now.getTime() - 7 * 3_600_000).toISOString(), 4);
+  const o = overview(db, now);
+  const fresh = o.projects.find((p) => p.key === 'fresh');
+  assert.equal(fresh.state, 'retrying');
+  assert.match(fresh.blocks[0].brief, /^Claude did not answer: .* Nothing to do for now/);
+  assert.doesNotMatch(fresh.blocks[0].brief, /try again now/);
+  const old = o.projects.find((p) => p.key === 'old');
+  assert.equal(old.state, 'stuck');
+  assert.equal(old.blocks[0].brief, undefined);
+  assert.match(old.blocks[0].text, /check that this Mac is online/);
+  db.close();
+});

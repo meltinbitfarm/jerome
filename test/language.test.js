@@ -65,3 +65,29 @@ test('the user hears when the weekly quota rises by over twice its pace in a day
   // A reading of the week before its reset is not compared.
   assert.equal(burnWarning([{ ...reading(24, 80), resetsAt: resetsAt - 7 * 86_400 }, reading(0, 40)], { now }), null);
 });
+
+test('an error of Anthropic\'s service is not the project\'s, and an expired login is told at once (D211)', async () => {
+  const { blockKind, lasting } = await import('../src/blocks.js');
+  const cloudflare = 'success: Failed to authenticate. API Error: 403 Attention Required! | Cloudflare; end check: claude exited with code 1; no line added to .jerome/digest.md; next run resumes';
+  assert.equal(blockKind(cloudflare).kind, 'service');
+  assert.equal(blockKind('success: API Error: 529 overloaded_error; end check: claude exited with code 1').kind, 'service');
+  const expired = 'success: Failed to authenticate: this login reached its time limit and cannot be renewed. Run `claude auth login` to sign in again; end check: claude exited with code 1';
+  assert.equal(blockKind(expired).kind, 'login');
+  assert.equal(blockKind('end check: ended on branch agent/x, not main').kind, 'endcheck');
+  const fresh = { openedAt: new Date().toISOString(), count: 1 };
+  assert.equal(lasting({ ...fresh, reason: cloudflare }), false);
+  assert.equal(lasting({ ...fresh, reason: expired }), true);
+  assert.match(blockMessage(cloudflare, 'it'), /^Claude non ha risposto: un errore dalla parte di Anthropic/);
+  assert.match(blockMessage(expired, 'it'), /\/login/);
+});
+
+test('a snag a run clears by itself still gets fill runs until it lasts; a block for the user does not (D212)', async () => {
+  const { retries } = await import('../src/permits.js');
+  const now = Date.now();
+  const service = 'success: API Error: 403 Attention Required! | Cloudflare; end check: claude exited with code 1';
+  assert.equal(retries([], now), true);
+  assert.equal(retries([{ reason: service, count: 1, openedAt: new Date(now - 3_600_000).toISOString() }], now), true);
+  assert.equal(retries([{ reason: service, count: 3, openedAt: new Date(now - 3_600_000).toISOString() }], now), false);
+  assert.equal(retries([{ reason: service, count: 1, openedAt: new Date(now - 7 * H).toISOString() }], now), false);
+  assert.equal(retries([{ reason: 'permission denied for Edit: add the rules to heartbeat.allow', count: 1, openedAt: new Date(now).toISOString() }], now), false);
+});

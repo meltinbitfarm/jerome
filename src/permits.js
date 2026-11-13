@@ -4,6 +4,7 @@
 // already has, under its own checks; the Mac checks it again (D148). Nothing is decided until Fabio turns it on with
 // `jerome director settings on` (D201): until then each Mac keeps phase 1.
 import { pace, modelFor, GOVERNOR_DEFAULTS } from './pacing.js';
+import { lasting } from './blocks.js';
 
 // A permit not started by then lapses; one started lapses at its maxMinutes plus this (D148), so a Mac switched off
 // mid-run frees its place.
@@ -116,7 +117,7 @@ export function decide(db, { now = Date.now(), log = () => {} } = {}) {
   if (last && (now - Date.parse(last) < STAGGER_MS || !readAt || readAt <= last)) return given;
   const waiting = new Set(db.prepare("SELECT machine || '/' || project k FROM queue WHERE status = 'waiting'").all().map((r) => r.k));
   const since = iso(now - COOLDOWN_MS);
-  const ready = projects.filter((x) => x.fill && !x.running && !x.overLimit && !x.alerts.length && x.maxMinutes
+  const ready = projects.filter((x) => x.fill && !x.running && !x.overLimit && retries(x.alerts, now) && x.maxMinutes
     && !(x.lastHeartbeat?.at >= since) && !waiting.has(`${x.machine}/${x.key}`) && !busy(db, x.machine, x.key)
     && !db.prepare("SELECT 1 FROM permits WHERE machine = ? AND project = ? AND kind = 'fill' AND created_at >= ?").get(x.machine, x.key, since))
     .sort((a, b) => String(a.lastHeartbeat?.at ?? '').localeCompare(String(b.lastHeartbeat?.at ?? '')));
@@ -170,4 +171,11 @@ export function decisions(db, now = Date.now()) {
     recent: db.prepare("SELECT * FROM permits WHERE created_at >= ? ORDER BY id DESC LIMIT 100").all(iso(now - 7 * 86_400_000))
       .map((r) => ({ id: r.id, machine: r.machine, project: r.project, kind: r.kind, slot: r.slot, model: r.model, status: r.status, createdAt: r.created_at, endedAt: r.ended_at })),
   };
+}
+
+// Whether a project's open blocks still let it have a fill run (D212): none, or only snags a run clears by itself that
+// have not lasted yet. A block only the user can clear, or one that lasted, waits for them.
+export function retries(alerts, now = Date.now()) {
+  // One with no opening time (a Mac from before it was sent) is not guessed at: it waits, as before.
+  return (alerts ?? []).every((a) => Boolean(a.openedAt) && !lasting({ reason: a.reason, count: a.count ?? 1, openedAt: a.openedAt }, new Date(now)));
 }

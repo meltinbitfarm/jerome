@@ -473,7 +473,7 @@ function projectCard(p) {
   // A run that resumed has the runner's why for a reason, not a task.
   const last = h ? W.lastWork(ago(h.at), !h.plain && /^resume:/.test(h.reason ?? '') ? W.resumed : h.reason) : W.noWork;
   // A snag it is retrying: the sentence for a person, not the runner's reason.
-  const snag = p.state === 'retrying' && p.blocks.length ? el('div', { class: 'warn small' }, p.blocks[0].text) : null;
+  const snag = p.state === 'retrying' && p.blocks.length ? el('div', { class: 'warn small' }, p.blocks[0].brief ?? p.blocks[0].text) : null;
   return el('article', { class: `pcard ${DOT[p.state]}`, id: cardId(p) },
     el('div', { class: 'row-head' },
       el('span', { class: 'name' }, p.name),

@@ -241,7 +241,11 @@ export function overview(db, now = new Date(), { telegram = false } = {}) {
       const alert = { reason: a.reason, count: a.count ?? 1, openedAt: a.openedAt ?? now.toISOString() };
       // The actions it offers (D166), named in the user's language, for the dashboard's buttons (D191).
       const actions = actionsFor(a.reason).map((name) => ({ name, label: t(`action.${name}`, {}, spoken) }));
-      return { id: a.id, text: blockMessage(a.reason, spoken), since: howLong(alert, now, spoken), lasting: lasting(alert, now), actions };
+      const text = blockMessage(a.reason, spoken);
+      const long = lasting(alert, now);
+      // A snag it retries by itself says what happened and that nothing is needed yet, not the action (D211).
+      const brief = long ? null : `${text.split(/(?<=[.!?])\s/)[0]} ${t('snag.wait', {}, spoken)}`;
+      return { id: a.id, text, ...(brief ? { brief } : {}), since: howLong(alert, now, spoken), lasting: long, actions };
     });
     // The project's board (D177), as its Mac last sent it.
     const board = parse(db.prepare('SELECT data FROM boards WHERE machine = ? AND key = ?').get(p.machine, p.key)?.data ?? 'null');

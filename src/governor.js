@@ -17,6 +17,7 @@ import { heartbeatConfig, slotWithin } from './heartbeatconfig.js';
 import { projectStatus, projectOver, projectLimitSettings, limitText } from './budget.js';
 import { activeSession } from './activity.js';
 import { directorMode } from './directormode.js';
+import { retries } from './permits.js';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 // A project whose last heartbeat started this recently is left alone: it has just looked for work.
@@ -110,7 +111,9 @@ function fillReady(dir, now) {
   const db = openDb(dir, { readOnly: true, migrate: false });
   if (!db) return { why: 'no database' };
   try {
-    if (db.prepare("SELECT count(*) n FROM alerts WHERE status = 'open'").get().n) return { why: 'the project has an open block' };
+    // A snag a run clears by itself is tried again; a block for the user, or one that lasted, waits for them (D212).
+    const open = db.prepare("SELECT reason, count, opened_at FROM alerts WHERE status = 'open'").all();
+    if (!retries(open.map((a) => ({ reason: a.reason, count: a.count, openedAt: a.opened_at })), now.getTime())) return { why: 'the project has an open block' };
     // A project at its own daily or weekly limit would only be paused.
     if (projectOver(projectStatus(dir, db, now))) return { why: 'the project is at its own limit' };
     const last = db.prepare("SELECT max(started_at) at FROM runs WHERE kind = 'heartbeat'").get().at;
