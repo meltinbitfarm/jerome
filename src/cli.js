@@ -353,7 +353,9 @@ export async function main(argv) {
     case 'connect': {
       if (rest.length !== 1) return usageError('jerome connect takes the Director\'s address, such as http://100.101.102.103:7788, or status.');
       if (rest[0] === 'status') return connectStatus();
-      return connect(rest[0], parsed.values.name !== undefined ? { name: parsed.values.name } : {});
+      // The watchdog sends the beats (D213): connecting installs it, as the Telegram setup does.
+      const code = await connect(rest[0], parsed.values.name !== undefined ? { name: parsed.values.name } : {});
+      return code === 0 ? watchdogInstall() : code;
     }
     case 'disconnect':
       if (rest.length) return usageError('jerome disconnect takes nothing.');

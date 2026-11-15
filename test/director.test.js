@@ -87,6 +87,8 @@ function mac(name, extra = {}) {
     limits: [], seven_day_breakdown: { rows: [] },
   }));
   const env = { JEROME_QUOTA_FAKE: endpoint };
+  // Only a project that runs by itself goes to the Director (D213): this one is offered for fill runs.
+  assert.equal(p.runWith(env, 'governor', 'add', p.dir).status, 0);
   return {
     ...p,
     name,
@@ -826,4 +828,22 @@ test('a snag Jérôme retries by itself says nothing is needed yet; one that las
   assert.equal(old.blocks[0].brief, undefined);
   assert.match(old.blocks[0].text, /check that this Mac is online/);
   db.close();
+});
+
+test('connecting installs the watchdog and keeps no dashboard token; only a project that runs by itself reaches the Director (D213)', async () => {
+  const d = await startDirector();
+  const m = mac('mini');
+  assert.equal(m.connect(`${d.url}/#a-dashboard-token`).status, 0);
+  assert.equal(m.link().url.includes('#'), false);
+  assert.match(readFileSync(join(m.root, 'launchctl.log'), 'utf8'), /bootstrap .*com\.jerome\.watchdog\.plist/);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  m.beat();
+  m.beat();
+  const token = d.cli('dashboard').stdout.match(/#([A-Za-z0-9_-]+)/)[1];
+  const keys = async () => (await (await fetch(`${d.url}/api/overview`, { headers: { authorization: `Bearer ${token}` } })).json()).projects.map((p) => p.name);
+  assert.deepEqual(await keys(), ['demo']);
+  // No longer offered for fill runs, and with no slot: it stays on the Mac.
+  assert.equal(m.jerome('governor', 'remove', m.dir).status, 0);
+  m.beat();
+  assert.deepEqual(await keys(), []);
 });

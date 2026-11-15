@@ -77,6 +77,8 @@ export async function connect(url, { name = hostname().replace(/\.local$/, ''), 
   try {
     base = new URL(url);
     if (!['http:', 'https:'].includes(base.protocol)) throw new Error();
+    // The dashboard's address carries its token after #: never kept, nor sent (D213).
+    base.hash = '';
   } catch {
     console.error(`${url} is not an address: give the Director's, such as http://100.101.102.103:7788`);
     return 2;
@@ -111,7 +113,7 @@ export async function connect(url, { name = hostname().replace(/\.local$/, ''), 
   console.log(`✓ ${link.name} is waiting for approval. Its code: ${link.machine}`);
   console.log(`  On the server: jerome director approve ${link.machine}`);
   console.log(`  (with Docker: docker compose exec director jerome director approve ${link.machine})`);
-  console.log('  The watchdog sends its first beat as soon as it is approved (`jerome watchdog install` if it is not).');
+  console.log('  The watchdog sends its beat every minute, and the first answer after approval directs this Mac.');
   return 0;
 }
 
@@ -188,6 +190,9 @@ const real = (p) => {
 function projectBeat(s, filled, cursors, now) {
   const dir = s.record.path;
   const { config } = heartbeatConfig(dir);
+  // Only a project that runs by itself goes to the Director (D213): one with slots, or offered for fill runs
+  // (`jerome governor add`). The others of the Mac, worked on by hand or finished, stay on it.
+  if (!config.slots.length && !filled.has(real(dir))) return null;
   const db = openDb(dir, { readOnly: true, migrate: false });
   if (!db) return null;
   try {

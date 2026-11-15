@@ -20,7 +20,7 @@ The Director is built so that nobody can intercept the subscription's tokens or 
 
 - **What a Mac sends:**
   - the quota as percentages and reset times;
-  - its projects' state: name, slots, open alerts as short texts, open requests whole (up to 1,500 characters, D210), usage, last heartbeat;
+  - the state of its projects that run by themselves, those with slots or offered for fill runs (`jerome governor add`; D213), the others staying on the Mac: name, slots, open alerts as short texts, open requests whole (up to 1,500 characters, D210), usage, last heartbeat;
   - its finished runs;
   - each project's board (D177): what it does now and with which agents, its open items, its recent work, its closed items and parked ideas, as short texts in plain words. It goes when it changes, and every half hour.
 
@@ -59,7 +59,8 @@ You need a server with Docker that is on your VPN, and the server's VPN address.
      ```sh
      docker compose exec director jerome director approve <code>
      ```
-   - The [watchdog](commands/watchdog.md) sends the first beat within a minute. `jerome connect status` shows it.
+   - `jerome connect` installs the [watchdog](commands/watchdog.md) (D213), which sends the first beat within a minute. `jerome connect status` shows it. Give the Director's own address: a dashboard address's token, after `#`, is dropped.
+   - In each project the Director should run, `jerome governor add` (or slots with `jerome heartbeat install`): the Mac's other projects stay off the Director.
    - After you answer a question, send a note or tap a block's button on Telegram, the bridge sends a beat at once, so the dashboard shows it at its next refresh rather than a minute later (D193).
 
 3. **The dashboard.** Run `jerome director dashboard` on the server: it prints the dashboard's address, with its token after the `#`. Open it from any device on your VPN, such as the iPhone, and keep it as a bookmark.
