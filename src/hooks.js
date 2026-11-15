@@ -3,6 +3,7 @@
 // database can be reached. Each event records how long the hook took, from process start (`ms`).
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { pushRepos } from './push.js';
 import { MARKER } from './template.js';
 import { openDb, prune } from './db.js';
 import { ingestTranscript } from './usage.js';
@@ -186,10 +187,13 @@ function sessionStart(db, payload, env, dir) {
   // The push unlocked for the project (D194): Jérôme's to ask and do, so the lead agent never asks the user to push.
   const main = heartbeatConfig(dir).config.mainBranch;
   const push = isUnlocked(dir, 'push') ? `The push of ${main} is unlocked in this project (D194): Jérôme asks the user on Telegram once ${main} has commits not pushed, at most every 4 hours, and pushes on their yes. You still cannot push: never ask the user to push ${main}; if they want it at once, they tap that button or run \`! git push\` themselves. Only when a commit on ${main} reaches a milestone of PROJECT.md, or fixes a bug that users see online, end its message with a line \`Jerome-Push: <why, in plain words for the user>\`, so Jérôme asks sooner; never for other work, since each push may start a deploy.` : null;
+  // Other repositories whose push is Jérôme's for this project (D214).
+  const repoNames = Object.keys(pushRepos(dir)).map((r) => basename(r));
+  const pushOthers = repoNames.length ? `The push of the main branch of ${repoNames.join(', ')} is Jérôme's too (D214): it asks the user with a button for each, so never ask the user to push them; merge into their main branch only when their build and tests pass.` : null;
   // The other groups unlocked (D195): Claude Code asks the user each time, in a session only.
   const others = Object.keys(unlocked(dir)).filter((g) => g !== 'push' && GROUPS[g]);
   const asked = others.length ? `Unlocked by the user in this project, for sessions only (D195): ${others.map((g) => GROUPS[g].what).join('; ')}. When the work needs it, say so and run the command: Claude Code asks the user each time.` : null;
-  const context = [beside, push, asked, alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
+  const context = [beside, push, pushOthers, asked, alerts.length ? alertsContext(alerts) : null, open.length ? requestsContext(projectDir(payload, env), open) : null, notes.length ? `${NOTES_RULE} Tell the user about them in your first reply.\n${notesBlock(notes)}` : null, assumptions.length ? assumptionsContext(assumptions) : null].filter(Boolean).join('\n\n');
   const alertLine = alerts.length ? `Jérôme: ${alerts.length} heartbeat ${alerts.length === 1 ? 'alert' : 'alerts'}: ${alerts.map((a) => `A${a.id} ${a.reason} (${lostRuns(a)})`).join(' · ')}` : null;
   const message = [alertLine, limitsWarning(db, dir)].filter(Boolean).join('\n');
   return { context: context || null, message: message || null };

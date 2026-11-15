@@ -114,6 +114,7 @@ const USAGE = `Usage:
   jerome rules [dir]      what Jérôme blocks for the model in this project, and what you unlocked
   jerome rules unlock <name> [dir]   unlock one for this project, at a terminal
   jerome rules lock <name> [dir]     lock it again
+    --repo <folder>       with push: another repository the project works on, pushed on your yes too (D214)
   jerome limits [dir]     show the usage limits, global and of the project, with the current usage
     --five-hour <n|off>   global limit on the 5-hour window, in % (account.json)
     --seven-day <n|off>   global limit on the 7-day window, in %
@@ -162,6 +163,7 @@ const OPTIONS = {
   reserve: { type: 'string' },
   'five-hour-cap': { type: 'string' },
   'new-token': { type: 'boolean' },
+  repo: { type: 'string' },
   permit: { type: 'string' },
   listen: { type: 'string' },
   name: { type: 'string' },
@@ -169,7 +171,7 @@ const OPTIONS = {
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs', 'permit'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], rules: [], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token', 'target', 'reserve', 'five-hour-cap'], connect: ['name'], disconnect: [], plain: [] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs', 'permit'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], rules: ['repo'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token', 'target', 'reserve', 'five-hour-cap'], connect: ['name'], disconnect: [], plain: [] };
 
 export async function main(argv) {
   let parsed;
@@ -373,7 +375,7 @@ export async function main(argv) {
       // jerome rules [dir] · jerome rules unlock|lock <name> [dir] (D194)
       if (['unlock', 'lock'].includes(rest[0])) {
         if (rest.length < 2 || rest.length > 3) return usageError(`jerome rules ${rest[0]} takes a name, such as push, and at most one folder.`);
-        return rules(rest[0], rest[1], rest[2] ?? '.');
+        return rules(rest[0], rest[1], rest[2] ?? '.', parsed.values.repo !== undefined ? { repo: parsed.values.repo } : {});
       }
       if (rest.length > 1) return usageError('jerome rules takes unlock <name>, lock <name>, or at most one folder.');
       return rules(null, null, rest[0] ?? '.');

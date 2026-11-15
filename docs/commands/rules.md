@@ -25,6 +25,17 @@ A push that fails, for example because the remote has commits this Mac has not, 
 
 `jerome rules lock push` stops the questions; the lead agent goes back to asking you to push.
 
+## The push of other repositories
+
+A project may work on repositories of its own beside it, such as the sites a marketing project improves. Their push can be Jérôme's too (D214), one by one, at a terminal on this Mac, typing the folder's name:
+
+```sh
+jerome rules unlock push --repo ../skei-landing   # from the project's folder
+jerome rules lock push --repo ../skei-landing     # lock it again
+```
+
+Each is asked on its own, as above, once the main branch its remote names has commits not pushed: `Shall I push main of skei-landing?`, with the same two buttons, on Telegram and on the Director's dashboard. The push goes to that repository's own remote. The lead agent is told, so it merges there only when the build and tests pass and never asks you to push them. Writing in those folders is a separate permission: `permissions.additionalDirectories` in the project's `.claude/settings.json`. `jerome rules` lists them; the project's own push stays locked or unlocked on its own.
+
 The same question, with the same buttons, shows on the [Director's dashboard](../director.md#the-push-and-what-is-unlocked) when the Mac is connected to one.
 
 ## Unlocking the others

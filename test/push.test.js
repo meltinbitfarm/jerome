@@ -260,3 +260,49 @@ test('another group unlocked moves from deny to ask, committed on main; a sessio
   assert.equal(hook('fly deploy', 'heartbeat'), '', 'denied again by the rule, not the hook');
   assert.match(p.run('rules', p.dir).stdout, /deploy-fly +locked/);
 });
+
+test('another repository the project works on is pushed on the user\'s yes too, each asked on its own, unlocked and locked at the Mac (D214)', () => {
+  const p = pushable();
+  // A site beside the project, cloned from its own remote so origin/HEAD names its main branch.
+  const remote = join(p.root, 'landing.git');
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remote]);
+  const seed = join(p.root, 'seed');
+  execFileSync('git', ['init', '-q', '-b', 'main', seed]);
+  const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...args], { cwd, stdio: 'ignore' });
+  writeFileSync(join(seed, 'index.html'), 'hi\n');
+  git(seed, 'add', '-A');
+  git(seed, 'commit', '-q', '-m', 'init');
+  git(seed, 'push', '-q', remote, 'main');
+  const landing = join(dirname(p.dir), 'landing');
+  execFileSync('git', ['clone', '-q', remote, landing]);
+  // Only at a terminal, with the folder's name typed; never the project itself.
+  assert.notEqual(p.run('rules', 'unlock', 'push', p.dir, '--repo', '../landing').status, 0);
+  assert.notEqual(p.runWithInput({ JEROME_TEST_TTY: '1' }, 'demo\n', 'rules', 'unlock', 'push', p.dir, '--repo', '../landing').status, 0);
+  assert.equal(p.runWithInput({ JEROME_TEST_TTY: '1' }, 'landing\n', 'rules', 'unlock', 'push', p.dir, '--repo', '../landing').status, 0);
+  assert.match(p.run('rules', p.dir).stdout, /other repositories too .*landing/);
+
+  writeFileSync(join(landing, 'blog.html'), 'post\n');
+  git(landing, 'add', '-A');
+  git(landing, 'commit', '-q', '-m', 'Add the blog');
+  p.commit('mine');
+  p.tick();
+  // The site is asked, by name; the project's own push stays locked, so it is not.
+  const ask = p.idOf(/Shall I push main of landing\?/);
+  assert.match(ask.call.params.text, /1 commit on main of landing not pushed yet:\n• Add the blog/);
+  assert.equal(p.asked(), 1);
+  const head = execFileSync('git', ['rev-parse', 'main'], { cwd: landing, encoding: 'utf8' }).trim();
+  p.tap(ask.id, `p:${head.slice(0, 12)}:go`);
+  p.tick();
+  assert.equal(execFileSync('git', ['rev-parse', 'main'], { cwd: remote, encoding: 'utf8' }).trim(), head);
+  assert.notEqual(p.remoteHead(), p.head());
+  const db = p.db();
+  assert.match(db.prepare('SELECT text FROM notes ORDER BY id DESC').get().text, /main of landing pushed \(1 commits/);
+  db.close();
+  // The lead agent is told the site's push is Jérôme's.
+  assert.match(leadPrompt('x', null, [], { pushRepos: ['landing'] }), /main branch of landing is Jérôme's too \(D214\)/);
+  // Locked again: no longer asked.
+  assert.equal(p.run('rules', 'lock', 'push', p.dir, '--repo', '../landing').status, 0);
+  git(landing, 'commit', '-q', '--allow-empty', '-m', 'More');
+  p.tick();
+  assert.equal(p.asked(), 1);
+});

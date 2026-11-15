@@ -163,6 +163,8 @@ const BOARD = {
   // The texts not rewritten in plain words yet, left out until they are.
   'pending?': 'number',
 };
+// A push the Mac asked (D196), of the project's own repository or another of its (D214).
+const PUSH = { head: 'string:12', branch: 'string:60', count: 'number', subjects: ['string:120', 5], 'after?': { 'day?': 'string:5', time: 'string:5' }, 'why?': 'string:200' };
 const RESULT = { id: 'number', ok: 'boolean', text: 'string:300' };
 // A message for Telegram (D202): the project's key, the text, and a request's, a block's or a push's own fields; the
 // echo of a dashboard's order, the order's id, for its two buttons (D206).
@@ -199,7 +201,7 @@ const SHAPES = {
       'lastHeartbeat?': { at: 'string:40', status: 'string:20', reason: 'string:300' },
       usage: { today: USAGE, week: USAGE },
       // What the user unlocked in the project, and the push asked and not answered (D194-D196).
-      'rules?': { unlocked: ['string:20', 20], 'push?': { head: 'string:12', branch: 'string:60', count: 'number', subjects: ['string:120', 5], 'after?': { 'day?': 'string:5', time: 'string:5' }, 'why?': 'string:200' } },
+      'rules?': { unlocked: ['string:20', 20], 'push?': PUSH, 'pushes?': [PUSH, 5] },
     }, 100],
     runs: [{
       project: 'string:120', id: 'number', kind: 'string:10', 'model?': 'string:60', startedAt: 'string:40', 'endedAt?': 'string:40',

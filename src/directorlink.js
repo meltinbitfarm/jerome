@@ -30,7 +30,7 @@ import { projectStatus, projectOver } from './budget.js';
 import { lockHolder, cacheDir } from './runstate.js';
 import { runOrders } from './orders.js';
 import { unlocked } from './unlocked.js';
-import { pushPending } from './push.js';
+import { pushesPending } from './push.js';
 
 export { linkPath, readLink };
 
@@ -233,8 +233,9 @@ function projectBeat(s, filled, cursors, now) {
     if (waiting) project.waiting = { at: waiting.at, items: waiting.items.map((x) => cut(x, 300)) };
     // What the user unlocked here, and the push asked (D194-D196), for a Director that knows them.
     const open = Object.keys(unlocked(dir)).slice(0, 20).map((g) => cut(g, 20));
-    const push = pushPending(dir);
-    if (open.length) project.rules = { unlocked: open, ...(push ? { push: { head: push.head, branch: cut(push.branch, 60), count: push.count, subjects: push.subjects.slice(0, 5).map((x) => cut(x, 120)), ...(push.after ? { after: push.after } : {}), ...(push.why ? { why: cut(push.why, 200) } : {}) } } : {}) };
+    // Each push asked: the project's own and its other repositories' (D214), the first as `push` for an older Director.
+    const pushes = pushesPending(dir).slice(0, 5).map((push) => ({ head: push.head, branch: cut(push.branch, 60), count: push.count, subjects: push.subjects.slice(0, 5).map((x) => cut(x, 120)), ...(push.after ? { after: push.after } : {}), ...(push.why ? { why: cut(push.why, 200) } : {}) }));
+    if (open.length || pushes.length) project.rules = { unlocked: open, ...(pushes.length ? { push: pushes[0], pushes } : {}) };
     return { project, runs };
   } finally {
     db.close();
@@ -351,6 +352,8 @@ async function beat({ env, now, log }) {
   if (!atLeast(state.directorVersion, '0.19.0')) for (const p of projects) { delete p.model; delete p.maxMinutes; }
   // What waits for the user (D209): only to a Director from 0.22.0.
   if (!atLeast(state.directorVersion, '0.22.0')) for (const p of projects) delete p.waiting;
+  // The other repositories' pushes (D214): only to a Director from 0.22.4; an older one gets the first as before.
+  if (!atLeast(state.directorVersion, '0.22.4')) for (const p of projects) delete p.rules?.pushes;
   // A question's whole text (D210): up to 1500 characters, its options and advice 600, only to a Director from 0.22.1;
   // an older one takes 300 and gets the 200 it always had.
   if (!atLeast(state.directorVersion, '0.22.1')) {

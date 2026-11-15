@@ -138,8 +138,8 @@ export function placeOrder(db, o, { now = new Date(), via = 'dashboard' } = {}) 
     order = { kind: 'action', ref: alert.id, action: o.action, text: null };
   } else if (o.kind === 'push') {
     // The push the Mac asked (D196): only for the head it asked about, and only go or not now.
-    const push = project.rules?.push;
-    if (!push || push.head !== o.head) return bad('that push is not asked any more');
+    const push = (project.rules?.pushes ?? [project.rules?.push]).find((x) => x?.head === o.head);
+    if (!push) return bad('that push is not asked any more');
     if (!['go', 'no'].includes(o.action)) return bad('a push is go or no');
     order = { kind: 'push', ref: null, action: o.action, text: push.head };
   } else if (o.kind === 'lock') {
@@ -229,7 +229,11 @@ export function overview(db, now = new Date(), { telegram = false } = {}) {
     data.requests = (data.requests ?? []).filter((r) => !handled.has(`${p.machine}/${p.key}/answer/${r.id}`));
     data.alerts = (data.alerts ?? []).filter((a) => !handled.has(`${p.machine}/${p.key}/action/${a.id}`));
     // The push answered and the groups locked from here lately (D196), gone at once too.
-    if (data.rules?.push && pushed.has(`${p.machine}/${p.key}/${data.rules.push.head}`)) delete data.rules.push;
+    if (data.rules) {
+      // Every push asked (D214), the one an older Mac sends as `push` included; less those answered here lately.
+      data.rules.pushes = (data.rules.pushes ?? (data.rules.push ? [data.rules.push] : [])).filter((x) => !pushed.has(`${p.machine}/${p.key}/${x.head}`));
+      delete data.rules.push;
+    }
     if (data.rules) data.rules.unlocked = data.rules.unlocked.filter((g) => !locked.has(`${p.machine}/${p.key}/${g}`));
     const mine = db.prepare('SELECT data FROM runs WHERE machine = ? AND project = ? AND ended_at >= ?').all(p.machine, p.key, since).map((r) => parse(r.data));
     // The last work done: a heartbeat that stopped is a block, told apart, never "the last work".
@@ -284,10 +288,10 @@ export function overview(db, now = new Date(), { telegram = false } = {}) {
       ...projects.flatMap((p) => (p.requests ?? []).map((r) => ({ kind: 'request', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode, id: r.id,
         question: r.question, options: r.options ?? null, choices: optionList(r.options), recommendation: r.recommendation ?? null }))),
       // The push the Mac asked on Telegram too (D196), with the same two choices.
-      ...projects.filter((p) => p.rules?.push).map((p) => ({ kind: 'push', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode,
-        head: p.rules.push.head, branch: p.rules.push.branch, count: p.rules.push.count, subjects: p.rules.push.subjects,
-        text: t('push.ask', { count: p.rules.push.count, branch: p.rules.push.branch, after: p.rules.push.after ?? null, why: p.rules.push.why ?? null, subjects: p.rules.push.subjects.map((x) => `• ${x}`).join('\n') }, spoken),
-        choices: [{ name: 'go', label: t('push.go', { branch: p.rules.push.branch }, spoken) }, { name: 'no', label: t('push.no', {}, spoken) }] })),
+      ...projects.flatMap((p) => (p.rules?.pushes ?? []).map((x) => ({ kind: 'push', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode,
+        head: x.head, branch: x.branch, count: x.count, subjects: x.subjects,
+        text: t('push.ask', { count: x.count, branch: x.branch, after: x.after ?? null, why: x.why ?? null, subjects: x.subjects.map((y) => `• ${y}`).join('\n') }, spoken),
+        choices: [{ name: 'go', label: t('push.go', { branch: x.branch }, spoken) }, { name: 'no', label: t('push.no', {}, spoken) }] }))),
       // What holds a project up and only the user can do (D209), as its triage said it.
       ...projects.filter((p) => p.waiting?.items?.length).map((p) => ({ kind: 'waiting', project: p.name, key: p.key, machine: p.machine, machineCode: p.machineCode,
         items: p.waiting.items, since: p.waiting.at })),

@@ -19,6 +19,7 @@ import { GROUPS, moveRules } from './limits.js';
 import { SHARED_SETTINGS } from './profile.js';
 import { currentBranch, lockHolder } from './runstate.js';
 import { unlocked, saveUnlocked } from './unlocked.js';
+import { pushRepos, savePushRepos, dropPushRepo } from './push.js';
 
 export { GROUPS };
 const SETTINGS = `.claude/${SHARED_SETTINGS}`;
@@ -74,7 +75,7 @@ export function lockGroup(dir, name, { now = new Date() } = {}) {
 }
 
 // `jerome rules [dir]`, `jerome rules unlock <name> [dir]`, `jerome rules lock <name> [dir]`.
-export async function rules(action, name, dirArg = '.', { input = process.stdin, output = process.stdout, env = process.env, now = new Date() } = {}) {
+export async function rules(action, name, dirArg = '.', { repo = null, input = process.stdin, output = process.stdout, env = process.env, now = new Date() } = {}) {
   const dir = resolve(dirArg);
   if (!existsSync(join(dir, MARKER))) {
     console.error(notProjectMessage(dir));
@@ -87,10 +88,13 @@ export async function rules(action, name, dirArg = '.', { input = process.stdin,
     console.log(`${project}: what Jérôme blocks for the lead agent and its agents`);
     for (const [g, x] of Object.entries(GROUPS)) console.log(`  ${g.padEnd(18)} ${(open[g] ? 'unlocked' : 'locked').padEnd(9)} ${x.what}`);
     if (open.push) console.log(`\npush unlocked: Jérôme asks you on Telegram once ${main} has commits not pushed, and pushes on your yes. The lead agent still cannot push.`);
+    const repos = Object.keys(pushRepos(dir));
+    if (repos.length) console.log(`\npush unlocked in other repositories too (D214), each asked on its own: ${repos.map((r) => basename(r)).join(', ')}. Lock one again: jerome rules lock push --repo <folder>.`);
     if (Object.keys(open).some((g) => g !== 'push')) console.log('\nThe others unlocked: in your sessions Claude Code asks you each time; in heartbeats they stay refused.');
     console.log('\nUnlock one at a terminal on this Mac: jerome rules unlock <name>. Lock it again: jerome rules lock <name>.');
     return 0;
   }
+  if (repo !== null) return repoRule(action, name, dir, repo, { project, main, input, output, env, now });
   if (!GROUPS[name]) {
     console.error(`No group ${name ?? ''}. The groups: ${Object.keys(GROUPS).join(', ')}.`);
     return 2;
@@ -145,3 +149,59 @@ export async function rules(action, name, dirArg = '.', { input = process.stdin,
   }
   return 0;
 }
+
+// `jerome rules unlock|lock push --repo <folder>` (D214): the push of another repository's main branch, one the project
+// works on (a site, a landing), asked and done by Jérôme as the project's own. Typed at a terminal, the folder's name
+// to confirm; kept in the project's store.
+async function repoRule(action, name, dir, repoArg, { project, main, input, output, env, now }) {
+  if (name !== 'push') {
+    console.error('--repo goes with push only: jerome rules unlock push --repo <folder>.');
+    return 2;
+  }
+  const repo = resolve(dir, repoArg);
+  const label = basename(repo);
+  const repos = pushRepos(dir);
+  if (action === 'lock') {
+    if (!repos[repo]) {
+      console.log(`The push of ${label} is not unlocked in ${project}.`);
+      return 0;
+    }
+    dropPushRepo(dir, repo);
+    tell(dir, `From the user: the push of ${label} is locked again for this project, so the user pushes it themselves. Record it as a decision; when work on ${label} needs a push, ask them with a decision request, as before.`, now);
+    console.log(`✓ push of ${label} locked again in ${project}.`);
+    return 0;
+  }
+  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: repo, encoding: 'utf8' });
+  if (!existsSync(repo) || top.status !== 0 || resolve(top.stdout.trim()) !== resolve(repo)) {
+    console.error(`${repo} is not the folder of a git repository.`);
+    return 1;
+  }
+  if (resolve(repo) === resolve(dir)) {
+    console.error(`That is the project itself: jerome rules unlock push, without --repo.`);
+    return 2;
+  }
+  if (spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: repo, encoding: 'utf8' }).status !== 0) {
+    console.error(`${label} has no remote named origin to push to.`);
+    return 1;
+  }
+  if (repos[repo]) {
+    console.log(`The push of ${label} is unlocked already in ${project}.`);
+    return 0;
+  }
+  if (!input.isTTY && env.JEROME_TEST_TTY !== '1') {
+    console.error(`Unlocking is done at a terminal on this Mac: run jerome rules unlock push --repo ${repoArg} there, in the project's folder.`);
+    return 1;
+  }
+  const rl = createInterface({ input, output });
+  const typed = await new Promise((r) => rl.question(`Unlocking the push of ${label} for ${project}: Jérôme will push its main branch when you say yes on Telegram or the dashboard, and the push may start a deploy. Type ${label} to confirm: `, r));
+  rl.close();
+  if (typed.trim() !== label) {
+    console.log('Not unlocked: the name did not match.');
+    return 1;
+  }
+  savePushRepos(dir, { ...repos, [repo]: { at: now.toISOString() } });
+  tell(dir, `From the user, at the Mac: the push of ${label}'s main branch is unlocked for this project. Jérôme itself asks the user with a button once it has commits not pushed, and pushes on their yes; the lead agent still cannot push. Record it as a decision; from now on never open a request asking the user to push ${label}. Merge into its main branch only when its build and tests pass.`, now);
+  console.log(`✓ push of ${label} unlocked for ${project}. Once its main branch has commits not pushed, and no run is working, Jérôme asks you on Telegram with a button; it pushes only on your yes.`);
+  return 0;
+}
+
