@@ -160,6 +160,16 @@ async function clear(ctx, messageId) {
   ctx.db.prepare('UPDATE tg_sent SET cleared = 1 WHERE message_id = ?').run(messageId);
 }
 
+// A question answered by a tap whose answer needs no message of its own: its text says the choice, with no buttons.
+async function settle(ctx, messageId, text) {
+  try {
+    await ctx.call('editMessageText', { chat_id: ctx.config.chatId, message_id: messageId, text, reply_markup: { inline_keyboard: [] } });
+  } catch {
+    return clear(ctx, messageId);
+  }
+  return null;
+}
+
 async function onButton(q, ctx) {
   const [kind, a, b] = String(q.data ?? '').split(':');
   try {
@@ -177,8 +187,13 @@ async function onButton(q, ctx) {
     setState(ctx.db, 'pending', pending);
     const choice = waiting?.choices?.[Number(b)];
     const p = choice ? findProject(ctx.db, choice[0], choice[1]) : null;
-    if (!waiting || !p) return ctx.reply(ctx.say('note.expired'));
-    return order(ctx, p, { kind: 'note', text: waiting.text }, Number(a));
+    // Once tapped, the question keeps no buttons (D215): it says the project chosen, or loses them if the note waits no more.
+    if (!waiting || !p) {
+      await clear(ctx, id);
+      return ctx.reply(ctx.say('note.expired'));
+    }
+    if (await order(ctx, p, { kind: 'note', text: waiting.text }, Number(a))) return settle(ctx, id, ctx.say('note.for', { project: p.name }));
+    return clear(ctx, id);
   }
   // A note to read (D207).
   if (kind === 't') return readNoteHere(ctx, Number(a));

@@ -390,7 +390,16 @@ async function onButton(q, state, call, config, now, env) {
     const text = state.pending[a];
     const project = knownProjects()[Number(b)];
     delete state.pending[a];
-    if (!text || !project) return reply(call, config, t('note.expired'));
+    // Once tapped, the question keeps no buttons (D215): it says the project chosen, or loses them if the note waits no more.
+    if (!text || !project) {
+      await clearButtons();
+      return reply(call, config, t('note.expired'));
+    }
+    try {
+      await call('editMessageText', { chat_id: config.chatId, message_id: q.message.message_id, text: t('note.for', { project: project.name }), reply_markup: { inline_keyboard: [] } });
+    } catch {
+      await clearButtons();
+    }
     return saveNote(project, text, call, config, now, Number(a));
   }
   return null;

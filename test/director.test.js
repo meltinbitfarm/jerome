@@ -847,3 +847,38 @@ test('connecting installs the watchdog and keeps no dashboard token; only a proj
   m.beat();
   assert.deepEqual(await keys(), []);
 });
+
+test('a note that names no project: the tap on a project takes the buttons off and says the project chosen (D215)', async () => {
+  const fake = mkdtempSync(join(tmpdir(), 'jerome-tg-'));
+  const d = await startDirector({ extra: { JEROME_TELEGRAM_FAKE: fake }, before: (home) => {
+    writeFileSync(join(home, '.local', 'share', 'jerome-director', 'telegram.json'), JSON.stringify({ token: '1:x', chatId: 7, chat: 'Fabio', bot: 'jerome_test_bot' }), { mode: 0o600 });
+  } });
+  const macs = [mac('mini'), mac('m4')];
+  for (const m of macs) {
+    assert.equal(m.connect(d.url).status, 0);
+    assert.equal(d.cli('approve', m.link().machine).status, 0);
+    m.beat();
+  }
+  const calls = () => (existsSync(join(fake, 'calls.jsonl')) ? readFileSync(join(fake, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
+  const until = async (what, check) => {
+    for (let i = 0; i < 100 && !check(); i += 1) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(check(), `${what}; the Director said: ${d.log()}`);
+  };
+  const which = () => calls().find((c) => c.method === 'sendMessage' && /Which project is this note for/.test(c.params.text));
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 1, message: { message_id: 70, chat: { id: 7, type: 'private' }, text: 'the posts go in the admin' } }]));
+  await until('which project asked', () => which());
+  const asked = calls().indexOf(which());
+  const mid = 1000 + asked;
+  const [[button]] = which().params.reply_markup.inline_keyboard;
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 2, callback_query: { id: 'q1', data: button.callback_data, message: { message_id: mid, chat: { id: 7, type: 'private' } } } }]));
+  await until('the question settled', () => calls().some((c) => c.method === 'editMessageText' && c.params.message_id === mid));
+  const settled = calls().find((c) => c.method === 'editMessageText');
+  assert.equal(settled.params.text, `Note for ${button.text}.`);
+  assert.deepEqual(settled.params.reply_markup, { inline_keyboard: [] });
+  assert.deepEqual(calls().filter((c) => c.method === 'setMessageReaction').map((c) => c.params.message_id), [70]);
+
+  // The same tap again finds the note gone: the buttons go all the same.
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 3, callback_query: { id: 'q2', data: button.callback_data, message: { message_id: mid, chat: { id: 7, type: 'private' } } } }]));
+  await until('told it waits no more', () => calls().some((c) => c.method === 'sendMessage' && /no longer waiting/.test(c.params.text)));
+  assert.ok(calls().some((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === mid));
+});
