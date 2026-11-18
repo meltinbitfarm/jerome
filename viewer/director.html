@@ -68,7 +68,7 @@ const WORDS = {
     sent: 'Sent: the Mac takes it within a minute.',
     orders: 'Sent from here',
     order: { pending: 'waiting for the Mac', done: 'done', failed: 'not done', lapsed: 'lapsed: the Mac did not take it within 10 minutes' },
-    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `note: ${o.text}`, action: (o) => o.actionLabel, push: (o) => o.actionLabel, lock: (o) => o.actionLabel },
+    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `note: ${o.text}`, urgent: (o) => `⚡ urgent: ${noteOf(o) ?? 'note'}`, action: (o) => o.actionLabel, push: (o) => o.actionLabel, lock: (o) => o.actionLabel },
     push: (n, branch) => `${n} ${n === 1 ? 'commit' : 'commits'} on ${branch} not pushed yet`,
     pushHow: 'The push may start a deploy. Jérôme asked on Telegram too: either answer counts.',
     unlocked: 'Unlocked here', lock: 'Lock again', lockHint: 'Unlocking is done only at the Mac: jerome rules unlock <name>.',
@@ -134,7 +134,7 @@ const WORDS = {
     sent: 'Inviato: il Mac lo prende entro un minuto.',
     orders: 'Inviati da qui',
     order: { pending: 'aspetta il Mac', done: 'fatto', failed: 'non fatto', lapsed: 'scaduto: il Mac non l\'ha preso entro 10 minuti' },
-    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `nota: ${o.text}`, action: (o) => o.actionLabel, push: (o) => o.actionLabel, lock: (o) => o.actionLabel },
+    orderWhat: { answer: (o) => `R${o.ref}: ${o.text}`, note: (o) => `nota: ${o.text}`, urgent: (o) => `⚡ urgente: ${noteOf(o) ?? 'nota'}`, action: (o) => o.actionLabel, push: (o) => o.actionLabel, lock: (o) => o.actionLabel },
     push: (n, branch) => `${n} commit su ${branch} non ancora ${n === 1 ? 'pushato' : 'pushati'}`,
     pushHow: 'Il push può far partire il deploy. Jérôme te l\'ha chiesto anche su Telegram: vale la prima risposta.',
     unlocked: 'Sbloccato qui', lock: 'Blocca di nuovo', lockHint: 'Sbloccare si fa solo dal Mac: jerome rules unlock <nome>.',
@@ -290,6 +290,9 @@ function renderTodo(items) {
   }), sent);
 }
 
+// The text of the note an urgent order marks, when that note order is still in the list.
+const noteOf = (o) => (data.orders ?? []).find((x) => x.id === o.ref)?.text?.replace(/^!\s*/, '') ?? null;
+
 // What was sent from this page in the last hour, and what each Mac did with it.
 function sentList() {
   const recent = (data.orders ?? []).filter((o) => Date.now() - Date.parse(o.createdAt) < 3_600_000);
@@ -298,7 +301,7 @@ function sentList() {
   const tone = { pending: 'muted', done: 'ok', failed: 'high', lapsed: 'warn' };
   return el('div', { class: 'sent' }, el('h3', {}, W.orders), recent.map((o) => el('div', { class: 'sent-row' },
     el('span', { class: tone[o.status] }, `${mark[o.status]} `),
-    el('strong', {}, o.project), ` · ${W.orderWhat[o.kind](o)} `,
+    el('strong', {}, o.project), ` · ${(W.orderWhat[o.kind] || ((x) => x.kind))(o)} `,
     el('span', { class: 'muted small' }, `· ${clock(o.createdAt)} · ${W.order[o.status]}${o.result && o.status !== 'done' ? `: ${o.result}` : ''}`))));
 }
 

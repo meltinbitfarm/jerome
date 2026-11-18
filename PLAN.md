@@ -402,6 +402,7 @@ Then (0.22.4, D214): the push of other repositories a project works on, unlocked
 Then (0.22.5, D215): the question of which project a Telegram note is for keeps no buttons once tapped: it says the project chosen.
 
 Then (0.23.0, D216): a note can be urgent (the ⚡ Urgent button under each note saved on Telegram, `!` before it, the dashboard's Urgent box, `jerome note add --urgent`): its project gets a run within a couple of minutes, past the paces and the reserve, and the run takes it first.
+Then (0.23.1): the dashboard reads again with an urgent order in its list ("⚡ Urgent: <the note>"), and an order of a kind it does not know shows its kind instead of breaking the page.
 
 Then: the documentation as a website on GitHub Pages, built by VitePress in `site/` (its own package.json, never in the `jerome` package) from `docs/` and the README at every push to main, with a sidebar, search and Jérôme's colours; the README's Learn more lists every page.
 
