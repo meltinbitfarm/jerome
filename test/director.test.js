@@ -882,3 +882,97 @@ test('a note that names no project: the tap on a project takes the buttons off a
   await until('told it waits no more', () => calls().some((c) => c.method === 'sendMessage' && /no longer waiting/.test(c.params.text)));
   assert.ok(calls().some((c) => c.method === 'editMessageReplyMarkup' && c.params.message_id === mid));
 });
+
+// D216: an urgent note runs at once, past the paces and the reserve.
+test('an urgent note gets its project a run at the next beat, past the reserve and the areas\' pace, once (D216)', async () => {
+  const d = await startDirector();
+  const m = mac('mini', { FAKE_TRIAGE: '{"work": true, "task": "Take the urgent note N1"}', JEROME_FILL_SYNC: '1' });
+  const marker = join(m.dir, '.jerome', 'project.json');
+  const kept = JSON.parse(readFileSync(marker, 'utf8'));
+  // A project with a slot only: never offered for fill runs.
+  writeFileSync(marker, `${JSON.stringify({ ...kept, heartbeat: { ...kept.heartbeat, slots: [{ name: 'morning', at: ['09:00'] }] } }, null, 2)}\n`);
+  m.git('add', '.jerome/project.json');
+  m.git('commit', '-q', '-m', 'settings');
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  m.beat();
+  m.beat();
+  assert.equal(d.cli('settings', 'on').status, 0);
+  // At the reserve: no fill run, and a slot would be queued.
+  const endpoint = join(m.root, 'usage.json');
+  writeFileSync(endpoint, JSON.stringify({ five_hour: { utilization: 10, resets_at: new Date(Date.now() + 2 * H).toISOString() }, seven_day: { utilization: 90, resets_at: new Date(Date.now() + 2 * 24 * H).toISOString() }, limits: [], seven_day_breakdown: { rows: [] } }));
+  m.jerome('quota');
+  m.beat();
+  const runs = () => {
+    const db = m.db();
+    const rows = db.prepare('SELECT status, reason, fill FROM runs ORDER BY id').all();
+    db.close();
+    return rows;
+  };
+  assert.equal(runs().length, 0);
+
+  // "!" before the text marks it urgent, as --urgent does; the mark is not kept.
+  const added = m.runIn(m.dir, 'note', 'add', '!', 'Remove', 'the', 'bandi', 'where', 'I', 'am', 'no', 'supplier');
+  assert.equal(added.status, 0, added.stderr);
+  assert.match(added.stdout, /N1 added, urgent/);
+  const db = m.db();
+  assert.deepEqual({ ...db.prepare('SELECT text, urgent FROM notes').get() }, { text: 'Remove the bandi where I am no supplier', urgent: 1 });
+  db.close();
+  m.beat();
+  assert.match(m.watchdogLog(), /director: permit \d+: run for an urgent note in demo/);
+  assert.equal(runs().length, 1);
+  assert.equal(runs()[0].fill, 1);
+  assert.equal(runs()[0].status, 'done', runs()[0].reason);
+  assert.match(runs()[0].reason, /\(urgent note\)/);
+  const overview = d.db();
+  assert.equal(overview.prepare('SELECT urgent FROM permits').get().urgent, 1);
+  overview.close();
+
+  // Taken by a run: no more permits for it, though the lead agent has not closed it yet.
+  m.beat();
+  m.beat();
+  assert.equal(runs().length, 1);
+});
+
+test('a note sent to the Director\'s bot is asked whether it is urgent, and the ⚡ button makes it so on its Mac (D216)', async () => {
+  const fake = mkdtempSync(join(tmpdir(), 'jerome-tg-'));
+  const d = await startDirector({ extra: { JEROME_TELEGRAM_FAKE: fake }, before: (home) => {
+    writeFileSync(join(home, '.local', 'share', 'jerome-director', 'telegram.json'), JSON.stringify({ token: '1:x', chatId: 7, chat: 'Fabio', bot: 'jerome_test_bot' }), { mode: 0o600 });
+  } });
+  const m = mac('mini');
+  assert.equal(m.connect(d.url).status, 0);
+  assert.equal(d.cli('approve', m.link().machine).status, 0);
+  m.beat();
+  const calls = () => (existsSync(join(fake, 'calls.jsonl')) ? readFileSync(join(fake, 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
+  const until = async (what, check) => {
+    for (let i = 0; i < 100 && !check(); i += 1) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(check(), `${what}; the Director said: ${d.log()}`);
+  };
+  const asked = () => calls().find((c) => c.method === 'sendMessage' && /Note for demo\. Is it urgent\?/.test(c.params.text));
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 1, message: { message_id: 70, chat: { id: 7, type: 'private' }, text: 'take the old bandi off' } }]));
+  await until('asked whether urgent', () => asked());
+  // The fake numbers a message 1000, then 1001 plus its call's index.
+  const at = calls().findIndex((c) => c.method === 'sendMessage' && /Note for demo\. Is it urgent\?/.test(c.params.text));
+  const mid = at === 0 ? 1000 : 1001 + at;
+  const [[button]] = asked().params.reply_markup.inline_keyboard;
+  assert.equal(button.text, '⚡ Urgent');
+  assert.match(button.callback_data, /^u:\d+$/);
+  m.beat();
+  const note = () => {
+    const db = m.db();
+    const row = db.prepare('SELECT text, urgent, urgent_at FROM notes').get();
+    db.close();
+    return row;
+  };
+  assert.equal(note().urgent, 0);
+
+  writeFileSync(join(fake, 'updates.json'), JSON.stringify([{ update_id: 2, callback_query: { id: 'q1', data: button.callback_data, message: { message_id: mid, chat: { id: 7, type: 'private' } } } }]));
+  await until('the question settled', () => calls().some((c) => c.method === 'editMessageText' && c.params.message_id === mid));
+  const settled = calls().find((c) => c.method === 'editMessageText' && c.params.message_id === mid);
+  assert.match(settled.params.text, /^Urgent note for demo: its run starts within a couple of minutes/);
+  assert.deepEqual(settled.params.reply_markup, { inline_keyboard: [] });
+  m.beat();
+  assert.equal(note().text, 'take the old bandi off');
+  assert.equal(note().urgent, 1);
+  assert.ok(note().urgent_at);
+});

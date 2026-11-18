@@ -16,7 +16,8 @@ import { stores } from './store.js';
 import { openDb } from './db.js';
 import { readAccount } from './account.js';
 import { refreshQuota, readingTime } from './quota.js';
-import { governorSettings, fillBlock, launchRun } from './governor.js';
+import { governorSettings, fillBlock, urgentBlock, launchRun } from './governor.js';
+import { urgentWaiting } from './notes.js';
 import { heartbeatConfig, describeSlot } from './heartbeatconfig.js';
 import { linkPath, statePath, permitsPath, directorOutboxPath, readLink, readState, readPermits, SILENT_MS } from './directormode.js';
 import { openAlerts } from './alerts.js';
@@ -231,6 +232,9 @@ function projectBeat(s, filled, cursors, now) {
     // What holds it up waiting for the user (D209), as the triage said it.
     const waiting = readWaiting(dir);
     if (waiting) project.waiting = { at: waiting.at, items: waiting.items.map((x) => cut(x, 300)) };
+    // An urgent note no run has taken yet (D216): the Director gives the project a run at once.
+    const urgent = urgentWaiting(db);
+    if (urgent) project.urgent = urgent;
     // What the user unlocked here, and the push asked (D194-D196), for a Director that knows them.
     const open = Object.keys(unlocked(dir)).slice(0, 20).map((g) => cut(g, 20));
     // Each push asked: the project's own and its other repositories' (D214), the first as `push` for an older Director.
@@ -350,6 +354,8 @@ async function beat({ env, now, log }) {
   if (!atLeast(state.directorVersion, '0.17.0')) for (const p of projects) delete p.rules?.push?.why;
   // The model and the longest run, for permits (D201): only to a Director from 0.19.0.
   if (!atLeast(state.directorVersion, '0.19.0')) for (const p of projects) { delete p.model; delete p.maxMinutes; }
+  // An urgent note (D216): only to a Director from 0.23.0, which refuses no field it knows.
+  if (!atLeast(state.directorVersion, '0.23.0')) for (const p of projects) delete p.urgent;
   // What waits for the user (D209): only to a Director from 0.22.0.
   if (!atLeast(state.directorVersion, '0.22.0')) for (const p of projects) delete p.waiting;
   // The other repositories' pushes (D214): only to a Director from 0.22.4; an older one gets the first as before.
@@ -483,11 +489,13 @@ const MODELS = ['opus', 'sonnet', 'haiku'];
 // run than the project's own, that it has not expired and has no other field. Returns { dir, slot } or { why }.
 export function checkPermit(p, { now = new Date(), projects = new Map(), filled = new Set() } = {}) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return { why: 'not a permit' };
-  const fields = p.kind === 'slot' ? [...PERMIT, 'slot'] : PERMIT;
+  // A fill run for an urgent note (D216) carries urgent: true, and nothing else more.
+  const fields = p.kind === 'slot' ? [...PERMIT, 'slot'] : [...PERMIT, 'urgent'];
   const extra = Object.keys(p).find((k) => !fields.includes(k));
   if (extra) return { why: `a field it should not have: ${String(extra).slice(0, 40)}` };
   if (!Number.isInteger(p.id) || !['fill', 'slot'].includes(p.kind) || typeof p.project !== 'string' || typeof p.model !== 'string'
-    || typeof p.maxMinutes !== 'number' || typeof p.expiresAt !== 'string' || (p.kind === 'slot' && typeof p.slot !== 'string')) return { why: 'a field missing or of the wrong kind' };
+    || typeof p.maxMinutes !== 'number' || typeof p.expiresAt !== 'string' || (p.kind === 'slot' && typeof p.slot !== 'string')
+    || (p.urgent !== undefined && p.urgent !== true)) return { why: 'a field missing or of the wrong kind' };
   const dir = projects.get(p.project);
   if (!dir) return { why: 'not a project of this Mac' };
   const { config } = heartbeatConfig(dir);
@@ -496,8 +504,9 @@ export function checkPermit(p, { now = new Date(), projects = new Map(), filled 
   if (!(p.maxMinutes > 0) || p.maxMinutes > config.maxMinutes) return { why: `${p.maxMinutes} minutes, longer than the project's ${config.maxMinutes}` };
   if (!(Date.parse(p.expiresAt) > now.getTime())) return { why: 'expired' };
   if (p.kind === 'slot' && !config.slots.some((x) => x.name === p.slot)) return { why: `no slot ${p.slot.slice(0, 40)} in the project` };
-  if (p.kind === 'fill' && !filled.has(real(dir))) return { why: 'not offered for fill runs (`jerome governor add`)' };
-  return { dir, slot: p.kind === 'slot' ? p.slot : null };
+  // An urgent note's run goes to any project of the Director's (D216), offered for fill runs or not.
+  if (p.kind === 'fill' && !p.urgent && !filled.has(real(dir))) return { why: 'not offered for fill runs (`jerome governor add`)' };
+  return { dir, slot: p.kind === 'slot' ? p.slot : null, urgent: p.urgent === true };
 }
 
 // Each permit once: checked, kept with its folder for the run to find, and started apart from the watchdog. A fill run
@@ -509,14 +518,14 @@ function runPermits(permits, { env, now, log }) {
   for (const p of permits.slice(0, 20)) {
     if (kept[p?.id]) continue;
     const ok = checkPermit(p, { now, projects, filled });
-    const why = ok.why ?? (ok.slot ? (lockHolder(ok.dir) ? 'another heartbeat of the project is running' : null) : fillBlock(ok.dir, now));
+    const why = ok.why ?? (ok.slot ? (lockHolder(ok.dir) ? 'another heartbeat of the project is running' : null) : ok.urgent ? urgentBlock(ok.dir, now) : fillBlock(ok.dir, now));
     kept[p?.id ?? `bad-${now.getTime()}`] = { kind: p?.kind ?? null, slot: ok.slot ?? null, dir: ok.dir ?? null, model: p?.model ?? null, maxMinutes: p?.maxMinutes ?? null, at: now.toISOString(), dropped: why ?? null };
     writePermits(kept, now);
     if (why) {
       log(`director: permit ${String(p?.id).slice(0, 12)} dropped: ${why}`);
       continue;
     }
-    log(`director: permit ${p.id}: ${ok.slot ? `slot ${ok.slot}` : 'fill run'} in ${basename(ok.dir)}`);
+    log(`director: permit ${p.id}: ${ok.slot ? `slot ${ok.slot}` : ok.urgent ? 'run for an urgent note' : 'fill run'} in ${basename(ok.dir)}`);
     launchRun(ok.dir, env, ok.slot ? ['heartbeat', 'run', ok.slot, ok.dir, '--permit', String(p.id)] : ['heartbeat', 'fill', ok.dir, '--permit', String(p.id)]);
   }
 }

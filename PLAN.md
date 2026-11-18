@@ -401,6 +401,8 @@ Then (0.22.4, D214): the push of other repositories a project works on, unlocked
 
 Then (0.22.5, D215): the question of which project a Telegram note is for keeps no buttons once tapped: it says the project chosen.
 
+Then (0.23.0, D216): a note can be urgent (the ⚡ Urgent button under each note saved on Telegram, `!` before it, the dashboard's Urgent box, `jerome note add --urgent`): its project gets a run within a couple of minutes, past the paces and the reserve, and the run takes it first.
+
 Then: the documentation as a website on GitHub Pages, built by VitePress in `site/` (its own package.json, never in the `jerome` package) from `docs/` and the README at every push to main, with a sidebar, search and Jérôme's colours; the README's Learn more lists every page.
 
 Next: on Fabio's VPS, `jerome director settings on` and `jerome director telegram setup` (after `jerome telegram off` on the Mac Mini, or with a new bot), then a week of real use to see the fill runs spread over the two Macs and the 90% at the reset. Step 4, the setup on the server, is in place: director/Dockerfile and director/compose.yaml since 0.5.0, the Director running under Coolify on Fabio's VPS since 2026-10-28, and its setup in docs/director.md. The governor's 90% at each reset (a success criterion of docs/specs/quota-governor.md) is computed but not shown: the Director's overview (src/dashboard.js) gives each past week's highest reading before its reset, up to 12 weeks from the 90 days of readings it keeps, and viewer/director.html does not display it.

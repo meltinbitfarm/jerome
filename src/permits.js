@@ -28,6 +28,8 @@ export function createPermitTables(db) {
     CREATE TABLE IF NOT EXISTS queue (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, project TEXT NOT NULL, slot TEXT NOT NULL,
       asked_at TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('waiting', 'granted', 'dropped')), permit INTEGER, done_at TEXT);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+  // A fill run given for an urgent note (D216): it travels with urgent: true, which the Mac checks as such.
+  if (!db.prepare('PRAGMA table_info(permits)').all().some((c) => c.name === 'urgent')) db.exec('ALTER TABLE permits ADD COLUMN urgent INTEGER NOT NULL DEFAULT 0');
 }
 
 // The Director's settings (S4): off until turned on, then the same target, reserve and 5-hour cap as phase 1.
@@ -87,12 +89,13 @@ function runShape(project, p) {
   return { model: modelFor(own, p.avoid)?.model ?? own, maxMinutes: project.maxMinutes };
 }
 
-function give(db, { machine, project, kind, slot = null, model, maxMinutes }, at, status = 'given') {
-  return Number(db.prepare('INSERT INTO permits (machine, project, kind, slot, model, max_minutes, created_at, started_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(machine, project, kind, slot, model, maxMinutes, iso(at), status === 'started' ? iso(at) : null, status).lastInsertRowid);
+function give(db, { machine, project, kind, slot = null, model, maxMinutes, urgent = false }, at, status = 'given') {
+  return Number(db.prepare('INSERT INTO permits (machine, project, kind, slot, model, max_minutes, created_at, started_at, status, urgent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(machine, project, kind, slot, model, maxMinutes, iso(at), status === 'started' ? iso(at) : null, status, urgent ? 1 : 0).lastInsertRowid);
 }
 
-// One decision, at each beat: queued slots first, then at most one fill run. Returns what it gave, for the log.
+// One decision, at each beat: urgent notes first, then queued slots, then at most one fill run. Returns what it gave,
+// for the log.
 export function decide(db, { now = Date.now(), log = () => {} } = {}) {
   const settings = directorSettings(db);
   if (!settings.on) return [];
@@ -101,6 +104,18 @@ export function decide(db, { now = Date.now(), log = () => {} } = {}) {
   const given = [];
   const projects = liveProjects(db, now);
   const find = (machine, key) => projects.find((x) => x.machine === machine && x.key === key);
+  // An urgent note (D216): its project gets a run at once, past the pace and the reserve, held only at the 5-hour cap;
+  // one permit per note, and none while another run has the project or it is at its own limit.
+  if (p.kind !== 'cap') {
+    for (const x of projects) {
+      if (!x.urgent || x.running || x.overLimit || !x.maxMinutes || !retries(x.alerts, now) || busy(db, x.machine, x.key)) continue;
+      // The Mac says urgent only until a run of the lead agent took the note; a permit it let lapse (a session in use)
+      // is given again.
+      if (db.prepare("SELECT 1 FROM permits WHERE machine = ? AND project = ? AND created_at >= ? AND status != 'lapsed'").get(x.machine, x.key, x.urgent)) continue;
+      const id = give(db, { machine: x.machine, project: x.key, kind: 'fill', urgent: true, ...runShape(x, p) }, now);
+      given.push({ id, kind: 'fill', project: x.name, why: 'urgent note' });
+    }
+  }
   // Slots run unless at the 5-hour cap or at the reserve (D142): a queued one goes as soon as its project is free.
   if (!['cap', 'reserve'].includes(p.kind)) {
     for (const q of db.prepare("SELECT * FROM queue WHERE status = 'waiting' ORDER BY asked_at").all()) {
@@ -129,7 +144,7 @@ export function decide(db, { now = Date.now(), log = () => {} } = {}) {
 }
 
 // A permit as it travels (S3): exactly these fields, `slot` only for a slot.
-const shape = (r) => ({ id: r.id, project: r.project, kind: r.kind, ...(r.kind === 'slot' ? { slot: r.slot } : {}), model: r.model, maxMinutes: r.max_minutes,
+const shape = (r) => ({ id: r.id, project: r.project, kind: r.kind, ...(r.kind === 'slot' ? { slot: r.slot } : {}), ...(r.urgent ? { urgent: true } : {}), model: r.model, maxMinutes: r.max_minutes,
   expiresAt: iso(Date.parse(r.created_at) + START_MS) });
 
 // The permits a Mac has not started yet, given again at each beat until it does or they lapse.

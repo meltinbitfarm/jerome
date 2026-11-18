@@ -87,8 +87,8 @@ const USAGE = `Usage:
   jerome request open --question <q> [--options <o>] [--recommendation <r>] [--area <name>] [--milestone]
   jerome request answer <id> <answer> | drop <id>
                           open or close a decision request
-  jerome note list [dir] | done <id> [dir]
-                          the notes the user sent the project from Telegram or the Director's dashboard, and closing one once recorded
+  jerome note add <text> [--urgent] | list [dir] | done <id> [dir]
+                          the notes the user sent the project from Telegram or the Director's dashboard, adding one here (urgent: a run starts as soon as it can and takes it first), and closing one once recorded
   jerome telegram setup | status | test | off
                           the Telegram bridge of this machine: what waits for you, answers, notes, /status
   jerome watchdog install | uninstall | status | run
@@ -167,11 +167,12 @@ const OPTIONS = {
   permit: { type: 'string' },
   listen: { type: 'string' },
   name: { type: 'string' },
+  urgent: { type: 'boolean' },
 };
 
 // The options each command accepts; any other option is a usage error.
 const ALLOWED = { new: ['from-file'], init: ['from-file'], prompt: [], doctor: ['json', 'check', 'yes', 'relink', 'new-db'], forget: ['yes'], update: ['check', 'yes'], docs: [], state: ['json', 'runs', 'agent', 'replies'], hook: [], statusline: [], view: ['port', 'no-open'], projects: ['json', 'view', 'port', 'no-open'],
-  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs', 'permit'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], rules: ['repo'], note: [], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token', 'target', 'reserve', 'five-hour-cap'], connect: ['name'], disconnect: [], plain: [] };
+  schedule: ['at', 'day', 'max-tokens', 'max-turns', 'model', 'off', 'list'], heartbeat: ['max-tokens', 'max-turns', 'until', 'today', 'runs', 'permit'], request: ['question', 'options', 'recommendation', 'area', 'milestone'], digest: ['since'], deps: ['json'], limits: ['five-hour', 'seven-day', 'daily', 'weekly'], rules: ['repo'], note: ['urgent'], telegram: [], watchdog: [], governor: ['target', 'reserve', 'five-hour-cap'], quota: ['json'], language: [], director: ['listen', 'new-token', 'target', 'reserve', 'five-hour-cap'], connect: ['name'], disconnect: [], plain: [] };
 
 export async function main(argv) {
   let parsed;
@@ -292,9 +293,11 @@ export async function main(argv) {
     }
     case 'note': {
       const [action, ...args] = rest;
+      if (action === 'add' && args.length >= 1) return note('add', args, { urgent: parsed.values.urgent === true });
+      if (parsed.values.urgent) return usageError('--urgent goes with jerome note add.');
       if (action === 'list' && args.length <= 1) return note('list', [], { dir: args[0] ?? '.' });
       if (action === 'done' && args.length >= 1 && args.length <= 2) return note('done', [args[0]], { dir: args[1] ?? '.' });
-      return usageError('jerome note takes list [dir] or done <id> [dir].');
+      return usageError('jerome note takes add <text> [--urgent], list [dir] or done <id> [dir].');
     }
     case 'telegram': {
       const action = rest[0];

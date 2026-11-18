@@ -18,6 +18,7 @@ import { projectStatus, projectOver, projectLimitSettings, limitText } from './b
 import { activeSession } from './activity.js';
 import { directorMode } from './directormode.js';
 import { retries } from './permits.js';
+import { urgentWaiting } from './notes.js';
 
 const BIN = join(import.meta.dirname, '..', 'bin', 'jerome.js');
 // A project whose last heartbeat started this recently is left alone: it has just looked for work.
@@ -66,6 +67,15 @@ export async function governorTick({ env = process.env, now = new Date(), log = 
     log(`governor: ${p.verdict}, ${p.why}`);
     save({ kind: p.kind, at: now.toISOString() });
   }
+  // An urgent note (D216) gets its run at once, past the pace, the reserve and the stagger: only the 5-hour cap holds it.
+  if (p.kind !== 'cap') {
+    const dir = g.projects.find((d) => urgentBlock(d, now) === null);
+    if (dir) {
+      log(`governor: run for an urgent note in ${basename(dir)}${directed ? ', in local mode' : ''}`);
+      launchRun(dir, env);
+      return { ...p, started: dir };
+    }
+  }
   if (p.verdict !== 'go') return p;
   // Runs go in parallel, one per project at most (its lock), but they start staggered (D144): a new one only
   // STAGGER_MIN minutes after the last, and on a reading taken since, so the pace sees what the runs already
@@ -98,6 +108,31 @@ export function pickProject(projects, now = new Date()) {
 export function fillBlock(dir, now = new Date()) {
   const r = fillReady(dir, now);
   return typeof r === 'string' ? null : r.why;
+}
+
+// Why a run for an urgent note (D216) should not start in the project now, or null: none waiting, another run, a session
+// in use, a block for the user, its own limit. No cooldown and no slot wait for it.
+export function urgentBlock(dir, now = new Date()) {
+  if (!existsSync(join(dir, MARKER)) || !existsSync(dbPath(dir))) return 'not a Jérôme project with a database';
+  if (lockHolder(dir)) return 'another heartbeat of the project is running';
+  if (activeSession(dir, { now })) return 'a session of the project is in use';
+  const db = openDb(dir, { readOnly: true, migrate: false });
+  if (!db) return 'no database';
+  try {
+    const since = urgentWaiting(db);
+    if (!since) return 'no urgent note waiting';
+    // A run started for it that stopped before its lead agent (a limit) is not started again every minute.
+    const tried = db.prepare("SELECT max(started_at) at FROM runs WHERE kind = 'heartbeat' AND started_at >= ?").get(since).at;
+    if (tried && tried >= new Date(now.getTime() - FILL_COOLDOWN_MIN * 60_000).toISOString()) return `a run for it started in the last ${FILL_COOLDOWN_MIN} minutes`;
+    const open = db.prepare("SELECT reason, count, opened_at FROM alerts WHERE status = 'open'").all();
+    if (!retries(open.map((a) => ({ reason: a.reason, count: a.count, openedAt: a.opened_at })), now.getTime())) return 'the project has an open block';
+    if (projectOver(projectStatus(dir, db, now))) return 'the project is at its own limit';
+    return null;
+  } catch {
+    return 'its database needs `jerome doctor`';
+  } finally {
+    db.close();
+  }
 }
 
 // The project's last heartbeat ('' for none) when a fill run may start, else { why }.

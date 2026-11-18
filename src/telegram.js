@@ -13,7 +13,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
 import { stores, storeKey, cloneRoot } from './store.js';
-import { addNote } from './notes.js';
+import { addNote, urgentText, makeUrgent } from './notes.js';
 import { t } from './i18n.js';
 import { readAccount } from './account.js';
 import { blockMessage, howLong } from './blocks.js';
@@ -385,6 +385,27 @@ async function onButton(q, state, call, config, now, env) {
     if (option && (await answer(about, Number(a), option, call, config, null))) await clearButtons();
     return;
   }
+  // A note made urgent by the button under it (D216): the message then says so, with no button.
+  if (kind === 'u' && about?.note === Number(a)) {
+    const db = openDb(about.dir);
+    let id = null;
+    try {
+      id = db ? makeUrgent(db, { id: Number(a) }, now) : null;
+    } finally {
+      db?.close();
+    }
+    if (!id) {
+      await clearButtons();
+      return reply(call, config, t('note.closed', { project: about.project, id: Number(a) }));
+    }
+    try {
+      await call('editMessageText', { chat_id: config.chatId, message_id: q.message.message_id, text: t('note.urgent', { project: about.project, id }), reply_markup: { inline_keyboard: [] } });
+      about.cleared = true;
+    } catch {
+      await clearButtons();
+    }
+    return null;
+  }
   // The project chosen for a note that named none.
   if (kind === 'n') {
     const text = state.pending[a];
@@ -400,7 +421,7 @@ async function onButton(q, state, call, config, now, env) {
     } catch {
       await clearButtons();
     }
-    return saveNote(project, text, call, config, now, Number(a));
+    return saveNote(project, text, call, config, now, Number(a), state);
   }
   return null;
 }
@@ -413,16 +434,16 @@ async function onMessage(m, state, call, config, now) {
   if (command) return reply(call, config, `${t('bot.unknown')}\n\n${t('bot.help')}`);
   const about = m.reply_to_message ? state.sent[m.reply_to_message.message_id] : null;
   if (about?.request) return answer(about, about.request, text, call, config, m.message_id);
-  if (about) return saveNote({ name: about.project, dir: about.dir }, text, call, config, now, m.message_id);
+  if (about) return saveNote({ name: about.project, dir: about.dir }, text, call, config, now, m.message_id, state);
   const projects = knownProjects();
   const tag = text.match(/^#([\w.-]+)\s+([\s\S]+)$/);
   if (tag) {
     const project = projects.find((p) => p.name.toLowerCase() === tag[1].toLowerCase());
     if (!project) return reply(call, config, t('note.unknown', { name: tag[1], list: projects.map((p) => p.name).join(', ') || '—' }));
-    return saveNote(project, tag[2].trim(), call, config, now, m.message_id);
+    return saveNote(project, tag[2].trim(), call, config, now, m.message_id, state);
   }
   if (!projects.length) return reply(call, config, t('note.none'));
-  if (projects.length === 1) return saveNote(projects[0], text, call, config, now, m.message_id);
+  if (projects.length === 1) return saveNote(projects[0], text, call, config, now, m.message_id, state);
   // Which project: asked with a button each; the text waits in the bridge's state meanwhile.
   const key = String(m.message_id);
   state.pending[key] = text;
@@ -452,18 +473,23 @@ async function answer(about, id, text, call, config, typed) {
   return true;
 }
 
-async function saveNote(project, text, call, config, now, typed) {
+async function saveNote(project, text, call, config, now, typed, state) {
   const db = openDb(project.dir);
   if (!db) return reply(call, config, t('note.nodb', { project: project.name }));
   let id;
+  // "!" before the text marks it urgent (D216): the mark is not kept, and the reply says what happens now.
+  const given = urgentText(text);
   try {
-    id = addNote(db, text, { now });
+    id = addNote(db, given.text, { now, urgent: given.urgent });
   } finally {
     db.close();
   }
-  // Saved: a reaction on the user's message, not a reply (D205).
-  if (typed) return react(call, config.chatId, typed);
-  return reply(call, config, t('note.saved', { project: project.name, id }));
+  if (typed) await react(call, config.chatId, typed);
+  if (given.urgent) return reply(call, config, t('note.urgent', { project: project.name, id }));
+  // Saved, and asked whether it is urgent (D216): one button, which makes it so; untapped, it is an ordinary note.
+  const sent = await reply(call, config, t('note.savedAsk', { project: project.name, id }), { reply_markup: { inline_keyboard: [[{ text: t('note.urgentButton'), callback_data: `u:${id}` }]] } });
+  if (sent?.message_id && state) state.sent[sent.message_id] = { dir: project.dir, project: project.name, request: null, alert: null, note: id, buttons: true };
+  return sent;
 }
 
 // /status: the summary, then each block that has actions as a message of its own with its buttons (D168).

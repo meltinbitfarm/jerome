@@ -146,7 +146,12 @@ export function placeOrder(db, o, { now = new Date(), via = 'dashboard' } = {}) 
     // Locking again is the safe way (D196); unlocking is done only at the Mac.
     if (!GROUPS[o.group] || !(project.rules?.unlocked ?? []).includes(o.group)) return bad('that is not unlocked');
     order = { kind: 'lock', ref: null, action: null, text: o.group };
-  } else return bad('kind is answer, note, action, push or lock');
+  } else if (o.kind === 'urgent') {
+    // A note made urgent by the button under it (D216): it names the note's own order, for the same project.
+    const note = Number.isInteger(o.ref) ? db.prepare("SELECT id FROM orders WHERE id = ? AND machine = ? AND project = ? AND kind = 'note'").get(o.ref, o.machine, o.project) : null;
+    if (!note) return bad('no such note');
+    order = { kind: 'urgent', ref: note.id, action: null, text: null };
+  } else return bad('kind is answer, note, action, push, lock or urgent');
   const at = now.toISOString();
   if (db.prepare('SELECT count(*) n FROM orders WHERE created_at > ?').get(new Date(now.getTime() - 60_000).toISOString()).n >= ORDERS_PER_MIN) {
     return { status: 429, body: { error: 'too many orders: wait a minute' } };

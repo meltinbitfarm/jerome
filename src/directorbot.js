@@ -13,6 +13,7 @@ import { actionsFor } from './unblock.js';
 import { blockMessage, howLong } from './blocks.js';
 import { placeOrder, readNote, spokenLanguage } from './dashboard.js';
 import { scrub } from './scrub.js';
+import { urgentText } from './notes.js';
 
 // The longest a poll of Telegram waits for an update: what a beat brought waits at most this long too.
 const POLL_SECONDS = 10;
@@ -146,6 +147,14 @@ async function order(ctx, p, o, typed = null) {
     return false;
   }
   if (typed) await react(ctx.call, ctx.config.chatId, typed);
+  if (o.kind === 'note') {
+    // An urgent note (D216) is told as such; any other is asked whether it is, with one button that makes it so.
+    if (urgentText(o.text).urgent) await ctx.reply(ctx.say('dbot.noteUrgent', { project: p.name }));
+    else {
+      const sent = await ctx.reply(ctx.say('dbot.noteSaved', { project: p.name }), { reply_markup: { inline_keyboard: [[{ text: ctx.say('note.urgentButton'), callback_data: `u:${r.body.id}` }]] } });
+      if (sent?.message_id) ctx.db.prepare('INSERT OR REPLACE INTO tg_sent (message_id, machine, project, ord, buttons, at) VALUES (?, ?, ?, ?, 1, ?)').run(sent.message_id, p.machine, p.key, r.body.id, ctx.now().toISOString());
+    }
+  }
   return true;
 }
 
@@ -197,6 +206,13 @@ async function onButton(q, ctx) {
   }
   // A note to read (D207).
   if (kind === 't') return readNoteHere(ctx, Number(a));
+  // A note made urgent by the button under it (D216): the message then says so, with no button.
+  if (kind === 'u' && about?.ord === Number(a)) {
+    const p = findProject(ctx.db, about.machine, about.project);
+    if (!p) return ctx.reply(ctx.say('dbot.old'));
+    if (await order(ctx, p, { kind: 'urgent', ref: Number(a) })) return settle(ctx, id, ctx.say('dbot.noteUrgent', { project: p.name }));
+    return null;
+  }
   // Whether a dashboard's order was the user's (D206): yes only takes the buttons off; no gives the dashboard a new
   // token at once, so the address that was used opens nothing any more, and says the new one.
   if (kind === 'd' && about?.ord === Number(a) && ['me', 'no'].includes(b)) {

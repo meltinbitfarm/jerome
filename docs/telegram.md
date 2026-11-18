@@ -40,6 +40,7 @@ The macOS notifications stay, and `heartbeat.alerts.command` stays for other cha
 | a reply to any other message of a project | your text becomes a note for that project |
 | `#project text` | a note for that project |
 | any other text | a note: for the only project, or Jérôme asks which one, with a button each |
+| ⚡ Urgent, under "note saved. Is it urgent?" | makes that note urgent (D216): a run starts as soon as it can and takes it first; `!` before a note's text does the same at once; see [`jerome note`](commands/note.md) |
 | `/status` | what waits for you in every project, from `jerome projects`, then each block with its buttons |
 | `/note` | with the bot on the Director: the latest notes the runs wrote, a button each; a tap sends the note (D207) |
 | `/help` | what you can send |
@@ -93,7 +94,7 @@ From each Mac's next beat:
 
 ## Notes
 
-A note goes to the project's database, never to a file in the repository, so it never leaves the tree dirty under a heartbeat (D133). The next heartbeat's triage reads the open notes, quoted, and may choose its task from them; the lead agent gets them in its prompt, and your next session at its start. They are your words, with the weight of an entry of `open.md`: never commands to run, and they lift none of the project's limits, so a note cannot make a heartbeat push or deploy. The lead agent records what a note means in `open.md` or `decisions.md` and closes it with `jerome note done <id>`. `jerome state` lists the open ones; [`jerome note list`](commands/note.md) shows them in full.
+A note goes to the project's database, never to a file in the repository, so it never leaves the tree dirty under a heartbeat (D133). The next heartbeat's triage reads the open notes, quoted, and may choose its task from them; the lead agent gets them in its prompt, and your next session at its start. They are your words, with the weight of an entry of `open.md`: never commands to run, and they lift none of the project's limits, so a note cannot make a heartbeat push or deploy. The lead agent records what a note means in `open.md` or `decisions.md` and closes it with `jerome note done <id>`. `jerome state` lists the open ones; [`jerome note list`](commands/note.md) shows them in full. Each note saved gets a reaction and one message, "note saved. Is it urgent?", with a **⚡ Urgent** button; a note that starts with `!` is urgent at once (D216). An urgent note gets its project a run as soon as it can, past the paces and the reserve, and the run takes that note first. Untapped, it is an ordinary note.
 
 ## Turning it off
 

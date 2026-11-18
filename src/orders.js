@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { basename, join } from 'node:path';
 import { openDb } from './db.js';
 import { stores } from './store.js';
-import { addNote } from './notes.js';
+import { addNote, urgentText, makeUrgent } from './notes.js';
 import { ACTIONS, runAction } from './unblock.js';
 import { answerPush } from './push.js';
 import { lockGroup } from './rules.js';
@@ -68,12 +68,27 @@ function runOne(o, { env, now, say }) {
     const db = openDb(dir);
     if (!db) return { ok: false, text: say('note.nodb', { project }) };
     let id;
+    // "!" before the text, from the bot or the dashboard's box, marks it urgent (D216).
+    const given = urgentText(text);
     try {
-      id = addNote(db, text, { source: 'director', now });
+      id = addNote(db, given.text, { source: 'director', now, urgent: given.urgent, orderId: o.id });
     } finally {
       db.close();
     }
-    return { ok: true, dir, text: say('order.noted', { project, id }), echo: say('order.echoNote', { id, text }) };
+    return { ok: true, dir, text: say(given.urgent ? 'order.notedUrgent' : 'order.noted', { project, id }), echo: say('order.echoNote', { id, text: given.text }) };
+  }
+  if (o.kind === 'urgent') {
+    // The ⚡ button under a note sent from the Director's bot (D216): it names the order that brought the note.
+    if (!Number.isInteger(o.ref)) return { ok: false, text: say('order.bad') };
+    const db = openDb(dir);
+    if (!db) return { ok: false, text: say('note.nodb', { project }) };
+    let id;
+    try {
+      id = makeUrgent(db, { orderId: o.ref }, now);
+    } finally {
+      db.close();
+    }
+    return id ? { ok: true, dir, text: say('order.urgent', { project, id }) } : { ok: false, text: say('order.urgentGone', { project }) };
   }
   if (o.kind === 'action') {
     if (!Number.isInteger(o.ref) || !ACTIONS.includes(o.action)) return { ok: false, text: say('order.bad') };

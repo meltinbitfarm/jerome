@@ -119,20 +119,23 @@ export function openDirectorDb(env = process.env) {
     CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS boards (machine TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (machine, key));
     CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, project TEXT NOT NULL,
-      kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action', 'push', 'lock')), ref INTEGER, action TEXT, text TEXT,
+      kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action', 'push', 'lock', 'urgent')), ref INTEGER, action TEXT, text TEXT,
       created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed', 'lapsed')),
       result TEXT, done_at TEXT);
     CREATE INDEX IF NOT EXISTS orders_open ON orders (machine, status);
     CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, key TEXT NOT NULL, name TEXT NOT NULL,
       text TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (machine, key, name));`);
-  // The push and the locking from the dashboard (D196): a table from before them is copied into one that takes them.
-  if (!/'push'/.test(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'orders'").get()?.sql ?? "'push'")) {
+  // The push and the locking from the dashboard (D196), then a note made urgent (D216): a table from before them is
+  // copied into one that takes them, with the columns the bot added (via, told).
+  if (!/'urgent'/.test(db.prepare("SELECT sql FROM sqlite_master WHERE name = 'orders'").get()?.sql ?? "'urgent'")) {
+    const extra = db.prepare('PRAGMA table_info(orders)').all().map((c) => c.name).filter((c) => ['via', 'told'].includes(c));
+    const columns = ['id', 'machine', 'project', 'kind', 'ref', 'action', 'text', 'created_at', 'status', 'result', 'done_at', ...extra].join(', ');
     db.exec(`BEGIN;
       CREATE TABLE orders_new (id INTEGER PRIMARY KEY, machine TEXT NOT NULL, project TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action', 'push', 'lock')), ref INTEGER, action TEXT, text TEXT,
+        kind TEXT NOT NULL CHECK (kind IN ('answer', 'note', 'action', 'push', 'lock', 'urgent')), ref INTEGER, action TEXT, text TEXT,
         created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed', 'lapsed')),
-        result TEXT, done_at TEXT);
-      INSERT INTO orders_new SELECT id, machine, project, kind, ref, action, text, created_at, status, result, done_at FROM orders;
+        result TEXT, done_at TEXT${extra.map((c) => `, ${c} TEXT`).join('')});
+      INSERT INTO orders_new (${columns}) SELECT ${columns} FROM orders;
       DROP TABLE orders;
       ALTER TABLE orders_new RENAME TO orders;
       CREATE INDEX IF NOT EXISTS orders_open ON orders (machine, status);
@@ -198,6 +201,8 @@ const SHAPES = {
       'model?': 'string:60', 'maxMinutes?': 'number',
       // What holds it up waiting for the user, in their words (D209).
       'waiting?': { at: 'string:40', items: ['string:300', 5] },
+      // When the newest urgent note came in, while no run has taken it yet (D216).
+      'urgent?': 'string:40',
       'lastHeartbeat?': { at: 'string:40', status: 'string:20', reason: 'string:300' },
       usage: { today: USAGE, week: USAGE },
       // What the user unlocked in the project, and the push asked and not answered (D194-D196).

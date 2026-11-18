@@ -29,7 +29,7 @@ The hooks that write it are described in [hooks.md](hooks.md). The lead agent re
 | `transcript_reads` | transcript, with how far it has been read |
 | `events` | hook event: kind and numbers or names only, never message contents |
 | `alerts` | something wrong with the autonomous runs (D121): key, reason, the run, when it opened and last happened, how many times, `open` or `resolved` |
-| `notes` | note the user sent the project from Telegram (D133): its text, when it came, `open` until the lead agent records it and closes it with `jerome note done` |
+| `notes` | note the user sent the project from Telegram (D133): its text, when it came, `open` until the lead agent records it and closes it with `jerome note done`; `urgent` when the user marked it so (schema 12, D216) |
 | `requests` | decision request: question, options, recommendation, status, answer, its area, and its `kind`: `milestone` holds up the whole area, `question` only the work that depends on it (D117) |
 
 Allowed values are checked by the schema itself. Model prices are not in the database: they live in the code (`src/models.js`), so a price change comes with a Jérôme update.

@@ -63,6 +63,7 @@ const WORDS = {
     recommended: 'Recommended',
     answerHow: 'Tap an option, or write your answer. The Mac takes it within a minute.',
     yourAnswer: 'Or write your answer…', send: 'Send', sending: 'Sending…',
+    urgent: 'Urgent', urgentHow: 'A run starts within a couple of minutes, past the paces and the reserve, and takes this note first.',
     note: 'Send a note to this project', notePlaceholder: 'What the project should know: it is read at the next run and in your next session.',
     sent: 'Sent: the Mac takes it within a minute.',
     orders: 'Sent from here',
@@ -128,6 +129,7 @@ const WORDS = {
     recommended: 'Consiglio',
     answerHow: 'Tocca un\'opzione, o scrivi la tua risposta. Il Mac la prende entro un minuto.',
     yourAnswer: 'Oppure scrivi la tua risposta…', send: 'Invia', sending: 'Invio…',
+    urgent: 'Urgente', urgentHow: 'Una run parte entro un paio di minuti, oltre i ritmi e la riserva, e prende per prima questa nota.',
     note: 'Manda una nota a questo progetto', notePlaceholder: 'Quello che il progetto deve sapere: la legge la prossima run, e la tua prossima sessione.',
     sent: 'Inviato: il Mac lo prende entro un minuto.',
     orders: 'Inviati da qui',
@@ -303,7 +305,7 @@ function sentList() {
 // A text box with its Send button. What is typed is kept across the page's refreshes, and the page waits to redraw
 // while the box has the focus.
 const drafts = new Map();
-function writeBox(key, placeholder, onSend) {
+function writeBox(key, placeholder, onSend, { urgent = false } = {}) {
   const box = el('textarea', { class: 'write', rows: 2, maxlength: 2000, placeholder, 'aria-label': placeholder });
   box.value = drafts.get(key) ?? '';
   box.addEventListener('input', () => drafts.set(key, box.value));
@@ -312,9 +314,11 @@ function writeBox(key, placeholder, onSend) {
   const button = el('button', { type: 'button', class: 'choice send', onclick: () => {
     const text = box.value.trim();
     if (!text) return box.focus();
-    onSend(text, button).then((ok) => { if (ok) drafts.delete(key); });
+    onSend(text, button, flag?.checked === true).then((ok) => { if (ok) { drafts.delete(key); if (flag) flag.checked = false; } });
   } }, W.send);
-  return el('div', { class: 'write-box' }, box, button);
+  // A note may be marked urgent (D216): it goes as "!" before its text, as on Telegram.
+  const flag = urgent ? el('input', { type: 'checkbox' }) : null;
+  return el('div', { class: 'write-box' }, box, flag ? el('label', { class: 'urgent', title: W.urgentHow }, flag, ` ${W.urgent}`) : null, button);
 }
 
 // An order for a Mac (D191): the Director keeps it, the Mac takes it with its next beat. The buttons of the card are
@@ -537,7 +541,7 @@ function unlockedLine(p) {
 function noteBox(p) {
   const id = `note:${p.machineCode}/${p.key}`;
   const box = el('details', { class: 'note-box', open: opened.has(id) }, el('summary', {}, `✉ ${W.note}`),
-    writeBox(id, W.notePlaceholder, (text, button) => order(button, { machine: p.machineCode, project: p.key, kind: 'note', text })));
+    writeBox(id, W.notePlaceholder, (text, button, urgent) => order(button, { machine: p.machineCode, project: p.key, kind: 'note', text: urgent ? `! ${text}` : text }), { urgent: true }));
   box.addEventListener('toggle', () => { if (box.open) opened.add(id); else opened.delete(id); });
   return box;
 }
